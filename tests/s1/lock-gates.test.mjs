@@ -6,7 +6,8 @@ import test from "node:test";
 import YAML from "yaml";
 import { renderFleet } from "../../src/reconcile.mjs";
 import { evaluateExpression, simulateJobs } from "./helpers/actions-if.mjs";
-import { abs, AGENT_SUCCESS_GUARD, BUILT_IN_JOB_SECTIONS, listFiles, readText, readWorkflow, referenceRequest, REPO_ROOT } from "./helpers/fixtures.mjs";
+import { abs, AGENT_SUCCESS_GUARD, BUILT_IN_JOB_SECTIONS, fixture, listFiles, parseWorkflow, readText, readWorkflow, referenceRequest, REPO_ROOT } from "./helpers/fixtures.mjs";
+import { createWorkspace } from "./helpers/workspace.mjs";
 
 const W = ".github/workflows";
 const request = referenceRequest();
@@ -123,6 +124,22 @@ test("AC29: detection and safe_outputs are rendered as the agent-success guard a
   }
   for (const [name, text] of renderFleet(request).files) {
     if (name.endsWith(".md")) assert.ok(text.includes("  safe_outputs:\n    if: needs.agent.result == 'success'\n"), name);
+  }
+});
+
+test("AC29: the guard is rendered for any manifest, not only for the preset: every workflow of the minimal fixture carries it", () => {
+  const workspace = createWorkspace({ manifestText: readText(fixture("manifest.minimal.yaml")) });
+  try {
+    const result = renderFleet(request, { cwd: workspace.dir });
+    assert.ok(result.ok, JSON.stringify(result.result));
+    const sources = [...result.files].filter(([name]) => name.endsWith(".md"));
+    assert.deepEqual(sources.map(([name]) => name.split("/").pop()), ["cascade-mechanical-alpha-to-beta.md", "drift-alpha-service.md", "sdlc-onboard.md"]);
+    for (const [name, text] of sources) {
+      const { jobs } = parseWorkflow(text).frontmatter;
+      for (const section of BUILT_IN_JOB_SECTIONS) assert.deepEqual(jobs[section], { if: AGENT_SUCCESS_GUARD }, `${name}.${section}`);
+    }
+  } finally {
+    workspace.cleanup();
   }
 });
 
