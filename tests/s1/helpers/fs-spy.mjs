@@ -10,7 +10,13 @@ export async function recordWrites(body) {
   for (const name of SPIED) {
     originals[name] = fs[name];
     fs[name] = function recorded(target, ...rest) {
-      writes.push(path.resolve(String(target)));
+      // Copy reads its first argument; only the destination is mutated. Rename mutates both paths.
+      if (name === "copyFileSync" || name === "cpSync") {
+        writes.push(path.resolve(String(rest[0])));
+      } else {
+        writes.push(path.resolve(String(target)));
+        if (name === "renameSync") writes.push(path.resolve(String(rest[0])));
+      }
       return originals[name].call(this, target, ...rest);
     };
   }
