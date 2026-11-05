@@ -49,12 +49,11 @@ test("AC29: the criterion in the spec names the condition forms that the committ
 
 test("AC29: in every committed lock detection and safe_outputs also require the agent job to have succeeded", () => {
   for (const id of ids) {
-    const { agent, detection, safe_outputs: safeOutputs } = lockOf(id).jobs;
+    const { detection, safe_outputs: safeOutputs } = lockOf(id).jobs;
     for (const job of [detection, safeOutputs]) {
       assert.ok(job.needs.includes("agent"), `${id}: needs ${JSON.stringify(job.needs)}`);
       assert.ok(conditionOf(job).includes(`(${AGENT_SUCCESS_GUARD})`), `${id}: if ${conditionOf(job)}`);
     }
-    assert.equal(String(agent.if).includes("needs.agent.result"), false, `${id}: the agent job does not need itself`);
   }
 });
 

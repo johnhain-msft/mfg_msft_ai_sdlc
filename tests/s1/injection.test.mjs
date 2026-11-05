@@ -56,7 +56,7 @@ for (const [index, value] of TRICKY.entries()) {
     assert.ok(result.ok, JSON.stringify(result.result));
     const drift = parseWorkflow(files.get(`${W}/drift-alpha-service.md`)).frontmatter;
     assert.deepEqual(Object.keys(drift).sort(), DRIFT_KEYS);
-    assert.deepEqual(Object.keys(customJobsOf(drift.jobs)), ["escalate_failure"]);
+    assert.deepEqual(Object.keys(drift.jobs).sort(), ["detection", "escalate_failure", "safe_outputs"], "no job is added to the two guard sections and the one custom job");
     assert.equal(drift["pre-agent-steps"].length, 3);
     assert.equal(drift["post-steps"].length, 2, "one step per verify command, however many lines it has");
     assert.deepEqual(drift["safe-outputs"]["create-pull-request"].reviewers, [value], "the reviewer is a scalar");
@@ -66,7 +66,9 @@ for (const [index, value] of TRICKY.entries()) {
 
     const mechanical = parseWorkflow(files.get(`${W}/cascade-mechanical-alpha-to-beta.md`)).frontmatter;
     assert.deepEqual(Object.keys(mechanical).sort(), MECHANICAL_KEYS);
-    assert.deepEqual(Object.keys(customJobsOf(mechanical.jobs)).sort(), ["escalate_failure", "finalize_poll_state"]);
+    assert.deepEqual(Object.keys(mechanical.jobs).sort(), ["detection", "escalate_failure", "finalize_poll_state", "safe_outputs"]);
+    assert.deepEqual(mechanical.jobs.detection, { if: "needs.agent.result == 'success'" }, "the hostile value does not reach the guard");
+    assert.deepEqual(mechanical.jobs.safe_outputs, { if: "needs.agent.result == 'success'" });
     assert.deepEqual(mechanical["safe-outputs"]["create-pull-request"].reviewers, [value]);
     assert.equal(mechanical["post-steps"].length, 4 + 1 + 1, "four fixed steps, one build command and one verify command");
     assert.equal(mechanical["pre-agent-steps"].length, 1);
