@@ -109,13 +109,11 @@ post-steps:
     run: |-
       set -euo pipefail
       changed="$(git -C "$GITHUB_WORKSPACE/beta-docs" diff --name-only "$BASE_SHA" HEAD)"
+      allowed='^(docs/imported/.*)$'
       bad=0
       while IFS= read -r file; do
         [ -n "$file" ] || continue
-        case "$file" in
-          docs/imported/*) ;;
-          *) echo "path outside the allowed files: $file" >&2; bad=1 ;;
-        esac
+        [[ "$file" =~ $allowed ]] || { echo "path outside the allowed files: $file" >&2; bad=1; }
       done <<< "$changed"
       exit "$bad"
   - name: npm run build

@@ -506,10 +506,10 @@ function watchHostnames(urls) {
   return uniqueSorted(urls.map((entry) => validWatchUrl(entry.url).hostname).filter(Boolean));
 }
 
-function readInstructionFile(cwd, manifestAbsolute, relative) {
-  const base = path.dirname(manifestAbsolute);
-  const absolute = path.resolve(base, relative);
-  const inside = path.relative(base, absolute);
+/** `instructionsFile` is repository-relative (SPEC-01 AC21): it resolves against the repository root, never against the manifest's directory. */
+function readInstructionFile(cwd, relative) {
+  const absolute = path.resolve(cwd, relative);
+  const inside = path.relative(cwd, absolute);
   if (inside.startsWith("..") || path.isAbsolute(inside)) {
     return { error: `instructionsFile '${relative}' resolves outside the repository` };
   }
@@ -604,7 +604,7 @@ function validateSemantics(manifest, request, context) {
       });
     }
     if (audit.instructionsFile !== null) {
-      const result = readInstructionFile(context.cwd, context.manifestAbsolute, audit.instructionsFile);
+      const result = readInstructionFile(context.cwd, audit.instructionsFile);
       if (result.error) {
         errors.push(rule("drift-instructions-file", `${where}: ${result.error}`));
       } else if (result.text.includes("${{")) {
@@ -669,6 +669,9 @@ function bashAllowlist(commands) {
   return uniqueSorted([...BASE_BASH, ...commands.map(commandWord).filter((word) => word !== null)]);
 }
 
+/** Engines whose gh-aw compiler enforces a per-command `tools.bash` allowlist (gh-aw v1.0.1: copilot, claude and gemini). */
+const BASH_ALLOWLIST_ENGINES = new Set(["claude", "copilot", "gemini"]);
+
 function makeContext(request, manifest, instructionFiles) {
   return {
     request,
@@ -709,6 +712,15 @@ function engineSection(ctx, { sdk }) {
   if (sdk) engine["copilot-sdk"] = true;
   if (mode === "copilot-pat") engine.env = { COPILOT_GITHUB_TOKEN: expr("secrets.COPILOT_GITHUB_TOKEN") };
   return engine;
+}
+
+/**
+ * The `tools.bash` value: the command allowlist for an engine whose compiler can enforce one. Any other engine
+ * (codex) ignores a restricted list at run time and gh-aw rejects it at compile time, so it gets the explicit
+ * wildcard that the compiler accepts there (SPEC-01 AC71); the engine selected by `engineAuthMode` decides.
+ */
+function bashTool(ctx, commands) {
+  return BASH_ALLOWLIST_ENGINES.has(engineSection(ctx, { sdk: false }).id) ? bashAllowlist(commands) : ["*"];
 }
 
 function inputsOf(names, descriptions) {
@@ -1016,7 +1028,7 @@ function renderDrift(ctx, project) {
       },
     },
     engine: engineSection(ctx, { sdk: true }),
-    tools: { "web-fetch": {}, bash: bashAllowlist(["git", "node", ...audit.buildCommands]), edit: {} },
+    tools: { "web-fetch": {}, bash: bashTool(ctx, ["git", "node", ...audit.buildCommands]), edit: {} },
     jobs: { ...agentSuccessGuards(), escalate_failure: driftEscalation(ctx, project, workflowId) },
   };
   return { id: workflowId, kind: "drift", project, text: serializeWorkflow(frontmatter, driftBody(ctx, project)) };
@@ -1109,24 +1121,39 @@ const uploadShasStep = () => ({
   with: { name: "sdlc-cascade-shas-" + expr("github.run_id"), path: "/tmp/gh-aw/cascade-shas.json", "if-no-files-found": "error" },
 });
 
-function casePattern(glob) {
-  return glob.replace(/\*+/g, "*");
+/**
+ * POSIX extended regular expression (unanchored) for one `allowedFiles` entry, with the meaning gh-aw gives an
+ * `allowed-files` pattern: `*` matches any characters except `/`, `**` matches any characters including `/`, and
+ * every other character is literal. A bash `case` pattern cannot express that, because its `*` also crosses `/`.
+ */
+function allowedFileEre(glob) {
+  let source = "";
+  for (let i = 0; i < glob.length; i += 1) {
+    if (glob[i] !== "*") {
+      source += glob[i].replace(/[.[{()\\+?|^$]/g, "\\$&");
+    } else if (glob[i + 1] === "*") {
+      i += 1;
+      source += ".*";
+    } else {
+      source += "[^/]*";
+    }
+  }
+  return source;
 }
 
 function allowedPathsStep(edge) {
   const down = downstreamName(edge);
+  const allowed = `^(${edge.allowedFiles.map(allowedFileEre).join("|")})$`;
   return {
     name: "Verify changed paths are covered by the allowed files",
     run: [
       "set -euo pipefail",
       `changed="$(git -C "$GITHUB_WORKSPACE/${down}" diff --name-only "$BASE_SHA" HEAD)"`,
+      `allowed=${shArg(allowed)}`,
       "bad=0",
       "while IFS= read -r file; do",
       '  [ -n "$file" ] || continue',
-      '  case "$file" in',
-      `    ${edge.allowedFiles.map(casePattern).join("|")}) ;;`,
-      '    *) echo "path outside the allowed files: $file" >&2; bad=1 ;;',
-      "  esac",
+      '  [[ "$file" =~ $allowed ]] || { echo "path outside the allowed files: $file" >&2; bad=1; }',
       'done <<< "$changed"',
       'exit "$bad"',
     ].join("\n"),
@@ -1497,7 +1524,8 @@ function renderCascade(ctx, edge) {
     "threat-detection": { "continue-on-error": false },
     "create-pull-request": handler,
   };
-  frontmatter.tools = mechanical ? { bash: bashAllowlist(["git", ...importWords]) } : { bash: bashAllowlist(["git", ...importWords]), edit: {} };
+  const bash = bashTool(ctx, ["git", ...importWords]);
+  frontmatter.tools = mechanical ? { bash } : { bash, edit: {} };
   frontmatter.jobs = { ...agentSuccessGuards(), ...cascadeJobs(ctx, edge) };
   return {
     id: workflowId,
@@ -1638,7 +1666,7 @@ function renderOnboard(ctx) {
         max: 1,
       },
     },
-    tools: { bash: bashAllowlist(["git", "node"]), edit: {} },
+    tools: { bash: bashTool(ctx, ["git", "node"]), edit: {} },
     jobs: agentSuccessGuards(),
   };
   const lines = [
@@ -1818,11 +1846,17 @@ export function checkRendered(files, request, manifest) {
         add(file, "threat-detection-missing", `${file} has safe-outputs without threat-detection`);
       } else if (detection === false) {
         add(file, "threat-detection-disabled", `${file} sets safe-outputs.threat-detection to false`);
-      } else if (isObj(detection)) {
+      } else if (!isObj(detection)) {
+        // Only the object form can carry continue-on-error: false, so any other scalar or array does not satisfy the policy.
+        add(file, "threat-detection-malformed", `${file} safe-outputs.threat-detection must be an object with continue-on-error: false but is ${JSON.stringify(detection)}`);
+      } else {
         if (detection["continue-on-error"] !== false) {
           add(file, "threat-detection-continue-on-error", `${file} safe-outputs.threat-detection.continue-on-error must be false`);
         }
         if (detection.engine === false) add(file, "threat-detection-engine-disabled", `${file} sets safe-outputs.threat-detection.engine to false`);
+        if (detection.enabled !== undefined && detection.enabled !== true) {
+          add(file, "threat-detection-disabled", `${file} safe-outputs.threat-detection.enabled must be true when it is set but is ${JSON.stringify(detection.enabled)}`);
+        }
       }
       for (const hit of deepFindKeys(safeOutputs, ["github-token"])) {
         add(file, "safe-outputs-token-forbidden", `${file} safe-outputs${hit.pointer} must not be rendered; authenticate through github-app`);
@@ -1946,7 +1980,6 @@ function prepareFleet(request, cwd) {
   const context = {
     cwd,
     manifestFile: request.manifestPath,
-    manifestAbsolute: path.resolve(cwd, request.manifestPath),
     instructionFiles: new Map(),
   };
   const semantic = validateSemantics(manifest, request, context);
@@ -2342,24 +2375,21 @@ async function dryRunFleet(prepared, options) {
   const stage = fs.mkdtempSync(path.join(os.tmpdir(), "sdlc-reconcile-"));
   try {
     const init = await spawnCollect("git", ["init", "-q"], { cwd: stage, env, timeoutMs: options.timeoutMs });
-    if (init.code === 0) {
-      const lockSource = path.join(prepared.cwd, ACTIONS_LOCK_PATH);
-      if (fs.existsSync(lockSource)) {
-        fs.mkdirSync(path.join(stage, path.dirname(ACTIONS_LOCK_PATH)), { recursive: true });
-        fs.copyFileSync(lockSource, path.join(stage, ACTIONS_LOCK_PATH));
-      }
-      writeRendered(stage, prepared.files);
-      const outcome = await compileWithCompat(stage, prepared, ["aw", "compile", "--strict", "--no-emit", "--json"], options);
-      return finish(prepared, interpretCompile(outcome));
+    if (init.code !== 0) {
+      // A dry run never writes to the working tree (SPEC-01 AC10), so there is no fallback that compiles inside it.
+      const detail = init.error ?? `git init exited with code ${init.code}: ${tail(init.stderr)}`;
+      return finish(prepared, [
+        { file: "gh aw compile", valid: false, errors: [rule("dry-run-staging-failed", `the validation-only staging directory could not be prepared: ${detail}`)] },
+      ]);
     }
-    const snapshot = takeSnapshot(prepared.cwd);
-    try {
-      writeRendered(prepared.cwd, prepared.files);
-      const outcome = await compileWithCompat(prepared.cwd, prepared, ["aw", "compile", "--strict", "--no-emit", "--json"], options);
-      return finish(prepared, interpretCompile(outcome));
-    } finally {
-      restoreSnapshot(prepared.cwd, snapshot);
+    const lockSource = path.join(prepared.cwd, ACTIONS_LOCK_PATH);
+    if (fs.existsSync(lockSource)) {
+      fs.mkdirSync(path.join(stage, path.dirname(ACTIONS_LOCK_PATH)), { recursive: true });
+      fs.copyFileSync(lockSource, path.join(stage, ACTIONS_LOCK_PATH));
     }
+    writeRendered(stage, prepared.files);
+    const outcome = await compileWithCompat(stage, prepared, ["aw", "compile", "--strict", "--no-emit", "--json"], options);
+    return finish(prepared, interpretCompile(outcome));
   } finally {
     fs.rmSync(stage, { recursive: true, force: true });
   }

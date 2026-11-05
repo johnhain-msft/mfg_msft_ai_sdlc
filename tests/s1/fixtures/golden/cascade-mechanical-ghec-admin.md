@@ -112,13 +112,11 @@ post-steps:
     run: |-
       set -euo pipefail
       changed="$(git -C "$GITHUB_WORKSPACE/portfolio" diff --name-only "$BASE_SHA" HEAD)"
+      allowed='^(public/ghec-admin/.*)$'
       bad=0
       while IFS= read -r file; do
         [ -n "$file" ] || continue
-        case "$file" in
-          public/ghec-admin/*) ;;
-          *) echo "path outside the allowed files: $file" >&2; bad=1 ;;
-        esac
+        [[ "$file" =~ $allowed ]] || { echo "path outside the allowed files: $file" >&2; bad=1; }
       done <<< "$changed"
       exit "$bad"
   - name: npm run build

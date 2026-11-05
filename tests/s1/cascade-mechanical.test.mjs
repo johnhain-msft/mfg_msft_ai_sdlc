@@ -115,7 +115,8 @@ test("AC32: then the artifact upload, the clean-tree check, the changed-paths ch
   assert.ok(steps[2].run.includes('git -C "$GITHUB_WORKSPACE/portfolio" status --porcelain'));
   assert.ok(steps[2].run.includes("exit 1"), "a dirty tree fails the step");
   assert.ok(steps[3].run.includes('git -C "$GITHUB_WORKSPACE/portfolio" diff --name-only "$BASE_SHA" HEAD'));
-  assert.ok(steps[3].run.includes("public/ghec-admin/*"), "only paths covered by allowedFiles pass");
+  assert.ok(steps[3].run.includes("allowed='^(public/ghec-admin/.*)$'"), "only paths covered by allowedFiles pass: the entry's `**` is `.*`");
+  assert.equal(/\bcase\b/.test(steps[3].run), false, "no shell case pattern, whose `*` would also cross directories");
   assert.deepEqual(steps.slice(4).map((step) => step.run), [...edge.buildCommands, ...edge.verifyCommands]);
   for (const step of steps.slice(4)) {
     assert.equal(step["working-directory"], "portfolio");
