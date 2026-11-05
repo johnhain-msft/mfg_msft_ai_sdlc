@@ -5,7 +5,6 @@ import YAML from "yaml";
 import { checkRendered } from "../../src/reconcile.mjs";
 import {
   abs,
-  clone,
   fixture,
   loadRenderedFixture,
   minimalManifest,

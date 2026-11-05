@@ -117,6 +117,7 @@ function assertContract(frontmatter, project) {
   assert.ok(frontmatter.engine, "an engine key is rendered");
   assert.ok("web-fetch" in frontmatter.tools);
   assert.ok(frontmatter.tools.bash.includes("git"));
+  assert.ok(frontmatter.tools.bash.includes("node"), "the lab's own S2 scripts and the preset's build commands run on node");
   for (const command of audit.buildCommands) assert.ok(frontmatter.tools.bash.includes(command.trim().split(/\s+/)[0]), `bash allows the first word of '${command}'`);
   assert.deepEqual(Object.keys(frontmatter.jobs), ["escalate_failure"]);
   const job = frontmatter.jobs.escalate_failure;

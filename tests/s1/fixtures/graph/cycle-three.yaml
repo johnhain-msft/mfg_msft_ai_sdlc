@@ -1,0 +1,115 @@
+# Three edges that close a ring a -> b -> c -> a.
+projects:
+  - projectKey: graph-node
+    repo: acme-labs/graph-node
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: 0 6 * * 1
+      upkeepStrategy: custom
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+dependencyEdges:
+  - edgeId: ab
+    upstreamRepo: acme-labs/a
+    upstreamKey: ab
+    upstreamSlug: AB
+    upstreamDefaultBranch: main
+    initialBaselineSha: "0000000000000000000000000000000000000004"
+    downstreamRepo: acme-labs/b
+    mode: mechanical
+    schedule: null
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_AB
+    provenanceFile: source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-ab
+    closeOlderKey: sdlc-cascade-ab
+    reviewers:
+      - graph-reviewer
+    importCommands:
+      - node import.mjs <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands: []
+    verifyCommands:
+      - npm test
+    adaptationInstructions: ""
+    allowedFiles:
+      - imported/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []
+  - edgeId: bc
+    upstreamRepo: acme-labs/b
+    upstreamKey: bc
+    upstreamSlug: BC
+    upstreamDefaultBranch: main
+    initialBaselineSha: "0000000000000000000000000000000000000005"
+    downstreamRepo: acme-labs/c
+    mode: mechanical
+    schedule: null
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_BC
+    provenanceFile: source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-bc
+    closeOlderKey: sdlc-cascade-bc
+    reviewers:
+      - graph-reviewer
+    importCommands:
+      - node import.mjs <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands: []
+    verifyCommands:
+      - npm test
+    adaptationInstructions: ""
+    allowedFiles:
+      - imported/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []
+  - edgeId: ca
+    upstreamRepo: acme-labs/c
+    upstreamKey: ca
+    upstreamSlug: CA
+    upstreamDefaultBranch: main
+    initialBaselineSha: "0000000000000000000000000000000000000006"
+    downstreamRepo: acme-labs/a
+    mode: mechanical
+    schedule: null
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_CA
+    provenanceFile: source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-ca
+    closeOlderKey: sdlc-cascade-ca
+    reviewers:
+      - graph-reviewer
+    importCommands:
+      - node import.mjs <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands: []
+    verifyCommands:
+      - npm test
+    adaptationInstructions: ""
+    allowedFiles:
+      - imported/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []

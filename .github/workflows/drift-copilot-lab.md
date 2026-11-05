@@ -117,6 +117,7 @@ tools:
     - grep
     - head
     - ls
+    - node
     - tail
     - wc
   edit: {}

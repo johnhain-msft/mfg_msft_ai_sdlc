@@ -106,6 +106,7 @@ tools:
     - grep
     - head
     - ls
+    - node
     - npm
     - tail
     - wc

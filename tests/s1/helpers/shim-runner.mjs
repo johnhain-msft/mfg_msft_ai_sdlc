@@ -47,7 +47,10 @@ function runCompile(args, settings, cwd) {
   const sources = listSources(workflowsDir);
   const lockName = (name) => name.replace(/\.md$/, ".lock.yml");
   const writeLock = (name) =>
-    fs.writeFileSync(path.join(workflowsDir, lockName(name)), stubLockContent(name, fs.readFileSync(path.join(workflowsDir, name))));
+    fs.writeFileSync(
+      path.join(workflowsDir, lockName(name)),
+      settings.lockContent ?? stubLockContent(name, fs.readFileSync(path.join(workflowsDir, name))),
+    );
   const purgeOrphans = () => {
     for (const entry of fs.readdirSync(workflowsDir)) {
       if (entry.endsWith(".lock.yml") && !sources.includes(entry.replace(/\.lock\.yml$/, ".md"))) {
@@ -67,6 +70,12 @@ function runCompile(args, settings, cwd) {
   const print = (value) => process.stdout.write(typeof value === "string" ? value : `${JSON.stringify(value, null, 2)}\n`);
   const recorded = () => fs.readFileSync(settings.outputFile, "utf8");
 
+  const writeSideFiles = () => {
+    fs.mkdirSync(path.join(cwd, ".github", "aw"), { recursive: true });
+    fs.writeFileSync(path.join(cwd, ".github", "aw", "actions-lock.json"), `{"entries":{"stub/action@v1":"0000000000000000000000000000000000000000"}}\n`);
+    fs.writeFileSync(path.join(cwd, ".gitattributes"), ".github/workflows/*.lock.yml linguist-generated=true merge=ours\n");
+  };
+
   switch (mode) {
     case "ok":
     case "ok-recorded":
@@ -81,13 +90,9 @@ function runCompile(args, settings, cwd) {
         }
       }
       if (!noEmit && mode !== "no-locks") {
-        sources.forEach(writeLock);
+        sources.filter((name) => !(settings.skip ?? []).includes(name)).forEach(writeLock);
         purgeOrphans();
-        if (settings.sideFiles) {
-          fs.mkdirSync(path.join(cwd, ".github", "aw"), { recursive: true });
-          fs.writeFileSync(path.join(cwd, ".github", "aw", "actions-lock.json"), `{"entries":{"stub/action@v1":"0000000000000000000000000000000000000000"}}\n`);
-          fs.writeFileSync(path.join(cwd, ".gitattributes"), ".github/workflows/*.lock.yml linguist-generated=true merge=ours\n");
-        }
+        if (settings.sideFiles) writeSideFiles();
         if (mode === "maintenance") {
           fs.writeFileSync(path.join(workflowsDir, "agentics-maintenance-example-owner-example-repo.yml"), "name: stub maintenance\n");
         }
@@ -102,6 +107,7 @@ function runCompile(args, settings, cwd) {
     case "partial-error": {
       if (sources.length > 0) fs.writeFileSync(path.join(workflowsDir, lockName(sources[0])), "# partial output of an interrupted compile\n");
       purgeOrphans();
+      if (settings.sideFiles) writeSideFiles();
       print(recorded());
       return 1;
     }

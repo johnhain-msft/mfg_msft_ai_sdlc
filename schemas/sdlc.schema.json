@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SDLC fleet manifest",
-  "description": "Declarative fleet manifest (sdlc.yaml): any number of projects and directed dependency edges. The engine is repository-agnostic; the portfolio fleet is preset data.",
+  "description": "Declarative fleet manifest (sdlc.yaml): any number of projects and directed dependency edges. The engine is repository-agnostic; the reference fleet is preset data.",
   "type": "object",
   "additionalProperties": false,
   "required": ["projects"],

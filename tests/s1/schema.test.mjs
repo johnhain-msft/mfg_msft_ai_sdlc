@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import Ajv from "ajv";
-import { abs, clone, minimalManifest, mutate, readJson, readText, REPO_ROOT } from "./helpers/fixtures.mjs";
+import { abs, clone, minimalManifest, mutate, readText, REPO_ROOT } from "./helpers/fixtures.mjs";
 
 const schemaFile = abs("schemas", "sdlc.schema.json");
 const schemaText = readText(schemaFile);

@@ -55,7 +55,6 @@ const ENGINE_AUTH_MODES = ["copilot-requests", "copilot-pat", "api-key"];
 const ALL_SYNC_SCOPES = ["both", "workshop-only", "studio-only", "showcase-runs", "github-intermediate"];
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const APP_SLUG = /^[A-Za-z0-9-]+$/;
-const HEX40 = /^[0-9a-f]{40}$/;
 
 // Local development convenience: the isolated gh-aw v1.0.1 installation used on the
 // maintainer's workstation, where the globally installed extension is an older release.
@@ -82,7 +81,6 @@ const uniqueStable = (values) => [...new Set(values)];
 const toPosix = (value) => value.split(path.sep).join("/");
 const rule = (id, message) => `${id}: ${message}`;
 const repoName = (slug) => slug.slice(slug.indexOf("/") + 1);
-const repoOwner = (slug) => slug.slice(0, slug.indexOf("/"));
 const oneLine = (value) => String(value).replace(/\s*[\r\n]+\s*/g, " ").trim();
 const lf = (value) => String(value).replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n");
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
@@ -96,6 +94,9 @@ function shDq(value) {
 function gitCommand(...parts) {
   return ["git", ...parts].join(" ");
 }
+
+/** Phrases that would write Actions state from a generated file; checkRendered refuses to emit them. */
+const STATE_WRITE_PHRASES = [...["variable", "secret"].map((noun) => ["gh", noun].join(" ")), "actions/variables"];
 
 /** Markdown fenced block whose fence is longer than any backtick run inside the text. */
 function fenced(text, lang = "") {
@@ -999,7 +1000,7 @@ function renderDrift(ctx, project) {
       },
     },
     engine: engineSection(ctx, { sdk: true }),
-    tools: { "web-fetch": {}, bash: bashAllowlist(["git", ...audit.buildCommands]), edit: {} },
+    tools: { "web-fetch": {}, bash: bashAllowlist(["git", "node", ...audit.buildCommands]), edit: {} },
     jobs: { escalate_failure: driftEscalation(ctx, project, workflowId) },
   };
   return { id: workflowId, kind: "drift", project, text: serializeWorkflow(frontmatter, driftBody(ctx, project)) };
@@ -1747,7 +1748,7 @@ export function checkRendered(files, request, manifest) {
   for (const file of [...entries.keys()].sort()) {
     const text = entries.get(file);
     const base = path.posix.basename(file);
-    for (const phrase of ["gh variable", "gh secret", "actions/variables"]) {
+    for (const phrase of STATE_WRITE_PHRASES) {
       if (text.includes(phrase) && file.startsWith(`${WORKFLOWS_DIR}/`) && !file.endsWith(".lock.yml")) {
         add(file, "variable-write-forbidden", `${file} contains '${phrase}'; only the poll-state script may touch the state variables`);
       }
@@ -2054,11 +2055,15 @@ function snapshotPaths(cwd) {
   return found;
 }
 
+/** Directories that hold the snapshot roots; a run that creates one of them removes it again when it rolls back. */
+const SNAPSHOT_PARENTS = [...new Set(SNAPSHOT_ROOTS.map((rootRel) => path.posix.dirname(rootRel)))];
+
 function takeSnapshot(cwd) {
   const files = new Map();
   for (const rel of snapshotPaths(cwd)) files.set(rel, fs.readFileSync(path.join(cwd, rel)));
   const dirs = new Set();
   for (const rootRel of SNAPSHOT_ROOTS) for (const dir of walkDirs(cwd, rootRel)) dirs.add(dir);
+  for (const parent of SNAPSHOT_PARENTS) if (fs.existsSync(path.join(cwd, parent))) dirs.add(parent);
   return { files, dirs };
 }
 
@@ -2074,6 +2079,10 @@ function restoreSnapshot(cwd, snapshot) {
     }
   }
   for (const rootRel of SNAPSHOT_ROOTS) removeEmptyDirs(cwd, rootRel, snapshot.dirs);
+  for (const parent of SNAPSHOT_PARENTS) {
+    const absolute = path.join(cwd, parent);
+    if (!snapshot.dirs.has(parent) && fs.existsSync(absolute) && fs.readdirSync(absolute).length === 0) fs.rmdirSync(absolute);
+  }
 }
 
 function writeRendered(cwd, files) {
