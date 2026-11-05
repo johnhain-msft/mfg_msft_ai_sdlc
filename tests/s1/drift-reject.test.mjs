@@ -60,6 +60,25 @@ test("AC28: a disabled project is not checked, so its empty drift configuration 
   }
 });
 
+test("AC21: a file that exists only beside a manifest in a subdirectory is not found, because the path is repository-relative", async () => {
+  const text = readText(fixture("drift-invalid", "no-instructions.yaml")).replace("instructionsFile: null", "instructionsFile: instructions/beside.md");
+  const workspace = createWorkspace({ manifestText: text, files: { "config/fleet.yaml": text, "config/instructions/beside.md": "beside the manifest\n" } });
+  try {
+    const before = workspace.hash();
+    const result = await workspace.reconcile({ ...referenceRequest(), manifestPath: "config/fleet.yaml" });
+    assert.equal(result.status, "error");
+    const errors = result.validationResults.flatMap((entry) => entry.errors);
+    assert.ok(
+      errors.some((error) => error.startsWith("drift-instructions-file: ") && error.includes("'instructions/beside.md' does not exist") && error.includes("config/fleet.yaml")),
+      errors.join("\n"),
+    );
+    assert.equal(workspace.hash(), before, ".github/workflows is unchanged");
+    assert.equal(workspace.shims.compileCalls().length, 0, "the compiler is never reached");
+  } finally {
+    workspace.cleanup();
+  }
+});
+
 test("AC28: an instructionsFile that does not exist, escapes the repository or is not a file is rejected", async () => {
   for (const [instructionsFile, expected] of [
     ["instructions/missing.md", "does not exist"],

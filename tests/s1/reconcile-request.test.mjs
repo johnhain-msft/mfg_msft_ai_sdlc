@@ -1,7 +1,11 @@
 // AC8, AC9, AC10 and AC71: the BootstrapReconcileRequest contract (C1) and the engine authentication wiring.
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { after, before, test } from "node:test";
-import { clone, mutate, parseWorkflow, presetManifest, readText, referenceRequest, toYaml, withRequest } from "./helpers/fixtures.mjs";
+import { renderFleet } from "../../src/reconcile.mjs";
+import { clone, minimalManifest, mutate, parseWorkflow, presetManifest, readText, referenceRequest, toYaml, withRequest } from "./helpers/fixtures.mjs";
+import { recordWrites } from "./helpers/fs-spy.mjs";
 import { createWorkspace } from "./helpers/workspace.mjs";
 
 const REQUEST_FILE = "BootstrapReconcileRequest";
@@ -255,6 +259,49 @@ test("AC10: a dry run of an invalid manifest still fails and writes nothing", as
   }
 });
 
+test("AC10: a dry run whose staging directory cannot be prepared reports an error and never writes into the working tree", async () => {
+  const cases = [
+    [
+      "git exits with a failure",
+      (workspace) => {
+        const launcher = path.join(workspace.shims.directory, process.platform === "win32" ? "git.cmd" : "git");
+        fs.writeFileSync(launcher, process.platform === "win32" ? "@echo off\r\nexit /b 1\r\n" : "#!/bin/sh\nexit 1\n");
+        return {};
+      },
+    ],
+    [
+      "git cannot be started",
+      (workspace) => {
+        const empty = path.join(workspace.root, "empty-bin");
+        fs.mkdirSync(empty);
+        return { PATH: empty, Path: empty };
+      },
+    ],
+  ];
+  for (const [label, prepare] of cases) {
+    const workspace = createWorkspace();
+    try {
+      workspace.write(".github/workflows/ci.yml", "name: operator workflow\non: push\n");
+      const environment = prepare(workspace);
+      const treeBefore = workspace.hash(["."]);
+      let result;
+      const writes = await recordWrites(async () => {
+        result = await workspace.reconcile(withRequest({ dryRun: true }), environment);
+      });
+      assert.equal(result.status, "error", label);
+      assert.deepEqual(result.generatedWorkflows, [], label);
+      const errors = result.validationResults.flatMap((entry) => entry.errors);
+      assert.ok(errors.some((error) => error.startsWith("dry-run-staging-failed: ")), `${label}: ${errors.join(" | ")}`);
+      assert.equal(workspace.hash(["."]), treeBefore, `${label}: the working tree is identical`);
+      const inside = writes.filter((target) => target.startsWith(`${workspace.dir}${path.sep}`));
+      assert.deepEqual(inside, [], `${label}: nothing is written into the working tree, not even temporarily`);
+      assert.equal(workspace.shims.compileCalls().length, 0, `${label}: no compiler runs in the working tree`);
+    } finally {
+      workspace.cleanup();
+    }
+  }
+});
+
 async function renderMode(mode, manifestPatch) {
   const manifest = manifestPatch ? mutate(presetManifest(), manifestPatch) : presetManifest();
   const workspace = createWorkspace({ manifestText: toYaml(manifest), instructions: true });
@@ -344,6 +391,52 @@ test("AC71: no generated file contains a literal credential in any mode", async 
     } finally {
       workspace.cleanup();
     }
+  }
+});
+
+test("AC71: the engine that an api-key secret selects decides tools.bash: codex renders [\"*\"], every other engine keeps its command allowlist", () => {
+  const cases = [
+    { mode: "copilot-requests", secret: undefined, engine: "copilot" },
+    { mode: "copilot-pat", secret: undefined, engine: "copilot" },
+    { mode: "api-key", secret: "ANTHROPIC_API_KEY", engine: "claude" },
+    { mode: "api-key", secret: "CLAUDE_CODE_TOKEN", engine: "claude" },
+    { mode: "api-key", secret: "GOOGLE_API_KEY", engine: "gemini" },
+    { mode: "api-key", secret: "GEMINI_KEY", engine: "gemini" },
+    { mode: "api-key", secret: "OPENAI_API_KEY", engine: "codex" },
+    { mode: "api-key", secret: "CODEX_TOKEN", engine: "codex" },
+    { mode: "api-key", secret: "CUSTOM_PROVIDER_KEY", engine: "claude" },
+  ];
+  const workspace = createWorkspace({ manifestText: toYaml(minimalManifest()) });
+  try {
+    for (const edgeMode of ["mechanical", "ai-adaptation"]) {
+      for (const { mode, secret, engine } of cases) {
+        const label = `${edgeMode} ${mode}${secret ? `/${secret}` : ""}`;
+        workspace.write(
+          "sdlc.yaml",
+          toYaml(
+            mutate(minimalManifest(), (copy) => {
+              if (secret) copy.engineApiKeySecret = secret;
+              copy.dependencyEdges[0].mode = edgeMode;
+            }),
+          ),
+        );
+        const result = renderFleet(withRequest({ engineAuthMode: mode }), { cwd: workspace.dir });
+        assert.ok(result.ok, `${label}: ${JSON.stringify(result.result)}`);
+        const sources = [...result.files].filter(([file]) => file.endsWith(".md"));
+        assert.equal(sources.length, 3, `${label}: one drift, one cascade and the onboarding workflow`);
+        for (const [file, text] of sources) {
+          const { frontmatter } = parseWorkflow(text);
+          assert.equal(frontmatter.engine.id, engine, `${label}: ${file} engine`);
+          if (engine === "codex") {
+            assert.deepEqual(frontmatter.tools.bash, ["*"], `${label}: ${file} cannot carry a command allowlist the compiler would reject`);
+          } else {
+            assert.ok(frontmatter.tools.bash.includes("git") && !frontmatter.tools.bash.includes("*"), `${label}: ${file} keeps its allowlist`);
+          }
+        }
+      }
+    }
+  } finally {
+    workspace.cleanup();
   }
 });
 

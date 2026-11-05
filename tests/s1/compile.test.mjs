@@ -8,8 +8,9 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import test from "node:test";
+import YAML from "yaml";
 import { ghAwEnvironment, reconcile } from "../../src/reconcile.mjs";
-import { abs, listFiles, readText, referenceRequest, REPO_ROOT } from "./helpers/fixtures.mjs";
+import { abs, listFiles, minimalManifest, readText, referenceRequest, REPO_ROOT, toYaml } from "./helpers/fixtures.mjs";
 
 const requested = process.env.SDLC_REAL_GH_AW === "1";
 const env = ghAwEnvironment(process.env);
@@ -137,3 +138,41 @@ test("a manifest that the real compiler rejects comes back as status error with 
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+for (const [mode, secret, engineId] of [
+  ["copilot-requests", null, "copilot"],
+  ["copilot-pat", null, "copilot"],
+  ["api-key", "ANTHROPIC_API_KEY", "claude"],
+  ["api-key", "GOOGLE_API_KEY", "gemini"],
+  ["api-key", "OPENAI_API_KEY", "codex"],
+  ["api-key", "CUSTOM_PROVIDER_KEY", "claude"],
+]) {
+  test(`AC71 real compiler: ${mode}${secret ? `/${secret}` : ""} compiles a non-preset fleet on the ${engineId} engine and preserves credential wiring in its locks`, { skip }, async () => {
+    const directory = scratchRepository();
+    try {
+      const manifest = minimalManifest();
+      if (secret) manifest.engineApiKeySecret = secret;
+      fs.writeFileSync(path.join(directory, "sdlc.yaml"), toYaml(manifest));
+      fs.mkdirSync(path.join(directory, ".github", "aw"), { recursive: true });
+      fs.copyFileSync(abs(".github", "aw", "actions-lock.json"), path.join(directory, ".github", "aw", "actions-lock.json"));
+      const result = await reconcile({ ...referenceRequest(), engineAuthMode: mode }, { cwd: directory, env });
+      assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
+      assert.equal(result.generatedWorkflows.length, 3, "one mechanical, one drift and onboarding");
+      for (const pair of result.generatedWorkflows) {
+        const text = fs.readFileSync(path.join(directory, pair.lockYml), "utf8");
+        const lock = YAML.parse(text);
+        assert.ok(lock.jobs.agent && lock.jobs.detection && lock.jobs.safe_outputs, `${pair.lockYml} is an actual compiled workflow`);
+        assert.ok(text.includes(`"agent_id":"${engineId}"`), `${pair.lockYml}: compiled for the ${engineId} engine`);
+        if (mode === "copilot-requests") {
+          const permissions = JSON.stringify({ workflow: lock.permissions, agent: lock.jobs.agent.permissions });
+          assert.ok(permissions.includes('"copilot-requests":"write"'), `${pair.lockYml}: request-based authentication is granted`);
+        } else {
+          const expected = secret ?? "COPILOT_GITHUB_TOKEN";
+          assert.ok(text.includes(`secrets.${expected}`), `${pair.lockYml}: the credential is a secret reference`);
+        }
+      }
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+}

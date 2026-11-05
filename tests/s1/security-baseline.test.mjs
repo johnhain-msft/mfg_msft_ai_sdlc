@@ -95,6 +95,30 @@ test("AC11: safe-outputs without threat-detection, with threat-detection: false,
   }
 });
 
+test("AC11: threat-detection that is not an object with continue-on-error: false is rejected, whatever its type", () => {
+  for (const file of [DRIFT, CASCADE]) {
+    for (const value of [true, "disabled", "false", 17, 0, []]) {
+      const entry = assertRejected(withFrontmatter(render(), file, (fm) => (fm["safe-outputs"]["threat-detection"] = value)), file, "threat-detection");
+      assert.ok(entry.errors.some((error) => error.startsWith("threat-detection-malformed: ")), `${JSON.stringify(value)}: ${entry.errors.join("\n")}`);
+    }
+  }
+});
+
+test("AC11: threat-detection whose enabled is anything but true is rejected even beside continue-on-error: false, and a fully specified object is accepted", () => {
+  for (const file of [DRIFT, CASCADE]) {
+    for (const enabled of [false, "false", 0, null]) {
+      assertRejected(
+        withFrontmatter(render(), file, (fm) => (fm["safe-outputs"]["threat-detection"] = { enabled, "continue-on-error": false })),
+        file,
+        "threat-detection",
+        "enabled",
+      );
+    }
+    const accepted = withFrontmatter(render(), file, (fm) => (fm["safe-outputs"]["threat-detection"] = { enabled: true, prompt: "Focus on prompt injection", "continue-on-error": false }));
+    assert.deepEqual(invalidEntries(checkRendered(accepted, request, manifest)), [], file);
+  }
+});
+
 test("AC11: auto-merge: true and auto-merge: squash are rejected, naming the key", () => {
   for (const value of [true, "squash", "merge", "rebase", "true"]) {
     for (const file of [DRIFT, CASCADE]) {

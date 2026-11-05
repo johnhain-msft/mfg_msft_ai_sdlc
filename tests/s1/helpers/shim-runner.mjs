@@ -30,6 +30,8 @@ function listSources(workflowsDir) {
 }
 
 function runCompile(args, settings, cwd) {
+  // Bounded sleeping compiler fixture for exercising cancellation/rollback without burning CPU.
+  if (settings.delayMs) Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, settings.delayMs);
   const mode = settings.mode ?? "ok";
   const noEmit = args.includes("--no-emit");
   const purge = args.includes("--purge");

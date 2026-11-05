@@ -253,6 +253,31 @@ test("AC25: the preset's copilot-lab post-steps run the S2 validator of the audi
   }
 });
 
+test("AC21: instructionsFile resolves from the repository root, whichever directory the manifest is in", () => {
+  const manifest = mutate(minimalManifest(), (copy) => {
+    projectOf(copy, "alpha-service").driftAudit.instructionsFile = "instructions/alpha.md";
+  });
+  const workspace = createWorkspace({
+    manifestText: toYaml(manifest),
+    files: {
+      "config/fleet.yaml": toYaml(manifest),
+      "instructions/alpha.md": "ROOT-INSTRUCTIONS-MARKER the file at the repository root\n",
+      "config/instructions/alpha.md": "MANIFEST-DIRECTORY-MARKER the file beside the manifest\n",
+    },
+  });
+  try {
+    for (const manifestPath of ["sdlc.yaml", "config/fleet.yaml"]) {
+      const result = renderFleet({ ...request, manifestPath }, { cwd: workspace.dir });
+      assert.ok(result.ok, `${manifestPath}: ${JSON.stringify(result.result)}`);
+      const { body } = parseWorkflow(result.files.get(`${W}/drift-alpha-service.md`));
+      assert.ok(body.includes("ROOT-INSTRUCTIONS-MARKER"), `${manifestPath}: the repository-root file is used`);
+      assert.equal(body.includes("MANIFEST-DIRECTORY-MARKER"), false, `${manifestPath}: the file beside the manifest is not read`);
+    }
+  } finally {
+    workspace.cleanup();
+  }
+});
+
 test("AC27: a file-write spy around a reconcile run sees only .github/workflows (or the dry-run staging directory), never /tmp/gh-aw/agent", async () => {
   const workspace = createWorkspace();
   const writes = [];
