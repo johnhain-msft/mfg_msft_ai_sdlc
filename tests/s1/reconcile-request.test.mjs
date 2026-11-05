@@ -231,12 +231,16 @@ test("AC10: with dryRun true no file of the working tree changes, generatedWorkf
     const hashBefore = workspace.hash();
     const treeBefore = workspace.hash(["."]);
     const statusBefore = workspace.status();
-    const result = await workspace.reconcile(withRequest({ dryRun: true }));
+    let result;
+    const writes = await recordWrites(async () => {
+      result = await workspace.reconcile(withRequest({ dryRun: true }));
+    });
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
     assert.equal(result.generatedWorkflows.length, 8);
     assert.equal(workspace.hash(), hashBefore, ".github/workflows is identical");
     assert.equal(workspace.hash(["."]), treeBefore, "the whole working tree is identical");
     assert.equal(workspace.status(), statusBefore);
+    assert.deepEqual(writes.filter((target) => target.startsWith(`${workspace.dir}${path.sep}`)), [], "no write, not even a temporary one, reaches the working tree");
     const compiles = workspace.shims.compileCalls();
     assert.equal(compiles.length, 1);
     assert.ok(compiles[0].args.includes("--no-emit"), compiles[0].args.join(" "));
