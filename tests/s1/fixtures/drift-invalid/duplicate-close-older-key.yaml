@@ -1,0 +1,57 @@
+# Rejected: the closeOlderKey of the edge equals the close-older-key that the drift workflow of
+# project `clash` renders (`sdlc-drift-clash`), so one workflow would close the other's pull requests.
+projects:
+  - projectKey: clash
+    repo: acme-labs/clash
+    defaultBranch: main
+    driftAudit:
+      enabled: true
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: Keep the documentation current.
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls:
+          - url: https://example.org/changelog
+            label: Changelog
+            kind: changelog
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands:
+        - npm test
+      draft: false
+      reviewers:
+        - acme-reviewer
+dependencyEdges:
+  - edgeId: clash-edge
+    upstreamRepo: acme-labs/clash
+    upstreamKey: clash
+    upstreamSlug: CLASH
+    upstreamDefaultBranch: main
+    initialBaselineSha: 0123456789abcdef0123456789abcdef01234567
+    downstreamRepo: acme-labs/clash-site
+    mode: mechanical
+    schedule: null
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_CLASH
+    provenanceFile: source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-clash-edge
+    closeOlderKey: sdlc-drift-clash
+    reviewers:
+      - acme-reviewer
+    importCommands:
+      - node import.mjs <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands: []
+    verifyCommands:
+      - npm test
+    adaptationInstructions: ""
+    allowedFiles:
+      - imported/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []

@@ -1,0 +1,20 @@
+# Fails schema validation: `colour` is not a property of a project entry.
+projects:
+  - projectKey: alpha-service
+    repo: acme-labs/alpha-service
+    defaultBranch: main
+    colour: blue
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: custom
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []

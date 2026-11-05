@@ -1,0 +1,18 @@
+{
+  "name": "mfg-msft-ai-sdlc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Declarative fleet manifest, security policy renderer and pipeline reconciler for the AI SDLC orchestrator.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test tests/s1/*.test.mjs",
+    "reconcile": "node src/reconcile.mjs"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "yaml": "^2.8.1"
+  }
+}

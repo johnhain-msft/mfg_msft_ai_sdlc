@@ -1,0 +1,82 @@
+# Minimal fixture manifest: two projects and one edge, none of them part of the portfolio preset.
+# It proves that the engine renders valid workflows for repositories and owners it has never seen.
+projects:
+  - projectKey: alpha-service
+    repo: acme-labs/alpha-service
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: true
+      schedule: "15 4 * * 2"
+      upkeepStrategy: dependency-and-pattern-modernization
+      instructions: Keep the service documentation and its dependency pins current.
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls:
+          - url: https://example.org/releases
+            label: Example releases
+            kind: release-notes
+        packageManifests:
+          - package.json
+        mcpServers: {}
+      buildCommands:
+        - npm run build
+      verifyCommands:
+        - npm ci
+        - npm test
+      draft: true
+      reviewers:
+        - acme-reviewer
+  - projectKey: beta-docs
+    repo: globex-corp/beta-docs
+    defaultBranch: trunk
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: custom
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+dependencyEdges:
+  - edgeId: alpha-to-beta
+    upstreamRepo: acme-labs/alpha-service
+    upstreamKey: alpha-service
+    upstreamSlug: ALPHA_SERVICE
+    upstreamDefaultBranch: main
+    initialBaselineSha: 0123456789abcdef0123456789abcdef01234567
+    downstreamRepo: globex-corp/beta-docs
+    mode: mechanical
+    schedule: "0 */4 * * *"
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_ALPHA_SERVICE
+    provenanceFile: docs/source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-alpha-to-beta
+    closeOlderKey: sdlc-cascade-alpha-to-beta
+    reviewers:
+      - globex-reviewer
+    importCommands:
+      - node scripts/import.mjs <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands:
+      - npm run build
+    verifyCommands:
+      - npm test
+    adaptationInstructions: ""
+    allowedFiles:
+      - docs/imported/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []

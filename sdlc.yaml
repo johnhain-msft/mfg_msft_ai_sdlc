@@ -1,0 +1,656 @@
+# Portfolio reference preset for the AI SDLC orchestrator.
+#
+# This file is data: the engine (src/reconcile.mjs) is repository-agnostic and
+# turns it into the generated workflows under .github/workflows/. Edit this file
+# (by hand or through `sdlc onboard`), then run the reconciler; never edit a
+# generated workflow directly.
+#
+# `<checkout>` inside any command is replaced by the renderer with the absolute
+# path of the upstream checkout, "$UPSTREAM_DIR".
+
+projects:
+  - projectKey: gh-admin-msft
+    repo: johnhain-msft/gh-admin-msft
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: true
+      schedule: "0 13 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: Keep the GitHub Enterprise Cloud administration labs, reference documents and presenter material current against the watched changelogs and documentation.
+      instructionsFile: instructions/gh-admin-msft.md
+      knowledgeSources:
+        watchUrls:
+          - url: https://github.blog/changelog/
+            label: GitHub changelog
+            kind: changelog
+          - url: https://docs.github.com/en/enterprise-cloud@latest/admin
+            label: GitHub Enterprise Cloud administration documentation
+            kind: docs
+        packageManifests:
+          - package.json
+        mcpServers:
+          microsoft-learn:
+            type: http
+            url: https://learn.microsoft.com/api/mcp
+          context7:
+            command: npx
+            args:
+              - -y
+              - "@upstash/context7-mcp@latest"
+      buildCommands:
+        - node presentation/build.mjs
+      verifyCommands:
+        - npm ci
+        - node presentation/build.mjs
+        - test -z "$(git status --porcelain)"
+        - npm run test:unit
+        - npm run test:freshness
+        - npm run test:deck
+        - npm test -- --skip-links
+      draft: false
+      reviewers:
+        - johnhain-msft
+
+  - projectKey: copilot-lab
+    repo: ms-mfg-community/day-in-the-life-copilot-lab
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: true
+      schedule: "30 5 * * 0"
+      upkeepStrategy: content-and-docs-sync
+      instructions: Audit the lab content registry and the lab content against the watched sources and propose only safe, mechanical updates.
+      instructionsFile: instructions/copilot-lab.md
+      knowledgeSources:
+        watchUrls:
+          - url: https://github.blog/changelog/
+            label: GitHub changelog
+            kind: changelog
+          - url: https://docs.github.com/en/copilot
+            label: GitHub Copilot documentation
+            kind: docs
+          - url: https://github.com/github/gh-aw/releases
+            label: GitHub Agentic Workflows releases
+            kind: release-notes
+          - url: https://github.com/github/copilot-cli/releases
+            label: GitHub Copilot CLI releases
+            kind: release-notes
+        packageManifests:
+          - package.json
+          - node/package.json
+          - "**/*.csproj"
+        mcpServers:
+          microsoft-learn:
+            type: http
+            url: https://learn.microsoft.com/api/mcp
+          context7:
+            command: npx
+            args:
+              - -y
+              - "@upstash/context7-mcp@latest"
+      buildCommands: []
+      verifyCommands:
+        - node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs"
+        - ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
+      draft: false
+      reviewers: []
+
+  - projectKey: self-improving-agents
+    repo: ms-mfg-community/day-in-the-life-copilot-lab
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: true
+      schedule: "0 6 1 * *"
+      upkeepStrategy: code-quality-and-improvement-scan
+      instructions: Evaluate the lab's agents, skills and prompts for drift and propose only mechanical fixes with a self-improvement report.
+      instructionsFile: instructions/self-improving-agents.md
+      knowledgeSources:
+        watchUrls:
+          - url: https://github.blog/changelog/
+            label: GitHub changelog
+            kind: changelog
+          - url: https://docs.github.com/en/copilot
+            label: GitHub Copilot documentation
+            kind: docs
+          - url: https://github.com/github/gh-aw/releases
+            label: GitHub Agentic Workflows releases
+            kind: release-notes
+        packageManifests: []
+        mcpServers:
+          microsoft-learn:
+            type: http
+            url: https://learn.microsoft.com/api/mcp
+          context7:
+            command: npx
+            args:
+              - -y
+              - "@upstash/context7-mcp@latest"
+      buildCommands: []
+      verifyCommands:
+        - node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" --self-improve
+        - ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
+      draft: true
+      reviewers: []
+
+  - projectKey: pipeline-showcase
+    repo: ms-mfg-community/github-pipeline-showcase
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+
+  - projectKey: github-intermediate
+    repo: githubschool/gh-github-intermediate-template
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+
+  - projectKey: portfolio
+    repo: johnhain-msft/portfolio
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+
+dependencyEdges:
+  - edgeId: ghec-admin
+    upstreamRepo: johnhain-msft/gh-admin-msft
+    upstreamKey: gh-admin-msft
+    upstreamSlug: GH_ADMIN_MSFT
+    upstreamDefaultBranch: main
+    initialBaselineSha: a2f9a3bbbb60df80a7c4fed8428d061898f504dc
+    downstreamRepo: johnhain-msft/portfolio
+    mode: mechanical
+    schedule: "0 */6 * * *"
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_GH_ADMIN_MSFT
+    provenanceFile: public/ghec-admin/source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-ghec-admin
+    closeOlderKey: sdlc-cascade-ghec-admin
+    reviewers:
+      - johnhain-msft
+    installDirectories:
+      - .
+      - apps/lab-studio
+    importCommands:
+      - npm run import:ghec-admin -- <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands:
+      - npm run build
+      - STUDIO_ORIGIN=https://studio.example.com npm run build:catalog
+    verifyCommands:
+      - npm run typecheck
+      - npm run lint
+      - npm test
+      - npm run test:studio
+      - npm run test:browser
+    adaptationInstructions: ""
+    allowedFiles:
+      - public/ghec-admin/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []
+
+  - edgeId: copilot-lab
+    upstreamRepo: ms-mfg-community/day-in-the-life-copilot-lab
+    upstreamKey: copilot-lab
+    upstreamSlug: COPILOT_LAB
+    upstreamDefaultBranch: main
+    initialBaselineSha: 2108ac9a1e9eff96e97b500117b0de4a546768c3
+    downstreamRepo: johnhain-msft/portfolio
+    mode: ai-adaptation
+    schedule: "0 */6 * * *"
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_COPILOT_LAB
+    provenanceFile: experiences/copilot-workshop/source-inputs.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-copilot-lab
+    closeOlderKey: sdlc-cascade-copilot-lab
+    reviewers:
+      - johnhain-msft
+    syncScopes:
+      - both
+      - workshop-only
+      - studio-only
+    installDirectories:
+      - .
+      - apps/lab-studio
+    importCommands: []
+    preflightCommands:
+      - npm run sync:workshop-source -- <checkout>
+      - node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$TARGET_SHA"
+    acceptCommands:
+      - node "$GITHUB_WORKSPACE/src/bump-studio-revision-pins.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --new-sha "$UPSTREAM_SHA"
+      - npm run sync:workshop-source -- <checkout> --accept
+      - node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$UPSTREAM_SHA" --accept
+    buildCommands:
+      - npm run build:workshop
+    verifyCommands:
+      - npm run build:workshop
+      - npm run build:experiences
+      - git -C "$GITHUB_WORKSPACE/portfolio" status --porcelain
+      - npm run build
+      - STUDIO_ORIGIN=https://studio.example.com npm run build:catalog
+      - npm run typecheck
+      - npm run lint
+      - npm test
+      - npm run test:studio
+      - npm run test:browser
+      - |
+        # post-run check: a dry run must not leave a commit
+        if [ "${DRY_RUN:-}" = "true" ] && [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then
+          echo "dry_run is true but the agent committed $BASE_SHA..$AGENT_HEAD_SHA" >&2
+          exit 1
+        fi
+      - |
+        # post-run check: committed provenance records upstream_sha
+        if [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then
+          node --input-type=module -e '
+          import { readFileSync } from "node:fs";
+          const root = process.env.GITHUB_WORKSPACE + "/portfolio/";
+          const want = process.env.UPSTREAM_SHA;
+          const read = (file) => {
+            try { return JSON.parse(readFileSync(root + file, "utf8")); }
+            catch { console.error("provenance file is missing or unparseable: " + file); process.exit(1); }
+          };
+          const revision = read("experiences/copilot-workshop/provenance.json");
+          const inputs = read("experiences/copilot-workshop/source-inputs.json");
+          const studio = read("apps/lab-studio/lab-sources.json");
+          const stale = [];
+          if (revision.commit !== want) stale.push("provenance.json commit");
+          if (revision.documentCommit !== want) stale.push("provenance.json documentCommit");
+          if (inputs.commit !== want) stale.push("source-inputs.json commit");
+          if (!studio._provenance || studio._provenance.commit !== want) stale.push("lab-sources.json _provenance.commit");
+          if (stale.length > 0) { console.error("stale provenance: " + stale.join(", ")); process.exit(1); }
+          '
+          node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$UPSTREAM_SHA"
+        fi
+      - |
+        # post-run check: the upstream checkout stays read-only
+        test -z "$(git -C <checkout> status --porcelain)"
+    adaptationInstructions: >-
+      Adapt the Copilot workshop pages and the hosted Lab Studio labs to the cumulative upstream change.
+      Read the drift reports under /tmp/gh-aw/agent/ first and change only what the evidence supports.
+      Keep every page inside the content rules and keep the Studio lab sources in step with the upstream labs.
+      Never touch the locked rule, runtime, authentication and sandbox files.
+    allowedFiles:
+      - README.md
+      - public/copilot-project.html
+      - experiences/copilot-workshop/content/index.ts
+      - experiences/copilot-workshop/content/interludes.ts
+      - experiences/copilot-workshop/content/lab-pace.ts
+      - experiences/copilot-workshop/content/m*.ts
+      - experiences/copilot-workshop/provenance.json
+      - experiences/copilot-workshop/source-inputs.json
+      - experiences/copilot-workshop/public/LICENSE
+      - experiences/copilot-workshop/public/NOTICE.txt
+      - public/workshop/**
+      - tests/copilot-workshop.test.ts
+      - apps/lab-studio/lab-sources.json
+      - apps/lab-studio/README.md
+      - apps/lab-studio/client/src/labs/source.ts
+      - apps/lab-studio/client/src/labs/lab*.tsx
+      - apps/lab-studio/server/src/verify.ts
+      - apps/lab-studio/server/tests/source.test.ts
+      - apps/lab-studio/server/tests/lab-drift.test.ts
+      - apps/lab-studio/server/tests/lesson-content.test.ts
+    protectedFilesExclude:
+      - /README.md
+      - /apps/lab-studio/README.md
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths:
+        - experiences/copilot-workshop/content/rules.ts
+        - experiences/copilot-workshop/content/source.ts
+        - experiences/copilot-workshop/content/types.ts
+        - experiences/copilot-workshop/src
+        - src
+        - scripts
+        - tests/auth.test.ts
+        - tests/runtime.test.ts
+        - tests/catalog.test.ts
+        - tests/copilot-workshop-geometry.test.ts
+        - tests/copilot-workshop-runtime.test.ts
+        - apps/lab-studio/server/src/index.ts
+        - apps/lab-studio/server/src/copilot-bridge.ts
+        - apps/lab-studio/server/src/sandbox.ts
+        - apps/lab-studio/server/src/sim-terminal.ts
+        - apps/lab-studio/server/src/skills.ts
+        - apps/lab-studio/server/tests/sandbox.test.ts
+      lockedTestBlocks:
+        - file: tests/copilot-workshop.test.ts
+          blocks:
+            - kind: it
+              title: "passes every content rule: no errors and no warnings"
+            - kind: it
+              title: "gives every teaching page a literal script, not notes"
+            - kind: it
+              title: "can be delivered in the minutes the plan gives it: speech at the app's own rate plus the live cues, on every page and in every module"
+            - kind: it
+              title: "plans with one speaking rate: the pace band tops out at it, and the speaker view reads it from the rules instead of typing its own"
+            - kind: it
+              title: "keeps audience pages sparse"
+      inProcessInvariants:
+        frozenModules:
+          - experiences/copilot-workshop/content/rules.ts
+          - tests/support/customer-terms.ts
+        course:
+          module: experiences/copilot-workshop/content/index.ts
+          export: course
+        check:
+          module: experiences/copilot-workshop/content/rules.ts
+          export: checkCourse
+        constants:
+          - module: experiences/copilot-workshop/content/rules.ts
+            export: SPEAKING_WPM
+            value: 140
+          - module: experiences/copilot-workshop/content/rules.ts
+            export: AUDIENCE_WORDS
+            value:
+              target: 60
+              max: 90
+        customerTerms:
+          module: tests/support/customer-terms.ts
+          export: findCustomerTerms
+
+  - edgeId: pipeline-showcase
+    upstreamRepo: ms-mfg-community/github-pipeline-showcase
+    upstreamKey: pipeline-showcase
+    upstreamSlug: PIPELINE_SHOWCASE
+    upstreamDefaultBranch: main
+    initialBaselineSha: c00b58a9fea6cbbbe9b1ac8f52c3632aafc32b46
+    downstreamRepo: johnhain-msft/portfolio
+    mode: ai-adaptation
+    schedule: "0 */6 * * *"
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_PIPELINE_SHOWCASE
+    provenanceFile: experiences/pipeline-showcase/content/provenance.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-pipeline-showcase
+    closeOlderKey: sdlc-cascade-pipeline-showcase
+    reviewers:
+      - johnhain-msft
+    syncScopes:
+      - showcase-runs
+    installDirectories:
+      - .
+      - apps/lab-studio
+    importCommands: []
+    preflightCommands:
+      - gh api "repos/ms-mfg-community/github-pipeline-showcase/actions/runs?per_page=100"
+    acceptCommands:
+      - |-
+        node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync("experiences/pipeline-showcase/content/provenance.json", JSON.stringify({ repository: "ms-mfg-community/github-pipeline-showcase", commit: process.env.UPSTREAM_SHA }, null, 2) + "\n");'
+    buildCommands:
+      - node experiences/pipeline-showcase/capture/fetch-run-data.mjs
+      - npm run build:experiences
+    verifyCommands:
+      - npm run build:workshop
+      - npm run build:experiences
+      - git -C "$GITHUB_WORKSPACE/portfolio" status --porcelain
+      - npm run build
+      - STUDIO_ORIGIN=https://studio.example.com npm run build:catalog
+      - npm run typecheck
+      - npm run lint
+      - npm test
+      - npm run test:studio
+      - npm run test:browser
+      - |
+        # post-run check: a dry run must not leave a commit
+        if [ "${DRY_RUN:-}" = "true" ] && [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then
+          echo "dry_run is true but the agent committed $BASE_SHA..$AGENT_HEAD_SHA" >&2
+          exit 1
+        fi
+      - |
+        # post-run check: a changed RUNS list needs a re-captured run-data.json
+        node --input-type=module -e '
+        import { execFileSync } from "node:child_process";
+        const root = process.env.GITHUB_WORKSPACE + "/portfolio";
+        const script = "experiences/pipeline-showcase/capture/fetch-run-data.mjs";
+        const data = "experiences/pipeline-showcase/content/run-data.json";
+        const show = (rev, file) => {
+          try { return execFileSync("git", ["-C", root, "show", rev + ":" + file], { encoding: "utf8" }); }
+          catch { return ""; }
+        };
+        const ids = (source) => {
+          const block = source.match(/const RUNS = \[([\s\S]*?)\n\];/);
+          return block ? [...block[1].matchAll(/\bid:\s*(\d+)/g)].map((match) => match[1]).join(",") : "";
+        };
+        const base = process.env.BASE_SHA;
+        const head = process.env.AGENT_HEAD_SHA;
+        if (ids(show(base, script)) !== ids(show(head, script)) && show(base, data) === show(head, data)) {
+          console.error("RUNS ids changed but run-data.json was not re-captured");
+          process.exit(1);
+        }
+        '
+      - |
+        # post-run check: committed provenance records upstream_sha
+        if [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then
+          node --input-type=module -e '
+          import { readFileSync } from "node:fs";
+          const file = process.env.GITHUB_WORKSPACE + "/portfolio/experiences/pipeline-showcase/content/provenance.json";
+          let doc;
+          try { doc = JSON.parse(readFileSync(file, "utf8")); }
+          catch { console.error("provenance.json is missing or unparseable"); process.exit(1); }
+          const keys = Object.keys(doc).sort().join(",");
+          if (keys !== "commit,repository" || doc.repository !== "ms-mfg-community/github-pipeline-showcase" || doc.commit !== process.env.UPSTREAM_SHA) {
+            console.error("provenance.json does not record the upstream sha");
+            process.exit(1);
+          }
+          '
+        fi
+      - |
+        # post-run check: the upstream checkout stays read-only
+        test -z "$(git -C <checkout> status --porcelain)"
+    adaptationInstructions: >-
+      Compare the upstream Actions runs saved under /tmp/gh-aw/agent/ with the RUNS list in the capture script.
+      When upstream runs advanced, update the RUNS ids and stories and the matching expectations in the showcase test,
+      then re-capture the run data and rebuild the experiences.
+      Note any RUNS id change in the pull request body so the animated demo can be re-stitched by hand.
+    allowedFiles:
+      - experiences/pipeline-showcase/content/provenance.json
+      - experiences/pipeline-showcase/capture/fetch-run-data.mjs
+      - experiences/pipeline-showcase/content/run-data.json
+      - public/pipeline-showcase/**
+      - tests/pipeline-showcase.test.ts
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths:
+        - experiences/copilot-workshop/content/rules.ts
+        - experiences/copilot-workshop/content/source.ts
+        - experiences/copilot-workshop/content/types.ts
+        - experiences/copilot-workshop/src
+        - src
+        - scripts
+        - tests/auth.test.ts
+        - tests/runtime.test.ts
+        - tests/catalog.test.ts
+        - tests/copilot-workshop-geometry.test.ts
+        - tests/copilot-workshop-runtime.test.ts
+        - apps/lab-studio/server/src/index.ts
+        - apps/lab-studio/server/src/copilot-bridge.ts
+        - apps/lab-studio/server/src/sandbox.ts
+        - apps/lab-studio/server/src/sim-terminal.ts
+        - apps/lab-studio/server/src/skills.ts
+        - apps/lab-studio/server/tests/sandbox.test.ts
+      lockedTestBlocks:
+        - file: tests/pipeline-showcase.test.ts
+          blocks:
+            - kind: describe
+              title: pipeline-showcase animated SVG
+            - kind: describe
+              title: pipeline-showcase sanitization
+          lockedImports:
+            - findCustomerTerms
+      inProcessInvariants:
+        frozenModules:
+          - experiences/copilot-workshop/content/rules.ts
+          - tests/support/customer-terms.ts
+        customerTerms:
+          module: tests/support/customer-terms.ts
+          export: findCustomerTerms
+
+  - edgeId: github-intermediate
+    upstreamRepo: githubschool/gh-github-intermediate-template
+    upstreamKey: github-intermediate
+    upstreamSlug: GITHUB_INTERMEDIATE
+    upstreamDefaultBranch: main
+    initialBaselineSha: 03b997f220a6ecaf60c8c8cbc63fc1154077a686
+    downstreamRepo: johnhain-msft/portfolio
+    mode: ai-adaptation
+    schedule: "0 */6 * * *"
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_GITHUB_INTERMEDIATE
+    provenanceFile: experiences/github-intermediate-labs/provenance.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-github-intermediate
+    closeOlderKey: sdlc-cascade-github-intermediate
+    reviewers:
+      - johnhain-msft
+    syncScopes:
+      - github-intermediate
+    installDirectories:
+      - .
+      - apps/lab-studio
+    importCommands: []
+    preflightCommands:
+      - git -C <checkout> diff --quiet "$LAST_MERGED_SHA" "$TARGET_SHA" -- labs solutions src style index.html README.md
+    acceptCommands:
+      - |-
+        node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync("experiences/github-intermediate-labs/provenance.json", JSON.stringify({ repository: "githubschool/gh-github-intermediate-template", commit: process.env.UPSTREAM_SHA }, null, 2) + "\n");'
+    buildCommands:
+      - npm run build:experiences
+    verifyCommands:
+      - npm run build:workshop
+      - npm run build:experiences
+      - git -C "$GITHUB_WORKSPACE/portfolio" status --porcelain
+      - npm run build
+      - STUDIO_ORIGIN=https://studio.example.com npm run build:catalog
+      - npm run typecheck
+      - npm run lint
+      - npm test
+      - npm run test:studio
+      - npm run test:browser
+      - |
+        # post-run check: a dry run must not leave a commit
+        if [ "${DRY_RUN:-}" = "true" ] && [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then
+          echo "dry_run is true but the agent committed $BASE_SHA..$AGENT_HEAD_SHA" >&2
+          exit 1
+        fi
+      - |
+        # post-run check: committed provenance records upstream_sha
+        if [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then
+          node --input-type=module -e '
+          import { readFileSync } from "node:fs";
+          const file = process.env.GITHUB_WORKSPACE + "/portfolio/experiences/github-intermediate-labs/provenance.json";
+          let doc;
+          try { doc = JSON.parse(readFileSync(file, "utf8")); }
+          catch { console.error("provenance.json is missing or unparseable"); process.exit(1); }
+          const keys = Object.keys(doc).sort().join(",");
+          if (keys !== "commit,repository" || doc.repository !== "githubschool/gh-github-intermediate-template" || doc.commit !== process.env.UPSTREAM_SHA) {
+            console.error("provenance.json does not record the upstream sha");
+            process.exit(1);
+          }
+          '
+        fi
+      - |
+        # post-run check: the upstream checkout stays read-only
+        test -z "$(git -C <checkout> status --porcelain)"
+    adaptationInstructions: >-
+      Diff the cumulative upstream range and adapt the GitHub Intermediate labs, the Teaching SPA content and their tests only where the upstream change requires it.
+      Exclude customer-specific authoring tools. When no adaptation is needed, leave the worktree clean so the run ends without a pull request.
+    allowedFiles:
+      - experiences/github-intermediate-labs/provenance.json
+      - experiences/github-intermediate-labs/src/**
+      - experiences/github-intermediate-workshop/content/**
+      - public/github-intermediate/**
+      - tests/github-intermediate-labs.test.ts
+      - tests/github-intermediate-workshop.test.ts
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths:
+        - experiences/copilot-workshop/content/rules.ts
+        - experiences/copilot-workshop/content/source.ts
+        - experiences/copilot-workshop/content/types.ts
+        - experiences/copilot-workshop/src
+        - src
+        - scripts
+        - tests/auth.test.ts
+        - tests/runtime.test.ts
+        - tests/catalog.test.ts
+        - tests/copilot-workshop-geometry.test.ts
+        - tests/copilot-workshop-runtime.test.ts
+        - apps/lab-studio/server/src/index.ts
+        - apps/lab-studio/server/src/copilot-bridge.ts
+        - apps/lab-studio/server/src/sandbox.ts
+        - apps/lab-studio/server/src/sim-terminal.ts
+        - apps/lab-studio/server/src/skills.ts
+        - apps/lab-studio/server/tests/sandbox.test.ts
+      lockedTestBlocks:
+        - file: tests/github-intermediate-labs.test.ts
+          blocks:
+            - kind: it
+              title: Lab 0 HTTPS prompts accept only simulated credentials and do not retain them
+        - file: tests/github-intermediate-workshop.test.ts
+          blocks:
+            - kind: it
+              title: gives every slide a title and non-empty, original speaker notes
+            - kind: it
+              title: contains no customer names, private framing, personal paths or real emails
+      inProcessInvariants:
+        frozenModules:
+          - experiences/copilot-workshop/content/rules.ts
+          - tests/support/customer-terms.ts
+        customerTerms:
+          module: tests/support/customer-terms.ts
+          export: findCustomerTerms
