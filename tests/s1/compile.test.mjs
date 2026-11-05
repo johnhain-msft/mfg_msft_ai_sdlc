@@ -139,18 +139,20 @@ test("a manifest that the real compiler rejects comes back as status error with 
   }
 });
 
-for (const [mode, secret, engineId] of [
+for (const [mode, secret, engineId, edgeMode = "mechanical"] of [
   ["copilot-requests", null, "copilot"],
   ["copilot-pat", null, "copilot"],
   ["api-key", "ANTHROPIC_API_KEY", "claude"],
   ["api-key", "GOOGLE_API_KEY", "gemini"],
   ["api-key", "OPENAI_API_KEY", "codex"],
+  ["api-key", "OPENAI_API_KEY", "codex", "ai-adaptation"],
   ["api-key", "CUSTOM_PROVIDER_KEY", "claude"],
 ]) {
-  test(`AC71 real compiler: ${mode}${secret ? `/${secret}` : ""} compiles a non-preset fleet on the ${engineId} engine and preserves credential wiring in its locks`, { skip }, async () => {
+  test(`AC71 real compiler: ${mode}${secret ? `/${secret}` : ""} compiles a non-preset ${edgeMode} fleet on the ${engineId} engine and preserves credential wiring in its locks`, { skip }, async () => {
     const directory = scratchRepository();
     try {
       const manifest = minimalManifest();
+      manifest.dependencyEdges[0].mode = edgeMode;
       if (secret) manifest.engineApiKeySecret = secret;
       fs.writeFileSync(path.join(directory, "sdlc.yaml"), toYaml(manifest));
       fs.mkdirSync(path.join(directory, ".github", "aw"), { recursive: true });
