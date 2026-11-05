@@ -1,10 +1,12 @@
-// AC29: the compiled lock files keep safe_outputs behind detection, and nothing S1 renders overrides that.
+// AC29: the compiled lock files keep safe_outputs behind detection and behind a successful agent job, and nothing S1
+// renders overrides that.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
 import YAML from "yaml";
 import { renderFleet } from "../../src/reconcile.mjs";
-import { abs, listFiles, readText, readWorkflow, referenceRequest, REPO_ROOT } from "./helpers/fixtures.mjs";
+import { evaluateExpression, simulateJobs } from "./helpers/actions-if.mjs";
+import { abs, AGENT_SUCCESS_GUARD, BUILT_IN_JOB_SECTIONS, listFiles, readText, readWorkflow, referenceRequest, REPO_ROOT } from "./helpers/fixtures.mjs";
 
 const W = ".github/workflows";
 const request = referenceRequest();
@@ -13,15 +15,114 @@ const ids = [
   "cascade-ai-copilot-lab", "cascade-ai-pipeline-showcase", "cascade-ai-github-intermediate", "sdlc-onboard",
 ];
 const lockOf = (id) => YAML.parse(readText(abs(W, `${id}.lock.yml`)));
+const conditionOf = (job) => String(job.if).replace(/\s+/g, " ").trim();
+
+/** Which jobs of a compiled lock run when the agent, detection and safe_outputs jobs end with the given results. */
+function simulateGates(id, lock, { agent = "success", detection = "success", safe_outputs: safeOutputs = "success" }) {
+  return simulateJobs(lock.jobs, {
+    results: { agent, detection, safe_outputs: safeOutputs },
+    outputs: { detection: { detection_success: detection === "success" ? "true" : "false" } },
+    inputs: { dry_run: id.startsWith("drift-") ? false : "false" },
+  });
+}
 
 test("AC29: in every committed lock the safe_outputs job lists detection in needs and only runs after detection succeeded", () => {
   for (const id of ids) {
     const { safe_outputs: job } = lockOf(id).jobs;
     assert.ok(job, `${id} has a safe_outputs job`);
     assert.ok(Array.isArray(job.needs) && job.needs.includes("detection"), `${id}: needs ${JSON.stringify(job.needs)}`);
-    const condition = String(job.if);
-    // gh-aw v1.0.1 compiles the detection gate as a result check; earlier text of this criterion named the output form.
-    assert.ok(condition.includes("needs.detection.result == 'success'") || condition.includes("needs.detection.outputs.success == 'true'"), `${id}: if ${condition}`);
+    // The form that the pinned compiler (gh-aw v1.0.1) emits; the documented needs.detection.outputs.success form is not
+    // an output of its detection job, which publishes detection_success (see section 4 of the spec).
+    assert.ok(conditionOf(job).includes("needs.detection.result == 'success'"), `${id}: if ${conditionOf(job)}`);
+  }
+});
+
+test("AC29: the criterion in the spec names the condition forms that the committed locks carry, so the test needs no either-or", () => {
+  const row = readText(abs("specs", "01-manifest-and-reconciler.md")).split("\n").find((line) => line.startsWith("| AC29 |"));
+  assert.ok(row, "the spec has the AC29 row");
+  assert.ok(row.includes("needs.detection.result == 'success'"), "the observation names the result form that gh-aw v1.0.1 emits");
+  assert.ok(row.includes("needs.agent.result == 'success'"), "the observation names the agent-success guard");
+  assert.equal(row.includes("needs.detection.outputs.success == 'true'"), false, "the form that no compiled lock contains is not the observation");
+  for (const id of ids) assert.equal(readText(abs(W, `${id}.lock.yml`)).includes("needs.detection.outputs.success == 'true'"), false, id);
+});
+
+test("AC29: in every committed lock detection and safe_outputs also require the agent job to have succeeded", () => {
+  for (const id of ids) {
+    const { agent, detection, safe_outputs: safeOutputs } = lockOf(id).jobs;
+    for (const job of [detection, safeOutputs]) {
+      assert.ok(job.needs.includes("agent"), `${id}: needs ${JSON.stringify(job.needs)}`);
+      assert.ok(conditionOf(job).includes(`(${AGENT_SUCCESS_GUARD})`), `${id}: if ${conditionOf(job)}`);
+    }
+    assert.equal(String(agent.if).includes("needs.agent.result"), false, `${id}: the agent job does not need itself`);
+  }
+});
+
+test("AC29: a failed agent job — a failing post-steps gate runs inside it — stops detection and safe_outputs and still escalates", () => {
+  for (const id of ids) {
+    const lock = lockOf(id);
+    for (const result of ["failure", "cancelled"]) {
+      const run = simulateGates(id, lock, { agent: result });
+      assert.equal(run.ran.includes("detection"), false, `${id}: detection after an agent that ${result}`);
+      assert.equal(run.ran.includes("safe_outputs"), false, `${id}: safe_outputs after an agent that ${result}`);
+      assert.equal(run.ran.includes("finalize_poll_state"), false, `${id}: the poll state is not finalized`);
+      assert.ok(run.ran.includes("conclusion"), `${id}: the conclusion job still reports`);
+    }
+    if ("escalate_failure" in lock.jobs) assert.ok(simulateGates(id, lock, { agent: "failure" }).ran.includes("escalate_failure"), `${id}: the failure is still recorded`);
+  }
+});
+
+test("AC29: a successful agent job and a passed detection still let safe_outputs run, and a failed detection still stops it", () => {
+  for (const id of ids) {
+    const lock = lockOf(id);
+    const passed = simulateGates(id, lock, {});
+    assert.ok(passed.ran.includes("detection") && passed.ran.includes("safe_outputs"), `${id}: ${passed.ran}`);
+    assert.equal(passed.ran.includes("escalate_failure"), false, `${id}: nothing failed`);
+    if ("finalize_poll_state" in lock.jobs) assert.ok(passed.ran.includes("finalize_poll_state"), `${id}: the poll state is finalized`);
+    const flagged = simulateGates(id, lock, { detection: "failure" });
+    assert.ok(flagged.ran.includes("detection"), id);
+    assert.equal(flagged.ran.includes("safe_outputs"), false, `${id}: safe_outputs after a failed detection`);
+    if ("escalate_failure" in lock.jobs) assert.ok(flagged.ran.includes("escalate_failure"), id);
+  }
+});
+
+test("AC29: the conditions gh-aw compiled without the guard ran detection and safe_outputs after a failed agent job (the defect)", () => {
+  const jobs = {
+    activation: {},
+    agent: { needs: "activation" },
+    detection: { needs: ["activation", "agent"], if: "always() && needs.agent.result != 'skipped'" },
+    safe_outputs: {
+      needs: ["activation", "agent", "detection"],
+      if: "(!cancelled()) && needs.agent.result != 'skipped' && needs.detection.result == 'success'",
+    },
+  };
+  const run = simulateJobs(jobs, { results: { agent: "failure" } });
+  assert.deepEqual(run.ran, ["activation", "agent", "detection", "safe_outputs"]);
+  const guarded = structuredClone(jobs);
+  guarded.detection.if = `(${guarded.detection.if}) && (${AGENT_SUCCESS_GUARD})`;
+  guarded.safe_outputs.if = `(${guarded.safe_outputs.if}) && (${AGENT_SUCCESS_GUARD})`;
+  assert.deepEqual(simulateJobs(guarded, { results: { agent: "failure" } }).ran, ["activation", "agent"]);
+});
+
+test("AC29: the condition evaluator follows the Actions expression semantics that the compiled conditions rely on", () => {
+  const holds = (text, options) => evaluateExpression(text, options);
+  assert.equal(holds("'Success' == 'success'"), true, "strings compare case-insensitively");
+  assert.equal(holds("true == 1"), true, "operands of different types compare as numbers");
+  assert.equal(holds("needs.a.outputs.missing != 'true'", { context: { needs: { a: { outputs: {} } } } }), true);
+  assert.equal(holds("needs.a.result == 'success'", { context: { needs: { a: { result: "failure" } } } }), false);
+  assert.equal(holds("true || false && false"), true, "&& binds tighter than ||");
+  assert.equal(holds("(true || false) && false"), false);
+  assert.equal(holds("!cancelled() && failure()", { failure: true }), true);
+  assert.equal(holds("${{ success() && inputs.dry_run != 'true' }}", { context: { inputs: { dry_run: "false" } } }), true);
+  assert.equal(holds("contains(needs.agent.outputs.output_types, 'create_pull_request')", { context: { needs: { agent: { outputs: { output_types: "noop,create_pull_request" } } } } }), true);
+});
+
+test("AC29: detection and safe_outputs are rendered as the agent-success guard alone: nothing widens when they run", () => {
+  for (const id of ids) {
+    const { jobs } = readWorkflow(`${id}.md`).frontmatter;
+    for (const name of BUILT_IN_JOB_SECTIONS) assert.deepEqual(jobs[name], { if: AGENT_SUCCESS_GUARD }, `${id}.${name}`);
+  }
+  for (const [name, text] of renderFleet(request).files) {
+    if (name.endsWith(".md")) assert.ok(text.includes("  safe_outputs:\n    if: needs.agent.result == 'success'\n"), name);
   }
 });
 

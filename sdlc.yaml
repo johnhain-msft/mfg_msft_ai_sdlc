@@ -7,6 +7,11 @@
 #
 # `<checkout>` inside any command is replaced by the renderer with the absolute
 # path of the upstream checkout, "$UPSTREAM_DIR".
+#
+# A verifyCommands entry whose first non-blank character is `#` (for example
+# "# post-run check: ...") is a post-run check. Every verifyCommands entry runs in
+# the order listed here; a post-run check only stays out of the verification gate
+# that the reconciler reports for the AI adaptation workflows (SPEC-01 AC50, AC53).
 
 projects:
   - projectKey: gh-admin-msft

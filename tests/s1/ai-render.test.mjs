@@ -189,6 +189,40 @@ test("AC53: then the artifact upload, the helper with the workflow's own id and 
   }
 });
 
+test("AC53: verifyCommands are rendered verbatim and in manifest order wherever a post-run check sits among them", () => {
+  const isPostRunCheck = (command) => command.trimStart().startsWith("#");
+  const cleanTreeCheck = 'git -C "$GITHUB_WORKSPACE/portfolio" status --porcelain';
+  const reordered = mutate(preset, (copy) => {
+    const edge = edgeOf(copy, "github-intermediate");
+    const checks = edge.verifyCommands.filter(isPostRunCheck);
+    const gates = edge.verifyCommands.filter((command) => !isPostRunCheck(command));
+    assert.equal(checks.length, 3, "the preset edge has three post-run checks to move around");
+    // one check first, one between the build commands and the lint, and the last one at the end
+    edge.verifyCommands = [checks[0], ...gates.slice(0, 4), checks[1], ...gates.slice(4), checks[2]];
+  });
+  const edge = edgeOf(reordered, "github-intermediate");
+  assert.ok(isPostRunCheck(edge.verifyCommands[0]) && isPostRunCheck(edge.verifyCommands[5]) && isPostRunCheck(edge.verifyCommands.at(-1)));
+  const workspace = createWorkspace({ manifestText: toYaml(reordered), instructions: true });
+  try {
+    const result = renderFleet(request, { cwd: workspace.dir });
+    assert.ok(result.ok, JSON.stringify(result.result));
+    const steps = parseWorkflow(result.files.get(`${W}/cascade-ai-github-intermediate.md`)).frontmatter["post-steps"].slice(3);
+    assert.equal(steps.length, edge.verifyCommands.length);
+    edge.verifyCommands.forEach((command, index) => {
+      const step = steps[index];
+      if (command === cleanTreeCheck) {
+        assert.equal(step.name, command, `position ${index}`);
+        assert.ok(step.run.includes("status --porcelain") && step.run.includes("exit 1"), `position ${index}`);
+      } else {
+        assert.equal(step.run.trim(), fillCheckout(command).trim(), `position ${index}: ${command.split("\n")[0]}`);
+      }
+    });
+    assert.ok(steps[0].run.includes("# post-run check: a dry run must not leave a commit"), "the check that the manifest lists first runs first");
+  } finally {
+    workspace.cleanup();
+  }
+});
+
 test("AC53: the helper carries the downstream checkout path when the downstream repository has another name", () => {
   const manifest = mutate(preset, (copy) => {
     for (const edge of copy.dependencyEdges) edge.downstreamRepo = "johnhain-msft/site";

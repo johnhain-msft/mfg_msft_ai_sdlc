@@ -185,6 +185,10 @@ tools:
     - tail
     - wc
 jobs:
+  detection:
+    if: needs.agent.result == 'success'
+  safe_outputs:
+    if: needs.agent.result == 'success'
   finalize_poll_state:
     needs:
       - agent

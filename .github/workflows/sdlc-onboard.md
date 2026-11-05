@@ -99,6 +99,11 @@ tools:
     - tail
     - wc
   edit: {}
+jobs:
+  detection:
+    if: needs.agent.result == 'success'
+  safe_outputs:
+    if: needs.agent.result == 'success'
 ---
 
 # Onboard a repository into the fleet

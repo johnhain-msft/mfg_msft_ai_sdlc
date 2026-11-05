@@ -799,9 +799,25 @@ function usesGhCli(text) {
   return /(?:^|[\s;&|(`])gh\s/m.test(text);
 }
 
+/**
+ * A post-run check is a `verifyCommands` entry whose first non-blank character is `#`: a script that opens
+ * with a comment naming the check. It is rendered like every other entry, at its manifest position; the
+ * mark only keeps it out of the verification gate that the AI acknowledgement reports (SPEC-01 AC50).
+ */
 function isPostRunCheck(command) {
   return command.trimStart().startsWith("#");
 }
+
+/**
+ * Fail closed on the agent job. gh-aw runs `post-steps:` (the verification gates) inside the agent job, after
+ * the job has ingested the agent output, and compiles `detection` and `safe_outputs` with conditions that do
+ * not require that job to succeed (`always() && needs.agent.result != 'skipped'` and
+ * `(!cancelled()) && needs.agent.result != 'skipped' && needs.detection.result == 'success'`), so a failing
+ * gate would still reach the pull request. The compiler joins `jobs.<built-in>.if` to its own condition with
+ * `&&`, so this guard can only narrow when the two jobs run (SPEC-01 AC29).
+ */
+const AGENT_SUCCESS_GUARD = "needs.agent.result == 'success'";
+const agentSuccessGuards = () => ({ detection: { if: AGENT_SUCCESS_GUARD }, safe_outputs: { if: AGENT_SUCCESS_GUARD } });
 
 // ---------------------------------------------------------------------------------------
 // Drift workflows
@@ -1001,7 +1017,7 @@ function renderDrift(ctx, project) {
     },
     engine: engineSection(ctx, { sdk: true }),
     tools: { "web-fetch": {}, bash: bashAllowlist(["git", "node", ...audit.buildCommands]), edit: {} },
-    jobs: { escalate_failure: driftEscalation(ctx, project, workflowId) },
+    jobs: { ...agentSuccessGuards(), escalate_failure: driftEscalation(ctx, project, workflowId) },
   };
   return { id: workflowId, kind: "drift", project, text: serializeWorkflow(frontmatter, driftBody(ctx, project)) };
 }
@@ -1125,7 +1141,7 @@ function helperCommand(edge, workflowId) {
   return `node --frozen-intrinsics "$GITHUB_WORKSPACE/src/verify-immutable-gates.mjs" --portfolio "$GITHUB_WORKSPACE/${downstreamName(edge)}" --base "$BASE_SHA" --workflow ${workflowId}`;
 }
 
-/** The leading verifyCommands entries that are gate commands (post-run checks start with a comment). */
+/** The `verifyCommands` entries that belong to the verification gate, in manifest order; post-run checks are not members. */
 function gateCommandsOf(edge) {
   return edge.verifyCommands.filter((command) => !isPostRunCheck(command));
 }
@@ -1469,15 +1485,11 @@ function renderCascade(ctx, edge) {
   } else {
     const hook = edge.preflightCommands.length > 0 ? [aiCaptureStep(edge)] : [];
     frontmatter["pre-agent-steps"] = [aiValidationStep(edge), aiBaseShaStep(edge), ...hook, aiCleanGuardStep(edge)];
-    const gate = [];
-    for (const command of edge.verifyCommands.filter((entry) => !isPostRunCheck(entry))) gate.push(verifyStep(command, down));
-    const checks = edge.verifyCommands.filter((entry) => isPostRunCheck(entry)).map((command) => verifyStep(command, down));
     frontmatter["post-steps"] = [
       shaHandOffStep(edge),
       uploadShasStep(),
       { name: helperCommand(edge, workflowId), run: helperCommand(edge, workflowId) },
-      ...gate,
-      ...checks,
+      ...commandSteps(edge.verifyCommands, down),
     ];
   }
   frontmatter["safe-outputs"] = {
@@ -1486,7 +1498,7 @@ function renderCascade(ctx, edge) {
     "create-pull-request": handler,
   };
   frontmatter.tools = mechanical ? { bash: bashAllowlist(["git", ...importWords]) } : { bash: bashAllowlist(["git", ...importWords]), edit: {} };
-  frontmatter.jobs = cascadeJobs(ctx, edge);
+  frontmatter.jobs = { ...agentSuccessGuards(), ...cascadeJobs(ctx, edge) };
   return {
     id: workflowId,
     kind: mechanical ? "mechanical" : "ai",
@@ -1627,6 +1639,7 @@ function renderOnboard(ctx) {
       },
     },
     tools: { bash: bashAllowlist(["git", "node"]), edit: {} },
+    jobs: agentSuccessGuards(),
   };
   const lines = [
     "# Onboard a repository into the fleet",
@@ -2254,16 +2267,29 @@ function interpretCompile(outcome) {
   return results;
 }
 
-/** gh-aw releases before the repository-level protected_files option reject it in aw.json. */
+/** gh-aw releases before the repository-level protected_files option (v1.0.1 among them) reject it in aw.json. */
 function rejectsProtectedFiles(outcome) {
   return /additional propert(?:y|ies) 'protected_files' not allowed/.test(`${outcome.stderr}\n${outcome.stdout}`);
 }
 
+/** What the operator is told when the compiler refuses the key and the strict-only repository config is used instead. */
+function protectedFilesFallbackNotice(manifest) {
+  const notice = `note: the gh-aw compiler rejected protected_files in ${REPO_CONFIG_PATH}, so the repository config holds strict: true only`;
+  if (manifest.protectedFilesExclude.length === 0) return notice;
+  return `${notice}; protectedFilesExclude still reaches every drift and onboarding handler as its protected-files.exclude, and each cascade handler keeps its edge's own protectedFilesExclude`;
+}
+
+/**
+ * Compiles, and when the compiler's repository config schema refuses `protected_files` falls back to the
+ * strict-only aw.json and compiles again (SPEC-01 AC55): the key is optional for the reconciler because the
+ * manifest list is also rendered into every handler's explicit `protected-files.exclude` (AC64).
+ */
 async function compileWithCompat(cwd, prepared, args, options) {
   const env = compileEnvironment(options);
   let outcome = await spawnCollect("gh", args, { cwd, env, timeoutMs: options.timeoutMs });
-  if (outcome.code !== 0 && rejectsProtectedFiles(outcome) && prepared.manifest.protectedFilesExclude.length === 0) {
+  if (outcome.code !== 0 && rejectsProtectedFiles(outcome)) {
     fs.writeFileSync(path.join(cwd, REPO_CONFIG_PATH), renderAwJson(prepared.manifest, { withProtectedFiles: false }));
+    options.log?.(protectedFilesFallbackNotice(prepared.manifest));
     outcome = await spawnCollect("gh", args, { cwd, env, timeoutMs: options.timeoutMs });
   }
   return outcome;
@@ -2342,7 +2368,8 @@ async function dryRunFleet(prepared, options) {
 /**
  * Validates the manifest against the request's securityBaseline, renders the fleet and compiles it.
  * Never throws and never exits the process: failures come back as `status: "error"` with the
- * workflow files restored byte for byte.
+ * workflow files restored byte for byte. `options` are `cwd`, `env`, `timeoutMs` and an optional
+ * `log(line)` that receives operator notes (the command line prints them on stderr).
  */
 export async function reconcile(request, options = {}) {
   try {
@@ -2373,7 +2400,7 @@ async function main(argv) {
       request = undefined;
       result = requestFailure([rule("request-unreadable", `${file} cannot be read as JSON: ${oneLine(error.message)}`)]);
     }
-    if (request !== undefined) result = await reconcile(request);
+    if (request !== undefined) result = await reconcile(request, { log: (line) => process.stderr.write(`${line}\n`) });
   }
   process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
   process.exitCode = result.status === "ok" ? 0 : 1;

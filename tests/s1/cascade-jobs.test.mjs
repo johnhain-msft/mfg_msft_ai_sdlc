@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderFleet } from "../../src/reconcile.mjs";
-import { abs, edgeOf, listFiles, parseWorkflow, presetManifest, readText, readWorkflow, referenceRequest, REPO_ROOT } from "./helpers/fixtures.mjs";
+import { abs, customJobsOf, edgeOf, listFiles, parseWorkflow, presetManifest, readText, readWorkflow, referenceRequest, REPO_ROOT } from "./helpers/fixtures.mjs";
 import { createWorkspace } from "./helpers/workspace.mjs";
 
 const W = ".github/workflows";
@@ -16,7 +16,7 @@ const TOKEN = "${{ steps.app_token.outputs.token }}";
 const SEVEN_FLAGS = ["--slug", "--branch", "--provenance-file", "--base-sha", "--head-sha", "--target-sha", "--etag"];
 
 const edgeOfWorkflow = (id) => edgeOf(preset, id.replace(/^cascade-(mechanical|ai)-/, ""));
-const jobs = (id) => readWorkflow(`${id}.md`).frontmatter.jobs;
+const jobs = (id) => customJobsOf(readWorkflow(`${id}.md`).frontmatter.jobs);
 const updateStep = (job) => job.steps.find((step) => String(step.run ?? "").includes("update-poll-state.mjs"));
 
 test("AC35: every cascade workflow has exactly finalize_poll_state and escalate_failure with the specified guards, needs and permissions", () => {
@@ -60,7 +60,7 @@ test("AC35: the repositories list names the orchestrator through the Actions con
     const result = renderFleet(request, { cwd: workspace.dir });
     assert.ok(result.ok, JSON.stringify(result.result));
     const { frontmatter } = parseWorkflow(result.files.get(`${W}/cascade-mechanical-alpha-to-beta.md`));
-    for (const job of Object.values(frontmatter.jobs)) {
+    for (const job of Object.values(customJobsOf(frontmatter.jobs))) {
       assert.equal(job.steps[0].with.owner, "${{ github.repository_owner }}");
       assert.equal(job.steps[0].with.repositories, "${{ github.event.repository.name }},beta-docs");
     }

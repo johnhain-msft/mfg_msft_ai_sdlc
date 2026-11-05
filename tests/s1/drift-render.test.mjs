@@ -8,6 +8,7 @@ import test from "node:test";
 import { renderFleet } from "../../src/reconcile.mjs";
 import {
   abs,
+  customJobsOf,
   fixture,
   minimalManifest,
   mutate,
@@ -119,7 +120,7 @@ function assertContract(frontmatter, project) {
   assert.ok(frontmatter.tools.bash.includes("git"));
   assert.ok(frontmatter.tools.bash.includes("node"), "the lab's own S2 scripts and the preset's build commands run on node");
   for (const command of audit.buildCommands) assert.ok(frontmatter.tools.bash.includes(command.trim().split(/\s+/)[0]), `bash allows the first word of '${command}'`);
-  assert.deepEqual(Object.keys(frontmatter.jobs), ["escalate_failure"]);
+  assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure"]);
   const job = frontmatter.jobs.escalate_failure;
   assert.deepEqual(job.permissions, { contents: "read", issues: "write" });
   assert.deepEqual(job.needs, ["agent", "detection", "safe_outputs"]);

@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderFleet } from "../../src/reconcile.mjs";
-import { abs, edgeOf, fixture, mutate, parseWorkflow, presetManifest, readText, readWorkflow, referenceRequest, toYaml } from "./helpers/fixtures.mjs";
+import { abs, customJobsOf, edgeOf, fixture, mutate, parseWorkflow, presetManifest, readText, readWorkflow, referenceRequest, toYaml } from "./helpers/fixtures.mjs";
 import { createWorkspace } from "./helpers/workspace.mjs";
 
 const NAME = "cascade-mechanical-ghec-admin.md";
@@ -135,7 +135,7 @@ test("AC32: the prompt body lists the importCommands with \"$UPSTREAM_DIR\" and 
 });
 
 test("AC32: jobs holds exactly finalize_poll_state and escalate_failure and permissions equal the AC22 set", () => {
-  assert.deepEqual(Object.keys(frontmatter.jobs).sort(), ["escalate_failure", "finalize_poll_state"]);
+  assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)).sort(), ["escalate_failure", "finalize_poll_state"]);
   assert.deepEqual(frontmatter.permissions, { contents: "read", issues: "read", "pull-requests": "read" });
 });
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import YAML from "yaml";
 import { renderFleet } from "../../src/reconcile.mjs";
-import { minimalManifest, mutate, parseWorkflow, projectOf, referenceRequest, toYaml, edgeOf } from "./helpers/fixtures.mjs";
+import { customJobsOf, minimalManifest, mutate, parseWorkflow, projectOf, referenceRequest, toYaml, edgeOf } from "./helpers/fixtures.mjs";
 import { createWorkspace } from "./helpers/workspace.mjs";
 
 const W = ".github/workflows";
@@ -56,7 +56,7 @@ for (const [index, value] of TRICKY.entries()) {
     assert.ok(result.ok, JSON.stringify(result.result));
     const drift = parseWorkflow(files.get(`${W}/drift-alpha-service.md`)).frontmatter;
     assert.deepEqual(Object.keys(drift).sort(), DRIFT_KEYS);
-    assert.deepEqual(Object.keys(drift.jobs), ["escalate_failure"]);
+    assert.deepEqual(Object.keys(customJobsOf(drift.jobs)), ["escalate_failure"]);
     assert.equal(drift["pre-agent-steps"].length, 3);
     assert.equal(drift["post-steps"].length, 2, "one step per verify command, however many lines it has");
     assert.deepEqual(drift["safe-outputs"]["create-pull-request"].reviewers, [value], "the reviewer is a scalar");
@@ -66,11 +66,11 @@ for (const [index, value] of TRICKY.entries()) {
 
     const mechanical = parseWorkflow(files.get(`${W}/cascade-mechanical-alpha-to-beta.md`)).frontmatter;
     assert.deepEqual(Object.keys(mechanical).sort(), MECHANICAL_KEYS);
-    assert.deepEqual(Object.keys(mechanical.jobs).sort(), ["escalate_failure", "finalize_poll_state"]);
+    assert.deepEqual(Object.keys(customJobsOf(mechanical.jobs)).sort(), ["escalate_failure", "finalize_poll_state"]);
     assert.deepEqual(mechanical["safe-outputs"]["create-pull-request"].reviewers, [value]);
     assert.equal(mechanical["post-steps"].length, 4 + 1 + 1, "four fixed steps, one build command and one verify command");
     assert.equal(mechanical["pre-agent-steps"].length, 1);
-    for (const job of Object.values(mechanical.jobs)) assert.equal(job.steps.length >= 4, true);
+    for (const job of Object.values(customJobsOf(mechanical.jobs))) assert.equal(job.steps.length >= 4, true);
 
     const router = YAML.parse(files.get(`${W}/cascade-router.yml`));
     assert.deepEqual(Object.keys(router).sort(), ["jobs", "name", "on", "permissions"]);
@@ -87,7 +87,7 @@ test("AC62: a hostile string appears in the generated Markdown body only inside 
   const { files } = await renderHostile(hostileManifest(NEWLINE_STEP));
   const parsed = parseWorkflow(files.get(`${W}/drift-alpha-service.md`));
   const frontmatter = parsed.frontmatter;
-  const steps = [...frontmatter["pre-agent-steps"], ...frontmatter["post-steps"], ...Object.values(frontmatter.jobs).flatMap((job) => job.steps)];
+  const steps = [...frontmatter["pre-agent-steps"], ...frontmatter["post-steps"], ...Object.values(customJobsOf(frontmatter.jobs)).flatMap((job) => job.steps)];
   assert.equal(steps.some((step) => step.name === "pwn" || step.run === "injected-step"), false, "the injected step does not exist");
   assert.ok(parsed.body.includes("injected-step"), "the text reaches the prompt as text");
   for (const [name, text] of files) {

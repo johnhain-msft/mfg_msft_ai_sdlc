@@ -66,6 +66,15 @@ export function loadRenderedFixture(directory = fixture("rendered-minimal")) {
 /** Step list of a job or of a top-level key such as `pre-agent-steps`. */
 export const stepsOf = (value) => (Array.isArray(value) ? value : value?.steps ?? []);
 
+/** The built-in jobs whose `if:` the renderer guards with the agent-success condition (AC29); they are sections, not custom jobs. */
+export const BUILT_IN_JOB_SECTIONS = ["detection", "safe_outputs"];
+export const AGENT_SUCCESS_GUARD = "needs.agent.result == 'success'";
+
+/** The custom jobs among the `jobs:` entries of a generated workflow (AC35): everything but the built-in guard sections. */
+export function customJobsOf(jobs = {}) {
+  return Object.fromEntries(Object.entries(jobs).filter(([name]) => !BUILT_IN_JOB_SECTIONS.includes(name)));
+}
+
 /** Glob match for allowed-files style patterns: `**` crosses directories, `*` and `?` do not. */
 export function globMatches(pattern, file) {
   let source = "";

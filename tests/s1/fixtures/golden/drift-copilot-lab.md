@@ -122,6 +122,10 @@ tools:
     - wc
   edit: {}
 jobs:
+  detection:
+    if: needs.agent.result == 'success'
+  safe_outputs:
+    if: needs.agent.result == 'success'
   escalate_failure:
     needs:
       - agent

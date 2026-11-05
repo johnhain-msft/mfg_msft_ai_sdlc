@@ -87,6 +87,34 @@ test("AC50: the verificationGate commands are the ones the rendered post-steps r
   }
 });
 
+test("AC50: post-run checks (entries that open with #) stay out of verificationGate wherever they sit and the other commands keep manifest order", () => {
+  const isPostRunCheck = (command) => command.trimStart().startsWith("#");
+  const reordered = mutate(preset, (copy) => {
+    const edge = edgeOf(copy, "copilot-lab");
+    const checks = edge.verifyCommands.filter(isPostRunCheck);
+    const gates = edge.verifyCommands.filter((command) => !isPostRunCheck(command));
+    assert.equal(checks.length, 3);
+    // two gate commands swapped, a check first and one in the middle: the ack follows the manifest, not a constant
+    [gates[7], gates[8]] = [gates[8], gates[7]];
+    edge.verifyCommands = [checks[0], ...gates.slice(0, 4), checks[1], ...gates.slice(4), checks[2]];
+  });
+  const workspace = createWorkspace({ manifestText: toYaml(reordered), instructions: true });
+  try {
+    const { ai } = buildAcks(request, { cwd: workspace.dir });
+    const gates = edgeOf(reordered, "copilot-lab").verifyCommands.filter((command) => !isPostRunCheck(command));
+    assert.notDeepEqual(gates, THIRTEEN.slice(3), "the manifest order differs from the preset order");
+    assert.deepEqual(ai.verificationGate.slice(0, 3), THIRTEEN.slice(0, 3));
+    assert.deepEqual(ai.verificationGate.slice(3), gates);
+    assert.equal(ai.verificationGate.length, 13);
+    assert.equal(ai.verificationGate.some(isPostRunCheck), false);
+    const post = parseWorkflow(renderFleet(request, { cwd: workspace.dir }).files.get(`${W}/cascade-ai-copilot-lab.md`)).frontmatter["post-steps"].slice(3);
+    assert.equal(post.length, 13, "the three post-run checks are rendered with the ten gate commands");
+    assert.ok(post[0].run.includes("# post-run check: a dry run must not leave a commit"), "a post-run check keeps its manifest position");
+  } finally {
+    workspace.cleanup();
+  }
+});
+
 test("AC50: a manifest without AI edges yields empty lists", () => {
   const workspace = createWorkspace({ manifestText: toYaml(minimalManifest()) });
   try {

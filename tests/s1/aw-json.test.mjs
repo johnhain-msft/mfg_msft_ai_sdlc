@@ -1,8 +1,8 @@
 // AC55: .github/workflows/aw.json, the repository-level gh-aw configuration.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderFleet } from "../../src/reconcile.mjs";
-import { abs, mutate, presetManifest, readJson, readText, referenceRequest, toYaml } from "./helpers/fixtures.mjs";
+import { reconcile, renderFleet } from "../../src/reconcile.mjs";
+import { abs, mutate, parseWorkflow, presetManifest, readJson, readText, referenceRequest, toYaml } from "./helpers/fixtures.mjs";
 import { stubLockContent } from "./helpers/shims.mjs";
 import { createWorkspace } from "./helpers/workspace.mjs";
 
@@ -10,17 +10,16 @@ const AW = ".github/workflows/aw.json";
 const request = referenceRequest();
 const preset = presetManifest();
 const withList = (list) => toYaml(mutate(preset, (copy) => (copy.protectedFilesExclude = list)));
+const REJECTING = { mode: "unsupported-protected-files" };
 
-test("AC55: the committed aw.json has strict: true, no key outside the repository config schema and the literal text", () => {
-  const text = readText(abs(AW));
-  assert.ok(text.includes('"strict": true'));
-  const config = readJson(abs(AW));
-  assert.equal(config.strict, true);
-  for (const key of Object.keys(config)) assert.ok(["strict", "protected_files"].includes(key), `unexpected key ${key}`);
-  if ("protected_files" in config) assert.deepEqual(Object.keys(config.protected_files), ["exclude"]);
-  const expected = [...new Set(preset.protectedFilesExclude ?? [])].sort();
-  if (expected.length > 0) assert.deepEqual(config.protected_files.exclude, expected);
-  else assert.ok(!("protected_files" in config) || config.protected_files.exclude.length === 0, "an empty exclude list may be omitted for compilers that predate the key");
+test("AC55: the committed aw.json is strict-only: the compiler that produced the committed locks, gh-aw v1.0.1, rejects protected_files", () => {
+  // The repository config schema of v1.0.1 has additionalProperties: false and no protected_files key (the v1.2.0
+  // pre-release has it), so the strict-only file is what that compiler accepts. A re-pin to a compiler that accepts the
+  // key changes this expectation together with AC55 and section 4 of the spec.
+  const header = readText(abs(".github", "workflows", "drift-gh-admin-msft.lock.yml")).split("\n")[0];
+  assert.ok(header.includes('"compiler_version":"v1.0.1"'), header);
+  assert.equal(readText(abs(AW)), '{\n  "strict": true\n}\n');
+  assert.deepEqual(readJson(abs(AW)), { strict: true });
 });
 
 test("AC55: a fresh render writes strict: true and protected_files.exclude as the sorted, de-duplicated manifest list", async () => {
@@ -73,7 +72,7 @@ test("AC55: changing the manifest list changes the file and triggers the compile
 });
 
 test("AC55: a compiler that predates protected_files gets the strict-only config when the manifest list is empty", async () => {
-  const workspace = createWorkspace({ compile: { mode: "unsupported-protected-files" } });
+  const workspace = createWorkspace({ compile: REJECTING });
   try {
     const result = await workspace.reconcile(request);
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
@@ -85,15 +84,83 @@ test("AC55: a compiler that predates protected_files gets the strict-only config
   }
 });
 
-test("AC55: with a non-empty list the compiler's rejection of protected_files is passed through and everything is rolled back", async () => {
-  const workspace = createWorkspace({ manifestText: withList(["keep.md"]), instructions: true, compile: { mode: "unsupported-protected-files" } });
+test("AC55: with a non-empty list a compiler that rejects protected_files still reconciles: strict-only config, same run, whole fleet compiled", async () => {
+  const list = ["keep.md", "/docs/changelog.md"];
+  const workspace = createWorkspace({ manifestText: withList(list), instructions: true, compile: REJECTING });
+  try {
+    const result = await workspace.reconcile(request);
+    assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
+    assert.equal(result.generatedWorkflows.length, 8);
+    assert.equal(result.repoConfigPath, AW);
+    assert.equal(workspace.read(AW), '{\n  "strict": true\n}\n', "the key the compiler rejects is not written");
+    const compiles = workspace.shims.compileCalls();
+    assert.equal(compiles.length, 2, "the rejected attempt and the retry");
+    for (const call of compiles) assert.deepEqual(call.args, ["aw", "compile", "--strict", "--purge", "--json"], "both attempts compile every workflow");
+    for (const pair of result.generatedWorkflows) {
+      const source = workspace.read(pair.sourceMd);
+      assert.equal(workspace.read(pair.lockYml), stubLockContent(pair.sourceMd.split("/").pop(), Buffer.from(source)), `${pair.lockYml} was compiled`);
+    }
+    // The manifest list is not lost: every drift and onboarding handler carries it as its own protected-files.exclude (AC64).
+    for (const name of ["drift-gh-admin-msft.md", "drift-copilot-lab.md", "drift-self-improving-agents.md", "sdlc-onboard.md"]) {
+      const handler = parseWorkflow(workspace.read(`.github/workflows/${name}`)).frontmatter["safe-outputs"]["create-pull-request"];
+      assert.deepEqual(handler["protected-files"], { policy: "blocked", exclude: ["/docs/changelog.md", "keep.md"] }, name);
+    }
+  } finally {
+    workspace.cleanup();
+  }
+});
+
+test("AC55: after the fallback a second run changes nothing, and a dry run reports the same outcome without writing", async () => {
+  const workspace = createWorkspace({ manifestText: withList(["keep.md"]), instructions: true, compile: REJECTING });
+  try {
+    assert.equal((await workspace.reconcile(request)).status, "ok");
+    const settled = workspace.hash();
+    assert.equal((await workspace.reconcile(request)).status, "ok");
+    assert.equal(workspace.hash(), settled, "the strict-only file and every lock are byte-identical after the second run");
+    const dry = await workspace.reconcile({ ...request, dryRun: true });
+    assert.equal(dry.status, "ok", JSON.stringify(dry.validationResults));
+    assert.equal(workspace.hash(), settled);
+  } finally {
+    workspace.cleanup();
+  }
+});
+
+test("AC55: the fallback is reported to the operator, not silent: a log note in process and on stderr of the command line", async () => {
+  const workspace = createWorkspace({ manifestText: withList(["keep.md"]), instructions: true, compile: REJECTING });
+  try {
+    const notes = [];
+    const result = await reconcile(request, { cwd: workspace.dir, env: workspace.shims.env(), log: (line) => notes.push(line) });
+    assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
+    assert.equal(notes.length, 1, notes.join("\n"));
+    assert.ok(notes[0].includes("protected_files") && notes[0].includes("strict: true only"), notes[0]);
+    assert.ok(notes[0].includes("protectedFilesExclude still reaches every drift and onboarding handler"), "a non-empty list is explained");
+    workspace.write("request.json", JSON.stringify(request));
+    const cli = workspace.cli(workspace.path("request.json"));
+    assert.equal(cli.code, 0, cli.stderr);
+    assert.equal(cli.json.status, "ok");
+    assert.ok(cli.stderr.includes("note: the gh-aw compiler rejected protected_files"), cli.stderr);
+    assert.equal(cli.stdout.includes("note:"), false, "the JSON result on stdout is untouched");
+  } finally {
+    workspace.cleanup();
+  }
+  const accepting = createWorkspace({ manifestText: withList(["keep.md"]), instructions: true });
+  try {
+    const notes = [];
+    const result = await reconcile(request, { cwd: accepting.dir, env: accepting.shims.env(), log: (line) => notes.push(line) });
+    assert.equal(result.status, "ok");
+    assert.deepEqual(notes, [], "a compiler that accepts the key needs no note");
+  } finally {
+    accepting.cleanup();
+  }
+});
+
+test("AC55: a rejection that is not about protected_files is not retried and is rolled back", async () => {
+  const workspace = createWorkspace({ manifestText: withList(["keep.md"]), instructions: true, compile: { mode: "crash" } });
   try {
     const before = workspace.hash();
     const result = await workspace.reconcile(request);
     assert.equal(result.status, "error");
-    const errors = result.validationResults.flatMap((entry) => entry.errors);
-    assert.ok(errors.some((error) => error.startsWith("compile-failed: ") && error.includes("protected_files")), errors.join("\n"));
-    assert.equal(workspace.shims.compileCalls().length, 1, "no retry that would drop the requested exclusions");
+    assert.equal(workspace.shims.compileCalls().length, 1, "no retry for an unrelated failure");
     assert.equal(workspace.hash(), before);
   } finally {
     workspace.cleanup();

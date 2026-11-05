@@ -94,6 +94,27 @@ test("reconcile() with the real compiler regenerates exactly the committed fleet
   }
 });
 
+test("reconcile() with the real compiler reconciles a non-empty protectedFilesExclude: the compiler's rejection of protected_files falls back to a strict-only aw.json", { skip }, async () => {
+  const directory = scratchRepository();
+  try {
+    fs.writeFileSync(path.join(directory, "sdlc.yaml"), `${readText(abs("sdlc.yaml")).replace(/\s+$/, "")}\nprotectedFilesExclude:\n  - /README.md\n  - CHANGELOG.md\n`);
+    fs.cpSync(abs("instructions"), path.join(directory, "instructions"), { recursive: true });
+    const notes = [];
+    const result = await reconcile(referenceRequest(), { cwd: directory, env: process.env, log: (line) => notes.push(line) });
+    assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
+    assert.equal(result.generatedWorkflows.length, 8);
+    assert.equal(notes.length, 1, "the rejected key is reported");
+    assert.equal(fs.readFileSync(path.join(directory, ".github", "workflows", "aw.json"), "utf8"), '{\n  "strict": true\n}\n');
+    for (const name of ["drift-gh-admin-msft", "drift-copilot-lab", "drift-self-improving-agents", "sdlc-onboard"]) {
+      const source = fs.readFileSync(path.join(directory, ".github", "workflows", `${name}.md`), "utf8");
+      assert.ok(/protected-files:\n\s+policy: blocked\n\s+exclude:\n\s+- \/README\.md\n\s+- CHANGELOG\.md\n/.test(source), `${name}: the list reaches the handler`);
+      assert.ok(fs.existsSync(path.join(directory, ".github", "workflows", `${name}.lock.yml`)), `${name}: compiled`);
+    }
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test("a manifest that the real compiler rejects comes back as status error with its diagnostics, and the tree is restored", { skip }, async () => {
   const directory = scratchRepository();
   try {

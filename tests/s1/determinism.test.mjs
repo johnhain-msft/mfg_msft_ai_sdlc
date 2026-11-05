@@ -101,13 +101,13 @@ test("AC58: the committed .md sources, router and aw.json equal the regenerated 
     if (name.endsWith("aw.json")) continue;
     assert.equal(readText(abs(name)), text, `${name} is up to date`);
   }
-  const config = JSON.parse(readText(abs(W, "aw.json")));
-  const regenerated = JSON.parse(rendered.get(`${W}/aw.json`));
-  assert.equal(config.strict, regenerated.strict);
-  const withoutKey = { ...regenerated };
-  if (!("protected_files" in config)) delete withoutKey.protected_files;
-  assert.deepEqual(config, withoutKey);
-  const committed = listFiles(REPO_ROOT, W).filter((name) => /\.(md|yml)$/.test(name) && !name.endsWith(".lock.yml"));
+  // renderFleet() renders the intended repository config; the committed one is what the compiler of record accepts:
+  // gh-aw v1.0.1 rejects protected_files, so the committed file is the render without that key (AC55, section 4).
+  const { protected_files: protectedFiles, ...acceptedByCompiler } = JSON.parse(rendered.get(`${W}/aw.json`));
+  assert.deepEqual(protectedFiles, { exclude: [] });
+  assert.deepEqual(JSON.parse(readText(abs(W, "aw.json"))), acceptedByCompiler);
+  // Files that the compiler leaves behind for cross-repository targets are ignored by git and are not part of the fleet.
+  const committed = listFiles(REPO_ROOT, W).filter((name) => /\.(md|yml)$/.test(name) && !name.endsWith(".lock.yml") && !/\/agentics-maintenance[^/]*\.yml$/.test(name));
   assert.deepEqual(committed, [...rendered.keys()].filter((name) => /\.(md|yml)$/.test(name)).sort());
 });
 
