@@ -4,7 +4,9 @@
 // misses, and a field is only changed when its flag was passed explicitly in this run. applyDataToText then turns the
 // difference between the old and the new document into the smallest text edits (insert a key, replace a scalar,
 // append an array item), so that every other byte of the file — comments, blank lines, key order, quoting — stays as it
-// was. A file that already holds the entries is left byte-identical.
+// was. A file that already holds the entries is left byte-identical. An edit that cannot be made in place (a field that
+// is reached through an alias or a merge key, say) is refused: the file is never rebuilt from the data, because that
+// would delete comments and blank lines and re-style entries that this run was not asked to change.
 
 import YAML from "yaml";
 import { SdlcError } from "./errors.mjs";
@@ -112,11 +114,16 @@ function insertLines(text, offset, lines, eol) {
   return `${text.slice(0, offset)}${prefix}${lines.join(eol)}${eol}${text.slice(offset)}`;
 }
 
-function documentOf(value) {
+function documentOf(value, { flow = false } = {}) {
   const document = new YAML.Document(value);
   YAML.visit(document, {
     Pair(_, pair) {
       if (pair.key?.value === "schedule" && typeof pair.value?.value === "string") pair.value.type = "QUOTE_DOUBLE";
+    },
+    // inside a flow collection a string with a line break has to be one double-quoted line: a block scalar is not allowed there
+    // and a folded one would break the indentation that a flow collection in a block collection needs
+    Scalar(_, node) {
+      if (flow && typeof node.value === "string" && node.value.includes("\n")) node.type = "QUOTE_DOUBLE";
     },
   });
   return document;
@@ -133,13 +140,89 @@ function scalarText(node, value) {
 
 const nodeAt = (document, path) => (path.length === 0 ? document.contents : document.getIn(path, true));
 
+/** `value` as one single-line flow node, for insertion inside a flow collection (a block scalar or block collection is not allowed there). */
+function flowText(value) {
+  if (value === null || typeof value !== "object") return scalarText({}, value);
+  return documentOf(value, { flow: true }).toString({ lineWidth: 0, indent: 2, collectionStyle: "flow" }).trimEnd();
+}
+
+/** `key: value` in flow style: the text of one entry of a flow mapping. */
+function flowPair(key, value) {
+  const match = /^\{ ([\s\S]*) \}$/.exec(flowText({ [key]: value }));
+  return match ? match[1] : null;
+}
+
+/** True when a collection above the node at `path` is written in flow style, so that the node itself can only be edited in flow style. */
+function inFlowContext(document, path) {
+  for (let length = 0; length < path.length; length += 1) {
+    const ancestor = nodeAt(document, path.slice(0, length));
+    if (YAML.isCollection(ancestor) && ancestor.flow) return true;
+  }
+  return false;
+}
+
+/** The end of the last entry of a non-empty flow collection (an entry without a value ends with its key). */
+const endOfLastEntry = (collection) => {
+  const last = collection.items.at(-1);
+  return YAML.isPair(last) ? (last.value ?? last.key).range[1] : last.range[1];
+};
+
+/**
+ * An empty flow collection (`{}` or `[]`) that is the value of a block-mapping key becomes a block collection on the lines
+ * after its key, the way a new entry is written; a comment after the empty collection stays on the key's line. Returns null
+ * when the collection is not the value of a key that sits on the same line.
+ */
+function expandEmptyFlow({ text, document, path, node, blockLines, eol }) {
+  const parent = nodeAt(document, path.slice(0, -1));
+  const pair = YAML.isMap(parent) ? parent.items.find((candidate) => candidate.key?.value === path.at(-1)) : null;
+  if (!pair || pair.value !== node) return null;
+  const head = text.slice(0, node.range[0]).replace(/[ \t]+$/, "");
+  if (head === "" || head.endsWith("\n")) return null;
+  const keyColumn = columnOf(text, pair.key.range[0]);
+  const lineEnd = lineAfter(text, node.range[1]);
+  const tail = text.slice(node.range[1], lineEnd);
+  const lineBreak = tail.endsWith("\n") ? "" : eol; // the last line of the file may have no line break of its own
+  const lines = blockLines.map((line) => `${" ".repeat(keyColumn + 2)}${line}`);
+  return `${head}${tail}${lineBreak}${lines.join(eol)}${eol}${text.slice(lineEnd)}`;
+}
+
+/**
+ * Adds entries to a flow collection. An empty collection that stands in block context is expanded (expandEmptyFlow); every
+ * other one — empty or not, and every one inside another flow collection, where a block collection is not allowed — is
+ * extended in place, in flow style, so that only the line of the collection changes.
+ * @param {string[]} entries the new entries as flow text (`key: value` pairs of a mapping, items of a sequence)
+ * @param {string[]} blockLines the same entries as block-style lines
+ */
+function extendFlow({ text, document, path, node, entries, blockLines, eol }) {
+  const [start, end] = node.range;
+  const inner = text.slice(start + 1, end - 1);
+  if (node.items.length === 0) {
+    if (inner.trim() === "" && !inFlowContext(document, path)) {
+      const expanded = expandEmptyFlow({ text, document, path, node, blockLines, eol });
+      if (expanded !== null) return expanded;
+    }
+    if (inner.trim() === "") return `${text.slice(0, start)}${text[start]} ${entries.join(", ")} ${text[end - 1]}${text.slice(end)}`;
+    return `${text.slice(0, start + 1)} ${entries.join(", ")}${text.slice(start + 1)}`; // a comment inside the brackets stays where it is
+  }
+  const after = endOfLastEntry(node);
+  return `${text.slice(0, after)}, ${entries.join(", ")}${text.slice(after)}`;
+}
+
+/** `projects[1].driftAudit.schedule` for the path ["projects", 1, "driftAudit", "schedule"]. */
+const describePath = (path) => path.map((part, index) => (typeof part === "number" ? `[${part}]` : `${index === 0 ? "" : "."}${part}`)).join("") || "the top level";
+
 function applyEdit(text, edit) {
   const eol = eolOf(text);
   const document = YAML.parseDocument(text);
   const { path } = edit;
   if (edit.op === "insert-key") {
     const map = nodeAt(document, path);
-    if (!YAML.isMap(map) || map.flow || map.items.length === 0) return null;
+    if (!YAML.isMap(map)) return null;
+    if (map.flow) {
+      const entry = flowPair(edit.key, edit.value);
+      return entry === null ? null : extendFlow({ text, document, path, node: map, entries: [entry], blockLines: linesOf({ [edit.key]: edit.value }), eol });
+    }
+    if (map.items.length === 0) return null;
     const indent = columnOf(text, map.items[0].key.range[0]);
     const last = map.items.at(-1);
     const end = (last.value ?? last.key).range[1];
@@ -152,17 +235,7 @@ function applyEdit(text, edit) {
     if (!YAML.isSeq(sequence)) return null;
     const topLevel = path.length === 1;
     if (sequence.flow) {
-      if (sequence.items.length > 0) return null;
-      const parent = nodeAt(document, path.slice(0, -1));
-      const pair = YAML.isMap(parent) ? parent.items.find((candidate) => candidate.key?.value === path.at(-1)) : null;
-      if (!pair) return null;
-      const keyColumn = columnOf(text, pair.key.range[0]);
-      const head = text.slice(0, sequence.range[0]).replace(/[ \t]+$/, "");
-      const lineEnd = lineAfter(text, sequence.range[1]);
-      const tail = text.slice(sequence.range[1], lineEnd);
-      const lines = edit.items.flatMap((item) => linesOf([item]).map((line) => `${" ".repeat(keyColumn + 2)}${line}`));
-      const lineBreak = tail.endsWith("\n") ? "" : eol; // the last line of the file may have no line break of its own
-      return `${head}${tail}${lineBreak}${lines.join(eol)}${eol}${text.slice(lineEnd)}`;
+      return extendFlow({ text, document, path, node: sequence, entries: edit.items.map(flowText), blockLines: edit.items.flatMap((item) => linesOf([item])), eol });
     }
     const dashColumn = columnOf(text, sequence.items[0].range[0]) - 2;
     const lines = edit.items.flatMap((item) => [...(topLevel ? [""] : []), ...linesOf([item]).map((line) => `${" ".repeat(Math.max(dashColumn, 0))}${line}`)]);
@@ -194,32 +267,31 @@ function diffEdits(path, before, after, edits) {
   }
 }
 
-/** The full-document fallback for the shapes the text editor does not handle (it may re-format the file). */
-function reserialize(text, data) {
-  const document = YAML.parseDocument(text);
-  document.contents = document.createNode(data);
-  return document.toString({ lineWidth: 0, indent: 2 });
-}
-
 /**
  * Turns the change from `original` to `merged` into text edits.
+ * @param {string} text the manifest as it is on disk
+ * @param {object} original the parsed `text`
+ * @param {object} merged the document that the edited text has to parse to
+ * @param {{ label?: string }} [options] how the manifest is named in a diagnostic
  * @returns {string} the new text; identical to `text` when nothing changed
- * @throws {SdlcError} when the edited text does not parse back to `merged`
+ * @throws {SdlcError} when an edit cannot be made in place (the file is never rebuilt from the data, so no comment, blank
+ *   line or style of an entry that was not asked to change is lost), or when the edited text does not parse back to `merged`
  */
-export function applyDataToText(text, original, merged) {
+export function applyDataToText(text, original, merged, { label = "the manifest" } = {}) {
   const edits = [];
   diffEdits([], original, merged, edits);
   let current = text;
-  let exact = true;
   for (const edit of edits) {
     const next = edit.op === "unsupported" ? null : applyEdit(current, edit);
     if (next === null) {
-      exact = false;
-      break;
+      throw new SdlcError(
+        `${label} cannot be updated in place at ${describePath(edit.path)}: the field is reached through an alias or a merge key, or its form is not one that can be edited without ` +
+          `rewriting the file, which would change comments, blank lines and entries that this run was not asked to change. Nothing was written; edit ${label} by hand.`,
+        { code: "manifest-edit" },
+      );
     }
     current = next;
   }
-  if (!exact) current = reserialize(text, merged);
   let reparsed;
   try {
     reparsed = YAML.parse(current);

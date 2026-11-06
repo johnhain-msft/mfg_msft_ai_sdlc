@@ -446,3 +446,264 @@ test("AC51: applyDataToText returns the text itself when nothing changed and ref
   assert.ok(edited.startsWith("# keep\nprojects:\n  - projectKey: a   # note\n    repo: o/a\n"));
   assert.deepEqual(YAML.parse(edited), merged);
 });
+
+// --- flow-style and empty collections: a field that has to grow is edited in its own line, never by rebuilding the file ---------
+
+const FLOW_MANIFEST = [
+  "# operator comment that must survive",
+  "#   indented comment line",
+  "projects:",
+  "  # the first project",
+  "  - projectKey: node-app",
+  "    repo: example-owner/node-app",
+  "    defaultBranch: main",
+  "    deconflictInRepoSchedules: none",
+  "    deconflictWorkflowIds: []",
+  "    driftAudit:",
+  "      enabled: true",
+  '      schedule: "0 6 * * 1"',
+  "      upkeepStrategy: content-and-docs-sync",
+  '      instructions: ""',
+  "      instructionsFile: null",
+  "      knowledgeSources:",
+  "        watchUrls: []",
+  "        packageManifests: []",
+  "        mcpServers: {}",
+  "      buildCommands: []",
+  "      verifyCommands: []",
+  "      draft: false",
+  "      reviewers: []",
+  "",
+  "  # the second project, written in flow style",
+  "  - projectKey: second",
+  "    repo: example-owner/second",
+  "    defaultBranch: main",
+  "    deconflictInRepoSchedules: none",
+  "    deconflictWorkflowIds: []",
+  "    driftAudit:",
+  "      enabled: false",
+  '      schedule: "0 7 * * 2"',
+  "      upkeepStrategy: custom",
+  '      instructions: ""',
+  "      instructionsFile: null",
+  "      knowledgeSources: { watchUrls: [], packageManifests: [ package.json ], mcpServers: {} }",
+  "      buildCommands: []",
+  "      verifyCommands: [ 'npm test' ]   # single quotes, flow style",
+  "      draft: false",
+  "      reviewers: [ alice, bob ]",
+  "",
+  "# before the edges",
+  "dependencyEdges: []",
+  "",
+].join("\n");
+
+const CONTEXT7_BLOCK = ["+          context7:", "+            command: npx", "+            args:", "+              - -y", '+              - "@upstash/context7-mcp@latest"'];
+
+/** The lines that `git diff` reports as removed ("-...") and added ("+...") in sdlc.yaml, in the order of the patch. */
+const changedLines = (scenario) => git(scenario, "diff", "-U0", "--", "sdlc.yaml").split("\n").filter((line) => /^[-+]/.test(line) && !/^(---|\+\+\+) /.test(line));
+
+test("AC51: re-onboarding an entry with --strategy dependency-and-pattern-modernization fills its empty mcpServers: {} in place; comments, blank lines, quoting and flow-style entries survive", async () => {
+  await withManifest(FLOW_MANIFEST, async ({ scenario, run }) => {
+    const result = await run(["--repo", "example-owner/node-app", "--strategy", "dependency-and-pattern-modernization"]);
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(changedLines(scenario), [
+      "-      upkeepStrategy: content-and-docs-sync",
+      "+      upkeepStrategy: dependency-and-pattern-modernization",
+      "-        mcpServers: {}",
+      "+        mcpServers:",
+      ...CONTEXT7_BLOCK,
+    ]);
+    const after = scenario.workspace.read("sdlc.yaml");
+    for (const kept of ["# operator comment that must survive", "#   indented comment line", "  # the first project", '      schedule: "0 6 * * 1"', '      schedule: "0 7 * * 2"', "      knowledgeSources: { watchUrls: [], packageManifests: [ package.json ], mcpServers: {} }", "      verifyCommands: [ 'npm test' ]   # single quotes, flow style", "# before the edges"]) {
+      assert.ok(after.includes(`${kept}\n`), `kept: ${kept}`);
+    }
+    assert.ok(after.includes("      reviewers: []\n\n  # the second project, written in flow style\n"), "the blank line between the projects survives");
+    const data = YAML.parse(after);
+    assert.deepEqual(Object.keys(data.projects[0].driftAudit.knowledgeSources.mcpServers), ["context7"]);
+    assert.deepEqual(data.projects[1], YAML.parse(FLOW_MANIFEST).projects[1], "the other project is unchanged");
+  });
+});
+
+test("AC51: the preset's own entries: --strategy dependency-and-pattern-modernization on a project with mcpServers: {} changes two spots of the file and nothing else", async () => {
+  const repos = { ...REPOS, ...fixtureRepos({ "johnhain-msft/portfolio": "node-app" }) };
+  await withManifest(PRESET, async ({ scenario, run }) => {
+    const result = await run(["--repo", "johnhain-msft/portfolio", "--strategy", "dependency-and-pattern-modernization"]);
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(changedLines(scenario), [
+      "-      upkeepStrategy: content-and-docs-sync",
+      "+      upkeepStrategy: dependency-and-pattern-modernization",
+      "-        mcpServers: {}",
+      "+        mcpServers:",
+      ...CONTEXT7_BLOCK,
+    ]);
+    assert.equal(git(scenario, "diff", "--numstat", "--", "sdlc.yaml").trim(), "7\t2\tsdlc.yaml");
+    const expected = YAML.parse(PRESET);
+    const data = YAML.parse(scenario.workspace.read("sdlc.yaml"));
+    assert.deepEqual(data.projects.filter((project) => project.projectKey !== "portfolio"), expected.projects.filter((project) => project.projectKey !== "portfolio"), "every other project is unchanged");
+    assert.deepEqual(data.dependencyEdges, expected.dependencyEdges);
+  }, { fake: { repos } });
+});
+
+test("AC51: onboarding a repository and then re-onboarding it with --strategy dependency-and-pattern-modernization rewrites nothing but the strategy and its empty mcpServers", async () => {
+  await withManifest(PRESET, async ({ scenario, run }) => {
+    assert.equal((await run(["--repo", "example-owner/node-app", "--strategy", "content-and-docs-sync"])).code, 0);
+    scenario.workspace.commitAll("first onboarding");
+    const second = await run(["--repo", "example-owner/node-app", "--strategy", "dependency-and-pattern-modernization"]);
+    assert.equal(second.code, 0, second.stderr);
+    assert.deepEqual(changedLines(scenario), [
+      "-      upkeepStrategy: content-and-docs-sync",
+      "+      upkeepStrategy: dependency-and-pattern-modernization",
+      "-        mcpServers: {}",
+      "+        mcpServers:",
+      ...CONTEXT7_BLOCK,
+    ]);
+  });
+});
+
+/** applyDataToText for the change that `change` makes to the parsed text. */
+const applyChange = (text, change) => {
+  const original = YAML.parse(text);
+  const merged = structuredClone(original);
+  change(merged);
+  return applyDataToText(text, original, merged);
+};
+const CONTEXT7 = { command: "npx", args: ["-y", "@upstash/context7-mcp@latest"] };
+const CONTEXT7_FLOW = 'context7: { command: npx, args: [ -y, "@upstash/context7-mcp@latest" ] }';
+
+test("AC51: a key added to a non-empty flow mapping, and an item added to a non-empty flow sequence, go inside the brackets; the rest of the text is byte-identical", () => {
+  const text = [
+    "# keep",
+    "projects:",
+    "  - projectKey: a   # note",
+    "    knowledgeSources:",
+    '      mcpServers: { docs: { type: http, url: "https://docs.example/mcp" } }   # trailing',
+    "      verifyCommands: [ 'npm test' ]  # quoted",
+    "    other: 1",
+    "",
+  ].join("\n");
+  const edited = applyChange(text, (data) => {
+    data.projects[0].knowledgeSources.mcpServers.context7 = CONTEXT7;
+    data.projects[0].knowledgeSources.verifyCommands.push("npm run lint", "npm run build");
+  });
+  assert.equal(
+    edited,
+    text
+      .replace('url: "https://docs.example/mcp" } }', `url: "https://docs.example/mcp" }, ${CONTEXT7_FLOW} }`)
+      .replace("[ 'npm test' ]", "[ 'npm test', npm run lint, npm run build ]"),
+  );
+});
+
+test("AC51: inside a flow mapping a block collection is not allowed, so an empty {} or [] there is filled in flow style on its own line", () => {
+  const text = [
+    "projects:",
+    "  - projectKey: a",
+    "    driftAudit:",
+    "      # keep this comment",
+    "      knowledgeSources: { watchUrls: [], packageManifests: [], mcpServers: {} }   # one line",
+    "      draft: false",
+    "",
+  ].join("\n");
+  const watch = { url: "https://example.com/changelog", label: "example.com/changelog", kind: "changelog" };
+  const edited = applyChange(text, (data) => {
+    const sources = data.projects[0].driftAudit.knowledgeSources;
+    sources.watchUrls.push(watch);
+    sources.mcpServers.context7 = CONTEXT7;
+  });
+  assert.equal(
+    edited,
+    text.replace(
+      "{ watchUrls: [], packageManifests: [], mcpServers: {} }",
+      `{ watchUrls: [ { url: https://example.com/changelog, label: example.com/changelog, kind: changelog } ], packageManifests: [], mcpServers: { ${CONTEXT7_FLOW} } }`,
+    ),
+  );
+});
+
+test("AC51: a flow mapping that spans lines, comments and CRLF line endings: the new key goes after the last entry and every other byte stays", () => {
+  const text = ["projects:", "  - projectKey: a", "    mcpServers: {", "      docs: { type: http },   # first", "      last: { type: http }   # the last one", "    }", "    after: true", ""].join("\r\n");
+  const edited = applyChange(text, (data) => {
+    data.projects[0].mcpServers.context7 = CONTEXT7;
+  });
+  assert.equal(edited, text.replace("last: { type: http }   # the last one", `last: { type: http }, ${CONTEXT7_FLOW}   # the last one`));
+  assert.equal(/[^\r]\n/.test(edited), false, "no bare LF was introduced");
+});
+
+test("AC51: an empty {} that stands in block context becomes a block mapping under its key, and a comment after it stays on the key's line", () => {
+  const text = ["projects:", "  - projectKey: a", "    mcpServers: {}   # none yet", "    after: true", ""].join("\n");
+  const edited = applyChange(text, (data) => {
+    data.projects[0].mcpServers.context7 = CONTEXT7;
+  });
+  assert.equal(edited, ["projects:", "  - projectKey: a", "    mcpServers:   # none yet", "      context7:", "        command: npx", "        args:", "          - -y", '          - "@upstash/context7-mcp@latest"', "    after: true", ""].join("\n"));
+  const lastLine = "projects:\n  - projectKey: a\n    mcpServers: {}";
+  assert.ok(applyChange(lastLine, (data) => (data.projects[0].mcpServers.context7 = CONTEXT7)).startsWith("projects:\n  - projectKey: a\n    mcpServers:\n      context7:\n"), "also when {} is on the last line of a file without a line break");
+});
+
+test("AC51: an empty [] and a comment inside the brackets: the item is added without losing the comment", () => {
+  const text = ["projects:", "  - projectKey: a", "    reviewers: [ # nobody yet", "    ]", "    after: true", ""].join("\n");
+  const edited = applyChange(text, (data) => data.projects[0].reviewers.push("alice"));
+  assert.ok(edited.includes("# nobody yet"));
+  assert.deepEqual(YAML.parse(edited).projects[0].reviewers, ["alice"]);
+  assert.ok(edited.endsWith("    after: true\n"));
+});
+
+test("AC51: a string with a line break inside an entry that is added to a flow collection is written as one double-quoted line", () => {
+  const text = ["projects:", "  - projectKey: a", "    notes: [ one ]", "    after: true", ""].join("\n");
+  const edited = applyChange(text, (data) => data.projects[0].notes.push({ text: "first\nsecond", list: ["x\ny"] }));
+  assert.equal(edited, text.replace("[ one ]", '[ one, { text: "first\\nsecond", list: [ "x\\ny" ] } ]'));
+});
+
+test("AC51: an edit that cannot be made in place is refused, naming the field; the file is never rebuilt from the data", () => {
+  const text = ["# keep every comment", "base: &shared", "  schedule: \"0 6 * * 1\"", "projects:", "  - projectKey: a", "    driftAudit: *shared", "", "# trailing comment", ""].join("\n");
+  assert.throws(
+    () =>
+      applyChange(text, (data) => {
+        data.projects[0].driftAudit.schedule = "0 5 * * 0";
+      }),
+    (error) => error.code === "manifest-edit" && /cannot be updated in place at projects\[0\]\.driftAudit\.schedule/.test(error.message) && /Nothing was written/.test(error.message),
+  );
+  assert.throws(
+    () => applyDataToText(text, YAML.parse(text), { ...YAML.parse(text), projects: [] }, { label: "fleet.yaml" }),
+    (error) => /^fleet\.yaml cannot be updated in place at projects: .*edit fleet\.yaml by hand/.test(error.message),
+    "a shrinking array is refused too, and the manifest is named as the caller names it",
+  );
+});
+
+test("AC51: a re-run that needs an edit the file cannot take exits non-zero, writes nothing and never calls S1", async () => {
+  const manifest = [
+    "# keep every comment",
+    "projects:",
+    "  - projectKey: first",
+    "    repo: third-party/first",
+    "    defaultBranch: main",
+    "    deconflictInRepoSchedules: none",
+    "    deconflictWorkflowIds: []",
+    "    driftAudit: &shared",
+    "      enabled: true",
+    '      schedule: "0 6 * * 1"',
+    "      upkeepStrategy: custom",
+    '      instructions: ""',
+    "      instructionsFile: null",
+    "      knowledgeSources: { watchUrls: [], packageManifests: [], mcpServers: {} }",
+    "      buildCommands: []",
+    "      verifyCommands: [ 'npm test' ]",
+    "      draft: false",
+    "      reviewers: []",
+    "  - projectKey: node-app",
+    "    repo: example-owner/node-app",
+    "    defaultBranch: main",
+    "    deconflictInRepoSchedules: none",
+    "    deconflictWorkflowIds: []",
+    "    driftAudit: *shared",
+    "",
+    "dependencyEdges: []",
+    "",
+  ].join("\n");
+  await withManifest(manifest, async ({ scenario, run }) => {
+    const result = await run(["--repo", "example-owner/node-app", "--schedule", "0 5 * * 0"]);
+    assert.notEqual(result.code, 0);
+    assert.match(result.stderr, /sdlc\.yaml cannot be updated in place at projects\[1\]\.driftAudit\.schedule/);
+    assert.match(result.stderr, /Nothing was written; edit sdlc\.yaml by hand\./);
+    assert.equal(scenario.workspace.read("sdlc.yaml"), manifest);
+    assert.equal(git(scenario, "status", "--porcelain", "--untracked-files=all"), "", "no file was written");
+    assert.equal(scenario.reconcile.calls.length, 0);
+  });
+});
