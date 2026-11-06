@@ -9,7 +9,7 @@ import YAML from "yaml";
 import { findCommitPointer } from "../../bin/lib/inspect-repo.mjs";
 import { assertNoCredentials, readOperatorInstructions } from "../../bin/lib/instructions-file.mjs";
 import { runManifestFlow } from "../../bin/lib/manifest-flow.mjs";
-import { Capture, createScenario, createWorkspace, fixtureRepos } from "./helpers/harness.mjs";
+import { Capture, createScenario, createWorkspace, fixtureRepos, recordFsWrites } from "./helpers/harness.mjs";
 import { createLogger } from "../../bin/lib/logger.mjs";
 import { loopback } from "./helpers/loopback-client.mjs";
 
@@ -137,9 +137,17 @@ for (const [kind, relative, content] of [
     repositories["example-owner/node-app"].files[relative(token)] = content;
     const scenario = await createScenario({ fake: { repos: repositories } });
     try {
-      const run = await runOnboard(scenario, ["--repo", "example-owner/node-app"]);
+      const before = scenario.workspace.read("sdlc.yaml");
+      const { result: run, writes } = await recordFsWrites(() => runOnboard(scenario, ["--repo", "example-owner/node-app"]));
       const written = [scenario.workspace.read("sdlc.yaml")];
       if (scenario.workspace.exists("instructions/node-app.md")) written.push(scenario.workspace.read("instructions/node-app.md"));
+      assert.notEqual(run.code, 0, "a credential must cause refusal, not merely disappear from generated facts");
+      assert.match(run.stderr, /appears to contain a credential/);
+      assert.deepEqual(writes, [], "refusal must precede even a temporary output write");
+      assert.equal(scenario.workspace.read("sdlc.yaml"), before);
+      assert.equal(scenario.workspace.exists("instructions/node-app.md"), false);
+      assert.equal(scenario.reconcile.calls.length, 0);
+      assert.deepEqual(scenario.fake.nonGet(), []);
       assert.equal(written.some((text) => text.includes(token)), false, "generated facts must pass the same credential guard as operator text");
       assert.equal(run.stdout.includes(token) || run.stderr.includes(token), false);
     } finally {
