@@ -22,7 +22,8 @@ const GENERATED_BOUNDARY = new RegExp(`(?<![^\\n])${escapeRegExp(GENERATED_MARKE
 // precise (`sk-` would otherwise find an API key in `task-description-for-the-long-running-job`), the boundary is a character that is not a letter or a digit:
 // `(?<![A-Za-z0-9])` before the credential, and `(?![A-Za-z0-9])` after a credential of a fixed length. It is not `\b`, which counts `_` as a part of a word and so
 // misses a credential after a file-name prefix (`backup_`) or before a suffix (`_old`) that it sees when the same credential stands alone. The GitHub prefixes are
-// specific enough to need no boundary, as `gho_` never did.
+// specific enough to need no boundary, as `gho_` never did; for the other formats a credential that is glued to letters or digits (`backup2AKIA...`) is part of a
+// longer word, and is not looked for.
 const CREDENTIAL_PATTERNS = [
   // private keys: PEM, OpenSSH and PGP blocks
   /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/,
