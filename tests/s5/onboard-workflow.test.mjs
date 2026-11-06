@@ -1,7 +1,9 @@
 // AC53: .github/workflows/sdlc-onboard.md, whose only writer is src/reconcile.mjs (SPEC-01 AC56) and which S5 tests as rendered, is a gh-aw
-// workflow that dispatches with one input per flag of bin/sdlc-onboard.mjs, installs gh-aw >= 1.0.1 through a pinned action, runs
-// `node bin/sdlc-onboard.mjs`, mints its App token from vars.APP_CLIENT_ID and secrets.APP_PRIVATE_KEY, opens its pull request through
-// safe-outputs.create-pull-request with auto-merge: false, and never echoes the App private key. The real compiler check is opt-in
+// workflow that dispatches with one input per flag of bin/sdlc-onboard.mjs, is compiled by gh-aw >= 1.0.1 in strict mode with every action pinned,
+// tells the agent to run `node bin/sdlc-onboard.mjs`, mints its App token from vars.APP_CLIENT_ID and secrets.APP_PRIVATE_KEY, opens its pull
+// request through safe-outputs.create-pull-request with auto-merge: false, and never echoes the App private key. What the workflow needs in order
+// to run that command (the gh aw CLI, the npm dependencies, the App credentials in the environment of the step that runs it) is not rendered by
+// SPEC-01 AC56: that clause is gated by OQ51 and is the TODO test at the end of the rendered-workflow tests. The real compiler check is opt-in
 // (SDLC_REAL_GH_AW=1) because it needs the gh-aw CLI.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
@@ -12,7 +14,7 @@ import test from "node:test";
 import YAML from "yaml";
 import { ONBOARD_USAGE } from "../../bin/lib/cli-flags.mjs";
 import { ghEnvironment } from "../../bin/lib/gh-runner.mjs";
-import { MIN_GH_AW_VERSION, compareVersions, parseVersion } from "../../bin/lib/ghaw-version.mjs";
+import { MIN_GH_AW_VERSION, compareVersions, isAcceptableVersion, parseVersion } from "../../bin/lib/ghaw-version.mjs";
 import { REPO_ROOT, createScenario, fixtureRepos } from "./helpers/harness.mjs";
 
 const WORKFLOW = ".github/workflows/sdlc-onboard.md";
@@ -96,7 +98,7 @@ test("AC53: no step echoes secrets.APP_PRIVATE_KEY: it appears only as the priva
   assert.equal(/secrets\.APP_PRIVATE_KEY/.test(body), false);
 });
 
-test("AC53: gh-aw >= 1.0.1 is installed through a step whose action reference is pinned to a commit SHA", () => {
+test("AC53: the workflow is compiled by gh-aw >= 1.0.1 in strict mode, and every action that it uses, the gh-aw runtime setup included, is pinned to a commit SHA", () => {
   const metadata = JSON.parse(/^# gh-aw-metadata: (.*)$/m.exec(lockText)[1]);
   assert.ok(compareVersions(parseVersion(metadata.compiler_version), parseVersion(MIN_GH_AW_VERSION)) >= 0, `compiled with gh-aw ${metadata.compiler_version}`);
   assert.equal(metadata.strict, true, "compiled in strict mode");
@@ -106,8 +108,76 @@ test("AC53: gh-aw >= 1.0.1 is installed through a step whose action reference is
     assert.match(step.uses, /^github\/gh-aw-actions\/setup@[0-9a-f]{40}$/, "pinned to a full commit SHA");
     const comment = new RegExp(`${step.uses.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} # (v\\S+)`).exec(lockText);
     assert.ok(comment && compareVersions(parseVersion(comment[1]), parseVersion(MIN_GH_AW_VERSION)) >= 0, `the pin is documented as ${comment?.[1]}`);
+    // This step is the gh-aw runtime of the compiled job: it copies the runtime scripts into runner.temp. It does not install the `gh aw` CLI, so
+    // it is not evidence that bin/sdlc-onboard.mjs (whose first act is `gh aw version`) can run in the workflow: see the TODO test below (OQ51).
+    assert.equal(step.name, "Setup Scripts");
+    assert.match(step.with.destination, /gh-aw\/actions$/);
   }
   for (const step of steps.filter((entry) => entry.uses)) assert.match(step.uses, /^[^@]+@[0-9a-f]{40}$|^\.\//, `${step.uses} is pinned`);
+});
+
+/**
+ * What a workflow needs, beyond its dispatch inputs, to run `node bin/sdlc-onboard.mjs` (OQ51): the gh aw CLI at >= 1.0.1 (the version gate of AC6
+ * runs it first), the npm dependencies, a step that runs the command with the App credentials in its environment (AC17), and, when no step runs
+ * it so that the agent has to, network access to the GitHub API. Returns what is missing.
+ * @param {{ steps: object[], allowedHosts: string[] }} workflow every step of every job, and the network.allowed of the frontmatter
+ */
+function missingToRunTheCommand({ steps, allowedHosts }) {
+  const installsCli = (step) =>
+    /^github\/gh-aw(?:-actions)?\/(?:actions\/)?setup-cli@[0-9a-f]{40}$/.test(step.uses ?? "")
+      ? isAcceptableVersion(step.with?.version)
+      : isAcceptableVersion(/gh extension install github\/gh-aw(?:@|\s+--pin\s+)(\S+)/.exec(step.run ?? "")?.[1]);
+  const holdsCredentials = (step) => /vars\.APP_CLIENT_ID/.test(String(step.env?.APP_CLIENT_ID ?? "")) && /secrets\.APP_PRIVATE_KEY/.test(String(step.env?.APP_PRIVATE_KEY ?? ""));
+  const runners = steps.filter((step) => /bin\/sdlc-onboard\.mjs/.test(step.run ?? ""));
+  const missing = [];
+  if (!steps.some(installsCli)) missing.push("a pinned step that installs the gh aw CLI at >= 1.0.1 (the version gate of AC6 runs `gh aw version` first)");
+  if (!steps.some((step) => /\bnpm (?:ci|install)\b/.test(step.run ?? ""))) missing.push("a step that installs the npm dependencies (yaml, libsodium-wrappers)");
+  if (runners.length === 0) missing.push("a step that runs `node bin/sdlc-onboard.mjs`");
+  if (!steps.some(holdsCredentials)) missing.push("APP_CLIENT_ID and APP_PRIVATE_KEY in the environment of the step that runs the command (AC17)");
+  if (runners.length === 0 && !allowedHosts.some((host) => host === "api.github.com" || host === "github")) {
+    missing.push(`network access to the GitHub API for the command (the agent runs with network.allowed ${JSON.stringify(allowedHosts)})`);
+  }
+  return missing;
+}
+
+// OQ51: SPEC-01 AC56 renders the onboarding workflow without any of the things that its own instruction needs, and S5 may not edit
+// src/reconcile.mjs or the rendered workflow (SPEC-01 AC14). This test asserts what a runnable workflow has and fails against the workflow that
+// is rendered today, so it is a TODO: reported as such, it does not fail the gate, and it must start to pass the day S1 renders them.
+test(
+  "AC53 (gated by OQ51): the dispatched workflow can run `node bin/sdlc-onboard.mjs`: it installs the gh aw CLI and the dependencies, and a step that runs the command holds the App credentials",
+  { todo: "OQ51: SPEC-01 AC56 renders no CLI install, no dependency install and no step that holds APP_CLIENT_ID and APP_PRIVATE_KEY while it runs the command; resolving it needs an S1 change" },
+  () => {
+    assert.deepEqual(missingToRunTheCommand({ steps, allowedHosts: front.network?.allowed ?? [] }), [], "the rendered workflow cannot run its own instruction");
+  },
+);
+
+test("AC53: the OQ51 check is not vacuous: it names what the rendered workflow lacks, and accepts a workflow that has every prerequisite", () => {
+  const complete = [
+    { uses: `github/gh-aw/actions/setup-cli@${"a".repeat(40)}`, with: { version: "v1.0.1" } },
+    { run: "npm ci --ignore-scripts" },
+    { run: "node bin/sdlc-onboard.mjs --repo x/y", env: { APP_CLIENT_ID: "${{ vars.APP_CLIENT_ID }}", APP_PRIVATE_KEY: "${{ secrets.APP_PRIVATE_KEY }}" } },
+  ];
+  assert.deepEqual(missingToRunTheCommand({ steps: complete, allowedHosts: [] }), []);
+  assert.deepEqual(missingToRunTheCommand({ steps: [complete[0], ...complete.slice(1)].map((step) => (step.with ? { ...step, with: { version: "v1.0.2" } } : step)), allowedHosts: [] }), [], "a newer CLI passes");
+  assert.deepEqual(
+    missingToRunTheCommand({ steps: [{ run: "gh extension install github/gh-aw --pin v1.0.1" }, ...complete.slice(1)], allowedHosts: [] }),
+    [],
+    "a pinned `gh extension install` is an installation too",
+  );
+
+  const NAMES = [[/installs the gh aw CLI/, "cli"], [/npm dependencies/, "dependencies"], [/runs `node bin/, "runner"], [/APP_CLIENT_ID/, "credentials"], [/network access/, "network"]];
+  const lacks = (steps, allowedHosts = []) => missingToRunTheCommand({ steps, allowedHosts }).map((entry) => NAMES.find(([pattern]) => pattern.test(entry))[1]);
+  assert.deepEqual(lacks([{ ...complete[0], with: { version: "v1.0.0" } }, ...complete.slice(1)]), ["cli"], "a CLI older than 1.0.1 does not count");
+  assert.deepEqual(lacks([{ run: "gh extension install github/gh-aw@v0.86.2" }, ...complete.slice(1)]), ["cli"], "an old pin does not count");
+  assert.deepEqual(lacks(complete.slice(0, 1).concat(complete.slice(2))), ["dependencies"], "no dependency install");
+  assert.deepEqual(lacks([...complete.slice(0, 2), { ...complete[2], env: {} }]), ["credentials"], "no credentials in the environment of the runner");
+  const minting = { uses: `actions/create-github-app-token@${"b".repeat(40)}`, with: { "client-id": "${{ vars.APP_CLIENT_ID }}", "private-key": "${{ secrets.APP_PRIVATE_KEY }}" } };
+  assert.deepEqual(lacks([...complete.slice(0, 2), minting, { run: "node bin/sdlc-onboard.mjs" }]), ["credentials"], "the token-minting inputs are not an environment");
+  assert.deepEqual(lacks(complete.slice(0, 2)), ["runner", "credentials", "network"], "no step runs the command: the agent would, with no network");
+  assert.deepEqual(lacks(complete.slice(0, 2), ["api.github.com"]), ["runner", "credentials"], "unless the agent may reach the GitHub API");
+
+  const missing = missingToRunTheCommand({ steps, allowedHosts: front.network?.allowed ?? [] });
+  assert.equal(missing.length, 5, `the rendered workflow lacks:\n${missing.join("\n")}`);
 });
 
 test("AC53: S5 does not write the workflow: nothing under bin/ names the onboarding workflow or its lock file", () => {
@@ -123,6 +193,8 @@ test("AC53: S5 does not write the workflow: nothing under bin/ names the onboard
   for (const file of files) assert.equal(/sdlc-onboard\.(md|lock\.yml)/.test(fs.readFileSync(file, "utf8")), false, `${file} names the rendered onboarding workflow`);
 });
 
+// This runs the CLI in process on the host, with fake App credentials in its environment: it covers the mapping of the eight inputs to the flags
+// and the result of the command, not the environment of the dispatched workflow (what the workflow itself lacks is the TODO test above, OQ51).
 test("AC53: running the command with every input that the workflow offers succeeds and records each of them", async () => {
   const scenario = await createScenario({ fake: { repos: fixtureRepos({ "example-owner/node-app": "node-app", "example-owner/edge-ok": "edge-ok" }) } });
   try {

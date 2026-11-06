@@ -108,8 +108,18 @@ The repository may also be given as one positional `<owner/repo>`. The command i
 invents a command: a command is only written when it is a script of the target's manifest. Existing entries are preserved
 byte for byte; re-onboarding changes only the fields whose flags you pass. `sdlc.yaml` is then validated and the
 workflows are recompiled through `src/reconcile.mjs`, and the new edge's `SDLC_SYNC_STATE_<SLUG>` variable is created
-if missing. The same command runs from `.github/workflows/sdlc-onboard.md` (`workflow_dispatch`), which opens a pull
-request that a human must review and merge: `auto-merge` is never enabled.
+if missing. `.github/workflows/sdlc-onboard.md`, a workflow with one `workflow_dispatch` input per flag, tells its agent to run the same
+command and to open a pull request that a human must review and merge: `auto-merge` is never enabled. As SPEC-01 renders it
+today that workflow installs neither the `gh aw` CLI nor the npm dependencies and gives no step `APP_CLIENT_ID` and
+`APP_PRIVATE_KEY`, so its agent cannot run the command yet (open question OQ51 in
+`specs/05-packaging-bootstrap-and-governance.md`); run the command from a working copy of this repository, as above.
+
+A `--downstream` repository must be under the same owner as this repository; the check is repeated on the name that GitHub
+resolves it to, so a transferred or renamed repository under another owner is refused. `--instructions` is read as a file
+only when the value is an existing file inside this working copy; a file outside it, a file that is a secret by name
+(`.env*`, `*.pem`, `id_rsa`, `credentials`, ...) and any text that holds a credential are refused before anything is written.
+An update that cannot be made in place, such as a field that a YAML alias supplies, is refused as well, with the file left
+as it was, instead of rewriting the file.
 
 The onboarding command needs `APP_CLIENT_ID` and `APP_PRIVATE_KEY` (to resolve the App slug for the reconciler) and the
 same engine credential environment as the bootstrap, because the engine authentication mode is part of what the
@@ -135,7 +145,9 @@ node --test tests/s5/*.test.mjs
 
 The S5 suites are hermetic: a no-network guard, an in-memory fake GitHub API, a fake `gh` and a recording reconciler stand
 in for everything outside the process. `SDLC_REAL_GH_AW=1 npm test` also runs the checks that need the real gh-aw CLI
-(v1.0.1 or newer): the real compiler on `aw.yml` and on the onboarding workflow.
+(v1.0.1 or newer): the real compiler on `aw.yml` and on the onboarding workflow. One test is reported as `todo` on purpose:
+`AC53 (gated by OQ51)` asserts what the onboarding workflow needs in order to run its own instruction and fails until
+SPEC-01 renders it (see Onboard above).
 
 ## Layout
 
