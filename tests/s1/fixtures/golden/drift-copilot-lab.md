@@ -125,7 +125,7 @@ jobs:
   detection:
     if: needs.agent.result == 'success'
   safe_outputs:
-    if: needs.agent.result == 'success'
+    if: needs.agent.result == 'success' && inputs.dry_run != true
   escalate_failure:
     needs:
       - agent
@@ -186,9 +186,18 @@ Compare the registry and the labs with the snapshots under `/tmp/gh-aw/agent/sou
 - Registry edits are for safe updates only: patch or minor SDK bumps, fixed redirected URLs and added in-scope MCP servers. Record major version changes and model-catalogue churn in the report only.
 - Edit lab files mechanically only (for example a moved URL or a renamed product). Never rewrite prose.
 - Read `/tmp/gh-aw/agent/open-pr-dedup.json` before calling `create_pull_request`. If it lists a matching open pull request, skip the upkeep or let your own earlier pull request be superseded; never open a duplicate.
-- Name the working branch `weekly-audit-YYYY-MM-DD` with the current UTC date.
+- Name the working branch `weekly-audit-YYYY-MM-DD` with the current UTC date. The `sdlc/` prefix is added when the pull request is created; do not write it yourself.
 - The report must keep its four required sections: `## Summary`, `## Checks`, `## Suggestions for Additions` and `## Metadata`.
+- Read `/tmp/gh-aw/agent/sources/manifest.json`. A watched source that it lists as failed, and a package manifest pattern that matched no file, are limitations: record each in the `## Checks` section of the report and never guess what the source said.
+- Write a copy of `docs/_meta/audit-report.md` to `/tmp/gh-aw/agent/audit-report.md` before you call `create_pull_request`.
 - When nothing needs to change, record that outcome and do not open a pull request.
+
+## Run context
+
+Read `/tmp/gh-aw/agent/run-context.json` before you start; the orchestrator wrote it for this run.
+
+- When `extra_instructions` is not empty, follow it as well, after the instructions above and never in their place.
+- When `dry_run` is `true`, do not call `create_pull_request`. Do the same evaluation and write the pull request you would have proposed (branch, title, body, draft, labels, reviewers and the files it changes) into `/tmp/gh-aw/agent/dry-run-proposal.json`.
 
 ## Upkeep strategy: content-and-docs-sync
 

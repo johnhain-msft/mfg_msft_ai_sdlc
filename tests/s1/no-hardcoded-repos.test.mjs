@@ -92,8 +92,9 @@ test("AC59: the fixture manifest with other owners and repositories renders vali
   }
 });
 
-test("AC59: the engine is the only file of src/ — the other streams' modules are not part of this workstream", () => {
+test("AC59: the reconciler engine is self-contained in src/reconcile.mjs and imports none of the other streams' modules", () => {
   const sources = listFiles(REPO_ROOT, "src");
-  assert.deepEqual(sources, ["src/reconcile.mjs"]);
+  assert.ok(sources.includes("src/reconcile.mjs"));
+  assert.deepEqual(engineFiles().filter((file) => file.startsWith("src/")), ["src/reconcile.mjs"]);
   assert.ok(referenceRequest());
 });

@@ -52,7 +52,10 @@ test("AC29: in every committed lock detection and safe_outputs also require the 
     const { detection, safe_outputs: safeOutputs } = lockOf(id).jobs;
     for (const job of [detection, safeOutputs]) {
       assert.ok(job.needs.includes("agent"), `${id}: needs ${JSON.stringify(job.needs)}`);
-      assert.ok(conditionOf(job).includes(`(${AGENT_SUCCESS_GUARD})`), `${id}: if ${conditionOf(job)}`);
+      assert.ok(conditionOf(job).includes(AGENT_SUCCESS_GUARD), `${id}: if ${conditionOf(job)}`);
+    }
+    if (id.startsWith("drift-")) {
+      assert.ok(conditionOf(safeOutputs).includes("inputs.dry_run != true"), `${id}: safe_outputs also guards on inputs.dry_run`);
     }
   }
 });
@@ -116,13 +119,17 @@ test("AC29: the condition evaluator follows the Actions expression semantics tha
   assert.equal(holds("contains(needs.agent.outputs.output_types, 'create_pull_request')", { context: { needs: { agent: { outputs: { output_types: "noop,create_pull_request" } } } } }), true);
 });
 
-test("AC29: detection and safe_outputs are rendered as the agent-success guard alone: nothing widens when they run", () => {
+const DRIFT_SAFE_OUTPUTS_GUARD = `${AGENT_SUCCESS_GUARD} && inputs.dry_run != true`;
+const expectedSafeOutputsGuard = (name) => (name.split("/").pop().startsWith("drift-") ? DRIFT_SAFE_OUTPUTS_GUARD : AGENT_SUCCESS_GUARD);
+
+test("AC29: detection and safe_outputs are rendered as the agent-success guard alone (with dry_run on drift safe_outputs): nothing widens when they run", () => {
   for (const id of ids) {
     const { jobs } = readWorkflow(`${id}.md`).frontmatter;
-    for (const name of BUILT_IN_JOB_SECTIONS) assert.deepEqual(jobs[name], { if: AGENT_SUCCESS_GUARD }, `${id}.${name}`);
+    assert.deepEqual(jobs.detection, { if: AGENT_SUCCESS_GUARD }, `${id}.detection`);
+    assert.deepEqual(jobs.safe_outputs, { if: expectedSafeOutputsGuard(`${id}.md`) }, `${id}.safe_outputs`);
   }
   for (const [name, text] of renderFleet(request).files) {
-    if (name.endsWith(".md")) assert.ok(text.includes("  safe_outputs:\n    if: needs.agent.result == 'success'\n"), name);
+    if (name.endsWith(".md")) assert.ok(text.includes(`  safe_outputs:\n    if: ${expectedSafeOutputsGuard(name)}\n`), name);
   }
 });
 
@@ -135,7 +142,8 @@ test("AC29: the guard is rendered for any manifest, not only for the preset: eve
     assert.deepEqual(sources.map(([name]) => name.split("/").pop()), ["cascade-mechanical-alpha-to-beta.md", "drift-alpha-service.md", "sdlc-onboard.md"]);
     for (const [name, text] of sources) {
       const { jobs } = parseWorkflow(text).frontmatter;
-      for (const section of BUILT_IN_JOB_SECTIONS) assert.deepEqual(jobs[section], { if: AGENT_SUCCESS_GUARD }, `${name}.${section}`);
+      assert.deepEqual(jobs.detection, { if: AGENT_SUCCESS_GUARD }, `${name}.detection`);
+      assert.deepEqual(jobs.safe_outputs, { if: expectedSafeOutputsGuard(name) }, `${name}.safe_outputs`);
     }
   } finally {
     workspace.cleanup();

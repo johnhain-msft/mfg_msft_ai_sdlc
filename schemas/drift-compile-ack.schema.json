@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DriftWorkflowCompileAck",
+  "description": "Contract C2 response: one acknowledgement per drift workflow that the reconciler rendered (buildAcks(request).drift of src/reconcile.mjs). SPEC-02 validates each entry here, as the consumer of the workflow it will run.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["workflowId", "lockPath", "targetRepo", "allowedNetworkDomains", "gateCommands"],
+  "properties": {
+    "workflowId": {
+      "description": "The identifier of the workflow, drift-<projectKey>; it is the one used in the title of the failure issue.",
+      "type": "string",
+      "pattern": "^drift-[a-z0-9][a-z0-9-]{0,62}$"
+    },
+    "lockPath": {
+      "description": "Path of the compiled workflow, .github/workflows/<workflowId>.lock.yml.",
+      "type": "string",
+      "pattern": "^\\.github/workflows/drift-[a-z0-9][a-z0-9-]{0,62}\\.lock\\.yml$"
+    },
+    "targetRepo": {
+      "description": "The repository the workflow maintains: its safe-outputs.create-pull-request.target-repo.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*/(?!\\.{1,2}$)[A-Za-z0-9._-]+$"
+    },
+    "allowedNetworkDomains": {
+      "description": "Literal hostnames of the watched URLs: the network.allowed of the workflow. A wildcard is never allowed.",
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$" }
+    },
+    "gateCommands": {
+      "description": "The verifyCommands that post-steps run, in order.",
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

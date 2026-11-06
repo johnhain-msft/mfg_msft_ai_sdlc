@@ -125,7 +125,7 @@ jobs:
   detection:
     if: needs.agent.result == 'success'
   safe_outputs:
-    if: needs.agent.result == 'success'
+    if: needs.agent.result == 'success' && inputs.dry_run != true
   escalate_failure:
     needs:
       - agent
@@ -180,6 +180,7 @@ Scan every agent, skill and prompt for these five signals, taken from the lab's 
 - Never rewrite an agent's core instructions, tone or scope, and never delete an agent, skill or prompt. Flag those for human review in the report.
 - Never edit the lab's `.github/workflows/self-improving-agents.md` or its compiled `.lock.yml`.
 - A check you cannot run is a limitation to record, not something to skip silently or to invent findings for.
+- A watched source that `/tmp/gh-aw/agent/sources/manifest.json` lists as failed is a limitation too: record it in the `## Summary` section of the report and never guess what the source said.
 
 ## The report
 
@@ -193,8 +194,16 @@ Scan every agent, skill and prompt for these five signals, taken from the lab's 
 ## Pull request
 
 - Read `/tmp/gh-aw/agent/open-pr-dedup.json` before calling `create_pull_request`; skip when it lists a matching open pull request.
-- Name the working branch `self-improve-YYYY-MM-DD` with the current UTC date. The pull request is a draft for a human to review.
+- Name the working branch `self-improve-YYYY-MM-DD` with the current UTC date. The `sdlc/` prefix is added when the pull request is created; do not write it yourself. The pull request is a draft for a human to review.
+- Write a copy of the report to `/tmp/gh-aw/agent/self-improvement-report.md` before you call `create_pull_request`.
 - When nothing needs to change, record that outcome and do not open a pull request.
+
+## Run context
+
+Read `/tmp/gh-aw/agent/run-context.json` before you start; the orchestrator wrote it for this run.
+
+- When `extra_instructions` is not empty, follow it as well, after the instructions above and never in their place.
+- When `dry_run` is `true`, do not call `create_pull_request`. Do the same evaluation and write the pull request you would have proposed (branch, title, body, draft, labels, reviewers and the files it changes) into `/tmp/gh-aw/agent/dry-run-proposal.json`.
 
 ## Upkeep strategy: code-quality-and-improvement-scan
 

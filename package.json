@@ -12,8 +12,9 @@
     "sdlc-onboard": "./bin/sdlc-onboard.mjs"
   },
   "scripts": {
-    "test": "node --test tests/s1/*.test.mjs tests/s5/*.test.mjs",
+    "test": "node --test tests/s1/*.test.mjs tests/s2/*.test.mjs tests/s5/*.test.mjs",
     "test:s1": "node --test tests/s1/*.test.mjs",
+    "test:s2": "node --test tests/s2/*.test.mjs",
     "test:s5": "node --test tests/s5/*.test.mjs",
     "reconcile": "node src/reconcile.mjs",
     "bootstrap": "node bin/sdlc-bootstrap.mjs",

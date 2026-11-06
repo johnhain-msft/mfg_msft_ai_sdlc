@@ -1,0 +1,2 @@
+#!/bin/sh
+exec "${SDLC_S2_NODE:-node}" "$(dirname "$0")/shim-runner.mjs" gh "$@"

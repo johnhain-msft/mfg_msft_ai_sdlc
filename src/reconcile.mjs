@@ -829,7 +829,11 @@ function isPostRunCheck(command) {
  * `&&`, so this guard can only narrow when the two jobs run (SPEC-01 AC29).
  */
 const AGENT_SUCCESS_GUARD = "needs.agent.result == 'success'";
-const agentSuccessGuards = () => ({ detection: { if: AGENT_SUCCESS_GUARD }, safe_outputs: { if: AGENT_SUCCESS_GUARD } });
+const DRIFT_SAFE_OUTPUTS_GUARD = "needs.agent.result == 'success' && inputs.dry_run != true";
+const agentSuccessGuards = ({ drift = false } = {}) => ({
+  detection: { if: AGENT_SUCCESS_GUARD },
+  safe_outputs: { if: drift ? DRIFT_SAFE_OUTPUTS_GUARD : AGENT_SUCCESS_GUARD },
+});
 
 // ---------------------------------------------------------------------------------------
 // Drift workflows
@@ -1029,7 +1033,7 @@ function renderDrift(ctx, project) {
     },
     engine: engineSection(ctx, { sdk: true }),
     tools: { "web-fetch": {}, bash: bashTool(ctx, ["git", "node", ...audit.buildCommands]), edit: {} },
-    jobs: { ...agentSuccessGuards(), escalate_failure: driftEscalation(ctx, project, workflowId) },
+    jobs: { ...agentSuccessGuards({ drift: true }), escalate_failure: driftEscalation(ctx, project, workflowId) },
   };
   return { id: workflowId, kind: "drift", project, text: serializeWorkflow(frontmatter, driftBody(ctx, project)) };
 }
