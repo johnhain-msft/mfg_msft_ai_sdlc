@@ -8,13 +8,13 @@ import test from "node:test";
 import { FLOW_TIMEOUT_MS, runManifestFlow } from "../../bin/lib/manifest-flow.mjs";
 import { createLogger } from "../../bin/lib/logger.mjs";
 import { Capture, createScenario, githubSideBrowser, parseRegistrationPage } from "./helpers/harness.mjs";
-import { loopback } from "./helpers/loopback-client.mjs";
+import { createLoopbackClient, loopback } from "./helpers/loopback-client.mjs";
 
 const USER_URL = "https://github.com/settings/apps/new";
 const ORG_URL = "https://github.com/organizations/example-org/settings/apps/new";
 const APP = { id: 7, slug: "flow-app", clientId: "Iv1.flow", pem: "-----BEGIN RSA PRIVATE KEY-----\nflow\n-----END RSA PRIVATE KEY-----\n", permissions: {} };
 
-function startFlow({ registrationBase = USER_URL, env = {}, timeoutMs, signal } = {}) {
+function startFlow({ registrationBase = USER_URL, env = {}, timeoutMs, signal, conversionGate } = {}) {
   const logs = new Capture();
   const conversions = [];
   const opened = [];
@@ -27,6 +27,7 @@ function startFlow({ registrationBase = USER_URL, env = {}, timeoutMs, signal } 
     registrationBase,
     convert: async (code) => {
       conversions.push(code);
+      if (conversions.length === 1 && conversionGate) await conversionGate;
       return APP;
     },
     openBrowser: async (url) => {
@@ -166,13 +167,38 @@ test("AC14: the accepted code characters are exactly [A-Za-z0-9_-]", async () =>
 });
 
 test("AC14: a second callback after the valid one cannot trigger a second conversion", async () => {
-  const flow = startFlow();
-  const { port } = await flow.ready;
-  const state = parseRegistrationPage((await get(port, "/register")).text).state;
-  const [first, second] = await loopback.requests([callbackRequest(port, state, "one"), callbackRequest(port, state, "two")]);
-  assert.deepEqual([first.status, second.status].sort(), [200, 400]);
-  await flow.promise;
-  assert.equal(flow.conversions.length, 1);
+  // Hold the first conversion open. An immediate conversion can close the listener before the second connection
+  // arrives, in which case ECONNRESET tests OS scheduling rather than the duplicate-code guard (AC14).
+  let release;
+  const conversionGate = new Promise((resolve) => { release = resolve; });
+  const controller = new AbortController();
+  const firstClient = createLoopbackClient();
+  const flow = startFlow({ conversionGate, signal: controller.signal });
+  let firstRequest;
+  try {
+    const { port } = await flow.ready;
+    const state = parseRegistrationPage((await get(port, "/register")).text).state;
+    firstRequest = firstClient.requests([callbackRequest(port, state, "one")]);
+    firstRequest.catch(() => {});
+    const deadline = Date.now() + 30000;
+    while (flow.conversions.length === 0 && Date.now() < deadline) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    assert.deepEqual(flow.conversions, ["one"], "the first callback reached the still-pending conversion");
+    const second = await validCallback(port, state, "two");
+    assert.equal(second.status, 400, "a concurrent duplicate is rejected while the listener is still open");
+    assert.deepEqual(flow.conversions, ["one"], "the rejected callback had no conversion effect");
+    release();
+    assert.equal((await firstRequest)[0].status, 200);
+    await flow.promise;
+    assert.equal(await refused(port), true, "the listener closes after the accepted conversion");
+  } finally {
+    release();
+    controller.abort();
+    await flow.promise.catch(() => {});
+    await firstRequest?.catch(() => {});
+    await firstClient.close();
+  }
 });
 
 test("AC15: 599,999 ms leaves the flow waiting and 600,000 ms aborts with the diagnostic, no conversion and a closed listener", async (t) => {
