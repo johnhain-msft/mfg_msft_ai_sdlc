@@ -110,8 +110,8 @@ byte for byte; re-onboarding changes only the fields whose flags you pass. `sdlc
 workflows are recompiled through `src/reconcile.mjs`, and the new edge's `SDLC_SYNC_STATE_<SLUG>` variable is created
 if missing. `.github/workflows/sdlc-onboard.md`, a workflow with one `workflow_dispatch` input per flag, tells its agent to run the same
 command and to open a pull request that a human must review and merge: `auto-merge` is never enabled. As SPEC-01 renders it
-today that workflow installs neither the `gh aw` CLI nor the npm dependencies and gives no step `APP_CLIENT_ID` and
-`APP_PRIVATE_KEY`, so its agent cannot run the command yet (open question OQ51 in
+today that workflow installs neither the `gh aw` CLI nor the npm dependencies and passes `APP_CLIENT_ID` and
+`APP_PRIVATE_KEY` only to its token-minting steps, so its agent cannot run the command yet (open question OQ51 in
 `specs/05-packaging-bootstrap-and-governance.md`); run the command from a working copy of this repository, as above.
 
 A `--downstream` repository must be under the same owner as this repository; the check is repeated on the name that GitHub
