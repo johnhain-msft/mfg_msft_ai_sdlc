@@ -128,7 +128,7 @@ test("AC45: a local path is recognised, an <owner>/<repo> is recognised, anythin
 test("AC45: a remote target is read with GET requests only and yields the same structure as the local inspection", async () => {
   const fake = await startFakeGitHub({ repos: fixtureRepos({ "example-owner/node-app": "node-app", "example-owner/codeowners-like": "codeowners-like", "example-owner/lab-like": "lab-like" }) });
   try {
-    const api = createApi({ baseUrl: fake.url, token: "operator-token-fixture" });
+    const api = createApi({ baseUrl: fake.url, fetch: fake.fetch, token: "operator-token-fixture" });
     for (const name of ["node-app", "codeowners-like", "lab-like"]) {
       const identity = await remoteIdentity({ api, slug: `example-owner/${name}` });
       assert.deepEqual([identity.repo, identity.defaultBranch, identity.headSha], [`example-owner/${name}`, "main", "a".repeat(40)]);

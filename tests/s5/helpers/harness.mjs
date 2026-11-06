@@ -1,20 +1,30 @@
 // Shared scaffolding for the S5 suites: a throwaway git working copy, the fake GitHub API, the fake `gh`, a recording
 // reconciler stub and a runner that executes either entry point in process with those dependencies injected.
 // Everything is hermetic: the no-network guard is installed as soon as this module is imported (AC55).
+//
+// A test process opens no TCP connection (see no-network.mjs for the runtime defect behind that rule): the fake GitHub
+// answers an in-process run in memory, a listener under test is reached through the loopback client of
+// loopback-client.mjs, and the suite ends by asserting that this process connected to nothing.
 
-import "./no-network.mjs";
+import { tcpConnects } from "./no-network.mjs";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawn } from "node:child_process";
+import { after } from "node:test";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { installFakeGh } from "./fake-gh.mjs";
 import { FIXTURE_PERMISSIONS, installationOn, startFakeGitHub, undeclaredRequests } from "./fake-github.mjs";
+import { loopback } from "./loopback-client.mjs";
 import { runBootstrap } from "../../../bin/lib/bootstrap-run.mjs";
 import { runOnboard } from "../../../bin/lib/onboard-run.mjs";
+
+after(() => {
+  assert.deepEqual(tcpConnects, [], "this test process opened a TCP connection: reach the fake GitHub with fake.fetch and a listener with the loopback client (tests/s5/helpers/no-network.mjs says why)");
+});
 
 export const REPO_ROOT = fileURLToPath(new URL("../../../", import.meta.url));
 export const FIXTURES = path.join(REPO_ROOT, "tests", "s5", "fixtures");
@@ -211,6 +221,9 @@ export async function createScenario(options = {}) {
       cwd: extra.cwd ?? workspace.dir,
       stdout,
       stderr,
+      // The fake GitHub answers an in-process run in memory, not over a loopback socket: the connect of a socket is the call
+      // that can kill a Windows process on Node.js 24.0 to 24.15 (see no-network.mjs), and an in-process run has no need of one.
+      fetch: extra.fetch ?? fake.fetch,
       openBrowser: extra.openBrowser ?? browser.open,
       prompt: extra.prompt ?? prompt,
       reconcile: extra.reconcile ?? reconcile,
@@ -317,7 +330,8 @@ export function parseRegistrationPage(html) {
 
 /**
  * An openBrowser stand-in that plays GitHub's part of the manifest flow: when the CLI opens its /register page it reads the
- * form and calls /callback back; when it opens an installation page it installs the App (unless `install` is false).
+ * form and calls /callback back (through the loopback client, so that this process does not connect); when it opens an
+ * installation page it installs the App (unless `install` is false).
  * @param {{ browser: { urls: string[] }, fake: object }} scenario
  * @param {{ code?: string, callbackQuery?: (state: string) => string, install?: boolean|object[], onCallback?: Function, onPage?: Function }} [options]
  */
@@ -325,12 +339,11 @@ export function githubSideBrowser(scenario, options = {}) {
   return async (url) => {
     scenario.browser.urls.push(url);
     if (/\/register$/.test(url)) {
-      const page = await fetch(url);
-      const parsed = parseRegistrationPage(await page.text());
+      const page = await loopback.request(url);
+      const parsed = parseRegistrationPage(page.text);
       options.onPage?.(parsed);
       const query = options.callbackQuery ? options.callbackQuery(parsed.state) : `code=${options.code ?? "abc123_-X"}&state=${parsed.state}`;
-      const response = await fetch(`${parsed.manifest.redirect_url}?${query}`);
-      await response.text();
+      const response = await loopback.request(`${parsed.manifest.redirect_url}?${query}`);
       options.onCallback?.(response.status);
     } else if (options.install !== false) {
       scenario.fake.setInstallations(Array.isArray(options.install) ? options.install : [installationOn("example-owner")]);

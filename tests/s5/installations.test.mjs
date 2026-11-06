@@ -171,10 +171,10 @@ test("AC18: SDLC_BOOTSTRAP_NO_OPEN_BROWSER keeps every page closed and the insta
 
 // --- the poll (AC19) -------------------------------------------------------------------------------------------------------
 
-// `inProcess` answers from the fake without a socket: a test that mocks the timers must not run undici, whose connection
-// timers live in module state that a mock leaves behind (a later mocked test of the same process could lose its own timer).
-function pollHarness(fake, { inProcess = false, ...overrides } = {}) {
-  const api = createApi({ baseUrl: fake.url, ...(inProcess ? { fetch: fake.fetch } : {}) });
+// The poll reads the fake in memory (`fake.fetch`, no socket): see tests/s5/helpers/no-network.mjs for why a socket is avoided,
+// and undici, whose connection timers live in module state that a mocked-timer test leaves behind, is not involved either.
+function pollHarness(fake, overrides = {}) {
+  const api = createApi({ baseUrl: fake.url, fetch: fake.fetch });
   const logs = new Capture();
   const key = fixtureAppKey().privateKeyPem;
   const waiting = [];
@@ -199,7 +199,7 @@ test("AC19: GET /app/installations is polled every 5 seconds until every require
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const fake = await startFakeGitHub({ installations: [] });
   try {
-    const harness = pollHarness(fake, { inProcess: true });
+    const harness = pollHarness(fake);
     await until(() => harness.waiting.length === 1, "the first poll to finish");
     assert.equal(harness.polls(), 1);
     t.mock.timers.tick(4999);
@@ -222,7 +222,7 @@ test("AC19: the poll is bounded at ten minutes and aborts with the incomplete-in
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const fake = await startFakeGitHub({ installations: [] });
   try {
-    const harness = pollHarness(fake, { inProcess: true, privateKeyInMemoryOnly: true });
+    const harness = pollHarness(fake, { privateKeyInMemoryOnly: true });
     await until(() => harness.waiting.length === 1, "the first poll to finish");
     t.mock.timers.tick(POLL_TIMEOUT_MS - 1);
     let settled = false;

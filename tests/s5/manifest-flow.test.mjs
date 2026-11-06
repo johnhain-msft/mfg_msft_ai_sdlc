@@ -1,13 +1,14 @@
 // AC11, AC12, AC14 and AC15: the loopback manifest flow. The listener is bound to 127.0.0.1 on an OS-assigned port, serves
 // only /register and /callback, posts the manifest to GitHub, accepts one valid callback (a code of [A-Za-z0-9_-] and the
-// per-run state), times out after ten minutes and is closed on every exit path.
+// per-run state), times out after ten minutes and is closed on every exit path. The requests to the listener, and the
+// attempts to connect to it after it is closed, are made by the loopback client (a helper process), because a test process
+// that connects can die silently on Windows with Node.js 24.0 to 24.15 (tests/s5/helpers/no-network.mjs).
 import assert from "node:assert/strict";
-import http from "node:http";
-import net from "node:net";
 import test from "node:test";
 import { FLOW_TIMEOUT_MS, runManifestFlow } from "../../bin/lib/manifest-flow.mjs";
 import { createLogger } from "../../bin/lib/logger.mjs";
 import { Capture, createScenario, githubSideBrowser, parseRegistrationPage } from "./helpers/harness.mjs";
+import { loopback } from "./helpers/loopback-client.mjs";
 
 const USER_URL = "https://github.com/settings/apps/new";
 const ORG_URL = "https://github.com/organizations/example-org/settings/apps/new";
@@ -41,30 +42,12 @@ function startFlow({ registrationBase = USER_URL, env = {}, timeoutMs, signal } 
   return { promise, ready, conversions, opened, logs };
 }
 
-const get = (port, path, { method = "GET", host } = {}) =>
-  new Promise((resolve, reject) => {
-    const request = http.request({ host: "127.0.0.1", port, path, method, headers: host ? { Host: host } : {}, agent: false }, (response) => {
-      const chunks = [];
-      response.on("data", (chunk) => chunks.push(chunk));
-      response.on("end", () => resolve({ status: response.statusCode, text: Buffer.concat(chunks).toString("utf8") }));
-    });
-    request.on("error", reject);
-    request.end();
-  });
+const request = (port, path, { method = "GET", host } = {}) => ({ url: `http://127.0.0.1:${port}${path}`, method, headers: host ? { Host: host } : {} });
+const get = async (port, path, options) => (await loopback.requests([request(port, path, options)]))[0];
+const refused = (port) => loopback.refused(port);
 
-const refused = (port) =>
-  new Promise((resolve) => {
-    const socket = net.connect({ host: "127.0.0.1", port });
-    socket.once("connect", () => {
-      socket.destroy();
-      resolve(false);
-    });
-    socket.once("error", (error) => resolve(error.code === "ECONNREFUSED"));
-  });
-
-async function validCallback(port, state, code = "abc123_-XYZ") {
-  return get(port, `/callback?code=${code}&state=${state}`);
-}
+const callbackRequest = (port, state, code = "abc123_-XYZ") => request(port, `/callback?code=${code}&state=${state}`);
+const validCallback = async (port, state, code) => (await loopback.requests([callbackRequest(port, state, code)]))[0];
 
 test("AC11: the listener is bound to 127.0.0.1 on an operating-system assigned port and serves only /register and /callback", async () => {
   const flow = startFlow();
@@ -186,7 +169,7 @@ test("AC14: a second callback after the valid one cannot trigger a second conver
   const flow = startFlow();
   const { port } = await flow.ready;
   const state = parseRegistrationPage((await get(port, "/register")).text).state;
-  const [first, second] = await Promise.all([validCallback(port, state, "one"), validCallback(port, state, "two")]);
+  const [first, second] = await loopback.requests([callbackRequest(port, state, "one"), callbackRequest(port, state, "two")]);
   assert.deepEqual([first.status, second.status].sort(), [200, 400]);
   await flow.promise;
   assert.equal(flow.conversions.length, 1);

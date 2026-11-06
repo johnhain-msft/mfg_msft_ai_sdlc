@@ -17,7 +17,7 @@ const SEAL_BYTES = 48; // crypto_box_SEALBYTES: an ephemeral public key (32) plu
 async function withFake(callback, options = {}, token = "operator-token-fixture") {
   const fake = await startFakeGitHub(options);
   try {
-    return await callback({ fake, api: createApi({ baseUrl: fake.url, token }) });
+    return await callback({ fake, api: createApi({ baseUrl: fake.url, fetch: fake.fetch, token }) });
   } finally {
     await fake.close();
   }

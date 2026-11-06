@@ -12,7 +12,7 @@ import { startFakeGitHub } from "./helpers/fake-github.mjs";
 test("AC16: a 201 is parsed to id, slug, client_id, pem and permissions with exactly one request that carries the Accept header", async () => {
   const fake = await startFakeGitHub({ app: { id: 9001, slug: "renamed-by-the-registrant", client_id: "Iv1.conversion", permissions: { contents: "write" } } });
   try {
-    const api = createApi({ baseUrl: fake.url, token: "operator-token-fixture" });
+    const api = createApi({ baseUrl: fake.url, fetch: fake.fetch, token: "operator-token-fixture" });
     const app = await convertManifestCode(api, "abc123_-X", createLogger(new Capture()));
     assert.deepEqual(Object.keys(app), ["id", "slug", "clientId", "pem", "permissions"]);
     assert.equal(app.id, 9001);
@@ -36,7 +36,7 @@ test("AC16: client_secret and webhook_secret are discarded: they are not part of
   try {
     const logs = new Capture();
     const logger = createLogger(logs);
-    const app = await convertManifestCode(createApi({ baseUrl: fake.url }), "code1", logger);
+    const app = await convertManifestCode(createApi({ baseUrl: fake.url, fetch: fake.fetch }), "code1", logger);
     assert.equal(JSON.stringify(app).includes("fixture-client-secret"), false);
     assert.equal(JSON.stringify(app).includes("fixture-webhook-secret"), false);
     logger.info("leak: fixture-client-secret-0123456789 and fixture-webhook-secret-0123456789");
@@ -56,7 +56,7 @@ for (const [status, expected] of [
   test(`AC16: a ${status} aborts with a diagnostic that names the status, after exactly one request`, async () => {
     const fake = await startFakeGitHub({ conversion: { status, message: "boom" } });
     try {
-      await assert.rejects(convertManifestCode(createApi({ baseUrl: fake.url }), "code1", createLogger(new Capture())), expected);
+      await assert.rejects(convertManifestCode(createApi({ baseUrl: fake.url, fetch: fake.fetch }), "code1", createLogger(new Capture())), expected);
       assert.equal(fake.requests("POST /app-manifests/:code/conversions").length, 1, "no retry loop");
     } finally {
       await fake.close();
@@ -68,7 +68,7 @@ test("AC16: a 201 whose body lacks a required field is refused", async () => {
   const fake = await startFakeGitHub();
   try {
     fake.override("POST", "/app-manifests/:code/conversions", { status: 201, body: { id: 1, slug: "x", client_id: "c" } });
-    await assert.rejects(convertManifestCode(createApi({ baseUrl: fake.url }), "code1", createLogger(new Capture())), /no 'pem'/);
+    await assert.rejects(convertManifestCode(createApi({ baseUrl: fake.url, fetch: fake.fetch }), "code1", createLogger(new Capture())), /no 'pem'/);
   } finally {
     await fake.close();
   }

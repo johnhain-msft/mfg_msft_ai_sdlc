@@ -20,7 +20,7 @@ const VARIABLES = `/repos/${CENTRAL}/actions/variables`;
 async function withFake(callback, options = {}) {
   const fake = await startFakeGitHub(options);
   try {
-    const api = createApi({ baseUrl: fake.url, token: "operator-token-fixture" });
+    const api = createApi({ baseUrl: fake.url, fetch: fake.fetch, token: "operator-token-fixture" });
     return await callback({ fake, api, context: { api, repo: CENTRAL } });
   } finally {
     await fake.close();

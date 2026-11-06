@@ -37,7 +37,7 @@ async function withFake(callback, options = {}) {
   const fake = await startFakeGitHub(options);
   const logs = new Capture();
   try {
-    return await callback({ fake, logs, api: createApi({ baseUrl: fake.url, token: "operator-token-fixture" }), logger: createLogger(logs) });
+    return await callback({ fake, logs, api: createApi({ baseUrl: fake.url, fetch: fake.fetch, token: "operator-token-fixture" }), logger: createLogger(logs) });
   } finally {
     await fake.close();
   }

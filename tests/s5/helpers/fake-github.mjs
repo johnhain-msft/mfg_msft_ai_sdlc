@@ -327,9 +327,11 @@ export async function startFakeGitHub(options = {}) {
   baseUrl = `http://127.0.0.1:${server.address().port}`;
 
   /**
-   * A `fetch` that answers from the same routes and the same log without a socket. A test that mocks the timers uses it:
-   * undici (the engine of the global fetch) keeps its connection timers in module state, and a mock leaves a dead timer
-   * there, so a later mocked test of the same process can lose one of its own timers.
+   * A `fetch` that answers from the same routes and the same log without a socket. It is the transport of every in-process
+   * run and client of the suites: a socket connect can kill a Windows process on Node.js 24.0 to 24.15 (see no-network.mjs), and
+   * undici (the engine of the global fetch) keeps its connection timers in module state, so a test that mocks the timers
+   * would also leave a dead timer there for a later mocked test of the same process. The HTTP server below stays for the
+   * runs that are real processes (`runCli`) and for the `gh` stand-in.
    */
   async function inProcessFetch(input, init = {}) {
     const parsed = new URL(String(input));
