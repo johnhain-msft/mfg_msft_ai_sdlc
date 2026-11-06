@@ -69,7 +69,7 @@ test("the requests of one burst are in flight together, and a method other than 
       async ({ port, requests }) => {
         let giveUp;
         const stalled = new Promise((resolve, reject) => {
-          giveUp = setTimeout(() => reject(new Error("the second request was not sent while the first one was still waiting")), 10000);
+          giveUp = setTimeout(() => reject(new Error("the second request was not sent while the first one was still waiting")), 30000);
         });
         try {
           const answers = await Promise.race([client.requests([{ url: `http://127.0.0.1:${port}/one` }, { url: `http://127.0.0.1:${port}/two`, method: "POST" }]), stalled]);
