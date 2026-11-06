@@ -1,0 +1,27 @@
+[
+  {
+    "projectKey": "dotnet-app",
+    "repo": "example-owner/dotnet-app",
+    "defaultBranch": "main",
+    "deconflictInRepoSchedules": "none",
+    "deconflictWorkflowIds": [],
+    "driftAudit": {
+      "enabled": true,
+      "schedule": "0 6 * * 1",
+      "upkeepStrategy": "dependency-and-pattern-modernization",
+      "instructions": "",
+      "instructionsFile": "instructions/dotnet-app.md",
+      "knowledgeSources": {
+        "watchUrls": [],
+        "packageManifests": ["App.csproj"],
+        "mcpServers": {
+          "context7": { "command": "npx", "args": ["-y", "@upstash/context7-mcp@latest"] }
+        }
+      },
+      "buildCommands": [],
+      "verifyCommands": [],
+      "draft": false,
+      "reviewers": []
+    }
+  }
+]

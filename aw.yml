@@ -1,0 +1,6 @@
+manifest-version: "1"
+name: AI SDLC Orchestrator
+min-version: v1.0.1
+description: Self-reconciling AI SDLC orchestrator. The onboarding workflow points the orchestrator at one more repository; the fleet manifest, the generated workflows and the bootstrap CLI come with the template repository.
+includes:
+  - .github/workflows/sdlc-onboard.md

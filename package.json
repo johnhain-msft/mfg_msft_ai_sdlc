@@ -2,17 +2,26 @@
   "name": "mfg-msft-ai-sdlc",
   "version": "0.1.0",
   "private": true,
-  "description": "Declarative fleet manifest, security policy renderer and pipeline reconciler for the AI SDLC orchestrator.",
+  "description": "Declarative fleet manifest, security policy renderer, pipeline reconciler, bootstrap and onboarding CLIs for the AI SDLC orchestrator.",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
+  "bin": {
+    "sdlc-bootstrap": "./bin/sdlc-bootstrap.mjs",
+    "sdlc-onboard": "./bin/sdlc-onboard.mjs"
+  },
   "scripts": {
-    "test": "node --test tests/s1/*.test.mjs",
-    "reconcile": "node src/reconcile.mjs"
+    "test": "node --test tests/s1/*.test.mjs tests/s5/*.test.mjs",
+    "test:s1": "node --test tests/s1/*.test.mjs",
+    "test:s5": "node --test tests/s5/*.test.mjs",
+    "reconcile": "node src/reconcile.mjs",
+    "bootstrap": "node bin/sdlc-bootstrap.mjs",
+    "onboard": "node bin/sdlc-onboard.mjs"
   },
   "dependencies": {
     "ajv": "^8.17.1",
+    "libsodium-wrappers": "^0.8.4",
     "yaml": "^2.8.1"
   }
 }
