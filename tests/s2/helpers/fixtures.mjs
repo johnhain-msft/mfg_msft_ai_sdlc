@@ -70,9 +70,25 @@ export function readTree(root) {
   return Object.fromEntries(listTree(root).map((file) => [file, fs.readFileSync(path.join(root, ...file.split("/")), "utf8")]));
 }
 
-/** A scratch directory that the caller removes. */
+const scratch = new Set();
+
+// A test that does not remove its scratch directory would leave it in the temporary directory for good (a full run leaves about a hundred and
+// forty), so whatever is still there when the test process exits is removed here. rmSync unlinks a junction or a link and never follows it.
+process.once("exit", () => {
+  for (const directory of scratch) {
+    try {
+      fs.rmSync(directory, { recursive: true, force: true });
+    } catch {
+      // best effort: a scratch directory is only litter
+    }
+  }
+});
+
+/** A scratch directory that the caller removes; one that is left behind is removed when the test process exits. */
 export function tempDir(prefix = "sdlc-s2-") {
-  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  scratch.add(directory);
+  return directory;
 }
 
 /** Copies a fixture directory (or the files of a map) into a new scratch directory. */
