@@ -115,6 +115,11 @@ The onboarding command needs `APP_CLIENT_ID` and `APP_PRIVATE_KEY` (to resolve t
 same engine credential environment as the bootstrap, because the engine authentication mode is part of what the
 reconciler renders.
 
+A target without a `test` script gets an empty `verifyCommands` and a warning. A drift-enabled project needs at least one
+verify command, so the reconciler then rejects the entry (`drift-verify-commands-missing`) and the command puts
+`sdlc.yaml` and `instructions/<projectKey>.md` back as they were. Add a `test` script to the target, or write the project's
+entry in `sdlc.yaml` yourself with its `verifyCommands`; a later run keeps what you wrote.
+
 ## Sync state and resets
 
 `SDLC_SYNC_STATE_<SLUG>` variables are owned by `cascade-router.yml`; the bootstrap and onboarding commands only create
@@ -129,7 +134,8 @@ node --test tests/s5/*.test.mjs
 ```
 
 The S5 suites are hermetic: a no-network guard, an in-memory fake GitHub API, a fake `gh` and a recording reconciler stand
-in for everything outside the process.
+in for everything outside the process. `SDLC_REAL_GH_AW=1 npm test` also runs the checks that need the real gh-aw CLI
+(v1.0.1 or newer): the real compiler on `aw.yml` and on the onboarding workflow.
 
 ## Layout
 

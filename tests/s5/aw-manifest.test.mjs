@@ -3,11 +3,14 @@
 // rules that the gh-aw document lists (tests/s5/fixtures/aw-yml-package-manifest.md), which are read from the snapshot
 // and not copied into this test.
 import assert from "node:assert/strict";
+import { execFileSync, spawnSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import Ajv2020 from "ajv/dist/2020.js";
 import YAML from "yaml";
+import { ghEnvironment } from "../../bin/lib/gh-runner.mjs";
 import { FIXTURES, REPO_ROOT } from "./helpers/harness.mjs";
 
 const schema = JSON.parse(fs.readFileSync(path.join(FIXTURES, "aw_manifest_schema.json"), "utf8"));
@@ -123,4 +126,35 @@ test("AC2: the S1-owned-path check catches every path that the spec names", () =
     assert.equal(S1_OWNED(owned), true, owned);
   }
   assert.equal(S1_OWNED(".github/workflows/sdlc-onboard.md"), false);
+});
+
+// The real compiler validates a repository-root aw.yml before it compiles (the gh-aw document: "gh aw compile validates repository-root
+// manifests before compilation"). Opt-in, because it needs the gh-aw CLI: SDLC_REAL_GH_AW=1.
+const realCompiler = { skip: process.env.SDLC_REAL_GH_AW === "1" ? false : "set SDLC_REAL_GH_AW=1 to run the real gh-aw compiler (it needs the gh-aw CLI, version 1.0.1 or newer)" };
+
+function compileWith(manifestText) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdlc-s5-awyml-"));
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    fs.cpSync(path.join(REPO_ROOT, ".github"), path.join(root, ".github"), { recursive: true });
+    fs.copyFileSync(path.join(REPO_ROOT, "sdlc.yaml"), path.join(root, "sdlc.yaml"));
+    fs.writeFileSync(path.join(root, "aw.yml"), manifestText);
+    fs.copyFileSync(path.join(REPO_ROOT, "README.md"), path.join(root, "README.md"));
+    const outcome = spawnSync("gh", ["aw", "compile", "--strict", "--purge", "--json"], { cwd: root, env: ghEnvironment(process.env), encoding: "utf8", shell: process.platform === "win32" });
+    return { code: outcome.status, output: `${outcome.stdout}\n${outcome.stderr}` };
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+test("AC1 (OQ33): the real compiler accepts the committed aw.yml", realCompiler, () => {
+  const outcome = compileWith(fs.readFileSync(path.join(REPO_ROOT, "aw.yml"), "utf8"));
+  assert.equal(outcome.code, 0, outcome.output);
+  assert.equal(/aw\.yml/i.test(outcome.output) && /error|invalid/i.test(outcome.output), false, outcome.output);
+});
+
+test("AC1 (OQ33): the real compiler does validate aw.yml: an invalid one (a docs field, a missing name) is rejected, so the pass above is not vacuous", realCompiler, () => {
+  const outcome = compileWith("manifest-version: \"1\"\ndescription: no name here\ndocs: not-supported\n");
+  assert.notEqual(outcome.code, 0, outcome.output);
+  assert.match(outcome.output, /aw\.yml/i);
 });

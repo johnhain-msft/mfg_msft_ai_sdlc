@@ -161,7 +161,8 @@ function applyEdit(text, edit) {
       const lineEnd = lineAfter(text, sequence.range[1]);
       const tail = text.slice(sequence.range[1], lineEnd);
       const lines = edit.items.flatMap((item) => linesOf([item]).map((line) => `${" ".repeat(keyColumn + 2)}${line}`));
-      return `${head}${tail}${lines.join(eol)}${eol}${text.slice(lineEnd)}`;
+      const lineBreak = tail.endsWith("\n") ? "" : eol; // the last line of the file may have no line break of its own
+      return `${head}${tail}${lineBreak}${lines.join(eol)}${eol}${text.slice(lineEnd)}`;
     }
     const dashColumn = columnOf(text, sequence.items[0].range[0]) - 2;
     const lines = edit.items.flatMap((item) => [...(topLevel ? [""] : []), ...linesOf([item]).map((line) => `${" ".repeat(Math.max(dashColumn, 0))}${line}`)]);
