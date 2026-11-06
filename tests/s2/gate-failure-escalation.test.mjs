@@ -2,6 +2,8 @@
 // it already exists, one deduplicated issue labelled sdlc-gate-failure and titled "[sdlc-failure] <workflowId> (<targetRepo>)",
 // whose body names the failing command, the run URL and the correlation id; a second failure of the same workflow on the same
 // target updates it; nothing is written outside /repos/<central repository>/. The job itself is rendered by SPEC-01 and parsed here.
+// The failing command comes from the jobs of the run, which the private central repository lets the job's token read only with
+// actions: read: the stub below enforces that rule with the permissions of the compiled job, so a job that loses the permission fails here.
 //
 // The compile-time question of §4 (does gh aw compile --strict accept a custom job with permissions: { issues: write }?) is
 // answered by the real compiler: tests/s2/c2-frontmatter.test.mjs run with SDLC_REAL_GH_AW=1 compiles the three workflows,
@@ -19,16 +21,24 @@ const TARGET = "ms-mfg-community/day-in-the-life-copilot-lab";
 const RUN_URL = `https://github.com/${CENTRAL}/actions/runs/4242`;
 const base = `/repos/${CENTRAL}`;
 
-/** A stateful stand-in for the issues of the central repository (and the jobs of one run). */
-function tracker({ jobs = null } = {}) {
+/**
+ * A stateful stand-in for the issues of the central repository (and the jobs of one run). With `permissions` it also enforces what the
+ * API enforces for a repository that is private: the job's GITHUB_TOKEN reads the jobs of a run only with actions: read (or write) and
+ * writes issues only with issues: write, and is refused otherwise with "Resource not accessible by integration".
+ */
+function tracker({ jobs = null, permissions = null } = {}) {
   const issues = [];
+  const refused = () => json(403, { message: "Resource not accessible by integration" });
+  const may = (scope, levels) => permissions === null || levels.includes(permissions[scope]);
   const handler = (entry) => {
     if (entry.method === "GET" && entry.path === `${base}/issues`) {
+      if (!may("issues", ["read", "write"])) return refused();
       const params = new URLSearchParams(entry.search);
       const wanted = params.get("labels");
       return json(200, issues.filter((issue) => issue.state === (params.get("state") ?? "open") && (wanted === null || issue.labels.some((label) => label.name === wanted))));
     }
     if (entry.method === "POST" && entry.path === `${base}/issues`) {
+      if (!may("issues", ["write"])) return refused();
       const payload = JSON.parse(entry.body);
       const issue = { number: issues.length + 1, title: payload.title, body: payload.body, state: "open", labels: payload.labels.map((name) => ({ name })), html_url: `https://github.com${base}/issues/${issues.length + 1}` };
       issues.push(issue);
@@ -36,11 +46,12 @@ function tracker({ jobs = null } = {}) {
     }
     const patch = /^\/repos\/[^/]+\/[^/]+\/issues\/(\d+)$/.exec(entry.path);
     if (entry.method === "PATCH" && patch) {
+      if (!may("issues", ["write"])) return refused();
       const issue = issues.find((candidate) => candidate.number === Number(patch[1]));
       Object.assign(issue, JSON.parse(entry.body));
       return json(200, issue);
     }
-    if (entry.method === "GET" && /\/actions\/runs\/\d+\/jobs$/.test(entry.path)) return jobs ? json(200, jobs) : json(403, { message: "Resource not accessible by integration" });
+    if (entry.method === "GET" && /\/actions\/runs\/\d+\/jobs$/.test(entry.path)) return jobs && may("actions", ["read", "write"]) ? json(200, jobs) : refused();
     return json(404, { message: "Not Found" });
   };
   return { issues, handler };
@@ -126,6 +137,53 @@ test("AC30: the failing command is looked up as the first failed step of the age
   assert.equal((await invoke(run, args(["--failing-command", "npm ci"]), { env: env(), fetch: explicitFetch })).code, 0);
   assert.equal(explicitFetch.requests.some((request) => request.path.includes("/actions/")), false, "a given command needs no lookup");
   assert.match(explicit.issues[0].body, /\| Failing command \| `npm ci` \|/);
+});
+
+const FAILED_RUN = { jobs: [{ name: "activation", conclusion: "success", steps: [] }, { name: "agent", conclusion: "failure", steps: [{ name: "Checkout", conclusion: "success" }, { name: "npm run test:deck", conclusion: "failure" }] }] };
+
+for (const key of DRIFT_KEYS) {
+  test(`AC30: with the permissions that the compiled drift-${key}.lock.yml gives escalate_failure, a private central repository lets the script name the failing command`, async () => {
+    const { permissions } = driftLock(key).workflow.jobs.escalate_failure;
+    const allowed = tracker({ jobs: FAILED_RUN, permissions });
+    const result = await invoke(run, args(), { env: env(), fetch: createFakeFetch(allowed.handler) });
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(allowed.issues[0].body, /\| Failing command \| `npm run test:deck` \|/, `the job holds ${JSON.stringify(permissions)}`);
+    // the control: the permissions that the job held before (no actions: read) are refused the lookup, so the command was never named
+    const without = tracker({ jobs: FAILED_RUN, permissions: { contents: "read", issues: "write" } });
+    assert.equal((await invoke(run, args(), { env: env(), fetch: createFakeFetch(without.handler) })).code, 0);
+    assert.match(without.issues[0].body, /\| Failing command \| not determined \(see the run\) \|/);
+  });
+}
+
+test("AC32: a rate limit on the jobs lookup that outlasts the retries fails the step with exit 1 and opens no issue, instead of being read as 'not determined'", async () => {
+  const { issues, handler } = tracker({ jobs: FAILED_RUN });
+  const limited = createFakeFetch((entry) => (/\/actions\/runs\/\d+\/jobs$/.test(entry.path) ? json(429, { message: "You have exceeded a secondary rate limit" }, { "retry-after": "1" }) : handler(entry)));
+  const clock = createClock();
+  const result = await invoke(run, args(["--max-retries", "2"]), { env: env(), fetch: limited, sleep: clock.sleep, now: clock.now });
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(result.stderr, /still rate limited after 2 retries/);
+  assert.deepEqual(clock.waits, [1000, 1000], "each retry waited as the server stated");
+  assert.equal(writes(limited).length, 0, "nothing was written with a command that could not be looked up");
+  assert.equal(issues.length, 0);
+  // a limit that clears is retried and the command is named
+  let calls = 0;
+  const recovering = tracker({ jobs: FAILED_RUN });
+  const recoveringFetch = createFakeFetch((entry) => (/\/actions\/runs\/\d+\/jobs$/.test(entry.path) && (calls += 1) === 1 ? json(403, { message: "rate limit exceeded" }, { "retry-after": "2" }) : recovering.handler(entry)));
+  const later = createClock();
+  assert.equal((await invoke(run, args(), { env: env(), fetch: recoveringFetch, sleep: later.sleep, now: later.now })).code, 0);
+  assert.deepEqual(later.waits, [2000]);
+  assert.match(recovering.issues[0].body, /\| Failing command \| `npm run test:deck` \|/);
+});
+
+test("AC30: a run that cannot be found, or a lookup that the server fails, leaves the command 'not determined' and the issue is still opened", async () => {
+  for (const reply of [json(404, { message: "Not Found" }), json(500, { message: "Server Error" }), json(200, { jobs: [] }), json(200, { jobs: [{ name: "agent", conclusion: "success", steps: [] }] })]) {
+    const { issues, handler } = tracker();
+    const fake = createFakeFetch((entry) => (/\/actions\/runs\/\d+\/jobs$/.test(entry.path) ? reply : handler(entry)));
+    const result = await invoke(run, args(), { env: env(), fetch: fake });
+    assert.equal(result.code, 0, `${reply.status}: ${result.stderr}`);
+    assert.match(issues[0].body, /\| Failing command \| not determined \(see the run\) \|/, `${reply.status}`);
+    assert.ok(issues[0].body.includes(RUN_URL), "and the run URL is the pointer");
+  }
 });
 
 test("AC30: untrusted text in the arguments cannot break out of the issue: it stays in a code span and a link needs an http(s) address", async () => {
@@ -225,7 +283,7 @@ for (const key of DRIFT_KEYS) {
     assert.ok(job, "the job exists");
     assert.equal(job.if, "failure() && inputs.dry_run != true");
     assert.deepEqual(job.needs, ["agent", "detection", "safe_outputs"]);
-    assert.deepEqual(job.permissions, { contents: "read", issues: "write" });
+    assert.deepEqual(job.permissions, { actions: "read", contents: "read", issues: "write" });
     assert.equal("concurrency" in job, false, "no job-level concurrency");
     const steps = userSteps(job.steps);
     const [checkout, install] = steps;

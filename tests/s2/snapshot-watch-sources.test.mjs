@@ -75,26 +75,48 @@ test("AC11: a second run on the same inputs writes byte-identical files", async 
   }
 });
 
-test("AC11: the command, run as a process against a stub server on 127.0.0.1, records the same three attempts", async () => {
+test("AC11: the command, run as a process against a stub server on 127.0.0.1, records the same three attempts, and a slow machine does not change them", async () => {
+  // The page that answers is deliberately slower than the margin that this test used to give it (a 400 ms timeout, which a full parallel
+  // run of the suite could exceed), the timeout is the generous default, and the response that never completes is a dropped connection:
+  // nothing here depends on how long the machine takes, so the three records are the same on a loaded one.
   const server = await startStubServer((entry) => {
-    if (entry.path === "/changelog") return { status: 200, headers: { "content-type": "text/html" }, body: "<p>served</p>" };
+    if (entry.path === "/changelog") return { status: 200, headers: { "content-type": "text/html" }, body: "<p>served</p>", delayMs: 1200 };
     if (entry.path === "/missing") return { status: 404, body: "gone" };
-    return { status: 200, body: "slow", delayMs: 1500 };
+    return { drop: true };
   });
   const workspace = createSnapshotWorkspace({ placeholders: { [ORIGIN]: server.url } });
   try {
     const env = cleanEnv({ GITHUB_WORKSPACE: workspace.workspace });
-    const first = await runNode(script("snapshot-watch-sources.mjs"), ["--out", workspace.out, "--project", "snapshot-fixture", "--checkout", "checkout", "--timeout-ms", "400"], { env, cwd: workspace.workspace });
+    const first = await runNode(script("snapshot-watch-sources.mjs"), ["--out", workspace.out, "--project", "snapshot-fixture", "--checkout", "checkout"], { env, cwd: workspace.workspace });
     assert.equal(first.code, 0, first.stderr);
     const overlapOfFirstRun = server.state.maxInflight;
     const manifest = manifestOf(workspace);
     assert.deepEqual(manifest.watchUrls.map((record) => [record.status, record.state]), [[200, "ok"], [404, "failed"], [null, "failed"]]);
     const hashes = hashTree(workspace.out);
-    const second = await runNode(script("snapshot-watch-sources.mjs"), ["--out", workspace.out, "--project", "snapshot-fixture", "--checkout", "checkout", "--timeout-ms", "400"], { env, cwd: workspace.workspace });
+    const second = await runNode(script("snapshot-watch-sources.mjs"), ["--out", workspace.out, "--project", "snapshot-fixture", "--checkout", "checkout"], { env, cwd: workspace.workspace });
     assert.equal(second.code, 0, second.stderr);
     assert.equal(hashTree(workspace.out), hashes, "byte-identical output files on a second run");
     assert.deepEqual(server.requests.map((request) => request.method), Array(6).fill("GET"), "only GET requests, three per run");
     assert.equal(overlapOfFirstRun, 1, "the requests of a run were issued one after the other");
+  } finally {
+    workspace.cleanup();
+    await server.close();
+  }
+});
+
+test("AC11: the command, run as a process, records a response that never comes as failed with the timeout that it was given, whatever the load", async () => {
+  // Every route hangs until the client gives up, so the outcome cannot depend on how quickly a loaded machine serves a page.
+  const server = await startStubServer(() => new Promise(() => {}));
+  const workspace = createSnapshotWorkspace({ placeholders: { [ORIGIN]: server.url } });
+  try {
+    const env = cleanEnv({ GITHUB_WORKSPACE: workspace.workspace });
+    const result = await runNode(script("snapshot-watch-sources.mjs"), ["--out", workspace.out, "--project", "snapshot-fixture", "--checkout", "checkout", "--timeout-ms", "300"], { env, cwd: workspace.workspace });
+    assert.equal(result.code, 0, result.stderr);
+    const { watchUrls, limitations } = manifestOf(workspace);
+    assert.deepEqual(watchUrls.map((record) => [record.status, record.state, record.snapshot]), Array(3).fill([null, "failed", null]));
+    for (const record of watchUrls) assert.match(record.error, /^timed out after 300 ms$/, record.url);
+    assert.equal(limitations.filter((line) => /timed out after 300 ms$/.test(line)).length, 3, "each is carried as a limitation");
+    assert.equal(listTree(workspace.out).some((file) => file.startsWith("sources/") && !file.startsWith("sources/manifests/") && file !== "sources/manifest.json"), false, "and no snapshot file was written for any of them");
   } finally {
     workspace.cleanup();
     await server.close();

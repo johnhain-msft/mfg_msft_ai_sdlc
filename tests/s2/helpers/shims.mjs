@@ -18,12 +18,13 @@ function ensureExecutable() {
 }
 
 /**
- * @returns {{ env: (extra?: object) => object, log: () => object[], calls: (tool: string) => object[], writes: () => object[], cleanup: () => void, logFile: string }}
+ * @returns {{ env: (extra?: object) => object, log: () => object[], calls: (tool: string) => object[], writes: () => object[], extensions: () => object, cleanup: () => void, logFile: string }}
  */
 export function createShims() {
   ensureExecutable();
   const directory = tempDir("sdlc-s2-shim-");
   const logFile = path.join(directory, "shim-log.jsonl");
+  const extensionsFile = path.join(directory, "gh-extensions.json");
   fs.writeFileSync(logFile, "");
   const hostPath = process.env.PATH ?? process.env.Path ?? "";
   const searchPath = `${SHIM_DIRECTORY.replace(/[\\/]$/, "")}${path.delimiter}${hostPath}`;
@@ -34,10 +35,12 @@ export function createShims() {
   return {
     logFile,
     /** A clean environment (no token) whose PATH starts with the shim directory. */
-    env: (extra = {}) => cleanEnv({ PATH: searchPath, Path: searchPath, SDLC_S2_SHIM_LOG: logFile, SDLC_S2_NODE: process.execPath, ...extra }),
+    env: (extra = {}) => cleanEnv({ PATH: searchPath, Path: searchPath, SDLC_S2_SHIM_LOG: logFile, SDLC_S2_GH_EXTENSIONS: extensionsFile, SDLC_S2_NODE: process.execPath, ...extra }),
     log: read,
     calls: (tool) => read().filter((entry) => entry.tool === tool),
     writes: () => read().filter((entry) => entry.write === true),
+    /** The extensions that the gh shim has installed, as { <extension directory that gh resolved>: { <name>: { repository, tag } } }. */
+    extensions: () => (fs.existsSync(extensionsFile) ? JSON.parse(fs.readFileSync(extensionsFile, "utf8")) : {}),
     cleanup: () => fs.rmSync(directory, { recursive: true, force: true }),
   };
 }

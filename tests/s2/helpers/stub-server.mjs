@@ -9,7 +9,9 @@
 //    defect (exit code 3221226505) is started again by runNode.
 //  - createClock(): a clock and a sleep that advance together, so that a retry that waits a minute takes no time.
 // A handler gets the recorded request ({ method, path, search, pathAndSearch, headers, body, signal }) and returns
-// { status, headers, body } (body: a string, or an object that is sent as JSON) or a Response.
+// { status, headers, body } (body: a string, or an object that is sent as JSON) or a Response. A handler of the real server may also
+// return { delayMs } to answer late, { drop: true } to close the connection without answering, or a promise that never settles to
+// keep the request open until the client gives up.
 
 import http from "node:http";
 import { spawn, spawnSync } from "node:child_process";
@@ -104,6 +106,10 @@ export async function startStubServer(handler) {
       state.maxInflight = Math.max(state.maxInflight, state.inflight);
       try {
         const reply = await handler(entry, state);
+        if (reply?.drop) {
+          request.socket.destroy();
+          return;
+        }
         if (reply?.delayMs) await new Promise((resolve) => setTimeout(resolve, reply.delayMs));
         const { status = 200, headers = {}, body = "" } = reply ?? {};
         const text = typeof body === "string" ? body : JSON.stringify(body);
@@ -147,6 +153,9 @@ const CREDENTIAL_VARIABLES = [
   "GITHUB_RUN_ATTEMPT",
   "CONFIGURED_TARGET_REPO",
   "GH_DATA_DIR",
+  "GITHUB_ENV",
+  "GITHUB_OUTPUT",
+  "SDLC_BASE_SHA",
 ];
 
 /** The environment of a child: the current one without any credential or workflow variable, plus `extra`. */

@@ -1,12 +1,14 @@
 // AC8: workflow_dispatch inputs at runtime (target_repo, correlation_id, extra_instructions, dry_run). prepare-run.mjs, the first
 // pre-agent step, guards the target repository, records the correlation id, the dispatch inputs and the base commit of the
-// target checkout in run-context.json, and leaves the proposal file of a dry run. The failure-escalation job is guarded on
-// dry_run by the reconciler; the guard of the other write-capable job is the open item at the end of this file.
+// target checkout in run-context.json, and leaves the proposal file of a dry run. A dry run creates no branch, pull request, issue
+// or label: every compiled job that holds a write permission (safe_outputs, conclusion and escalate_failure) is guarded on
+// dry_run by the reconciler, and the one that cannot be, activation, writes only the compiler's own blocked-version notification.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test, { after, before } from "node:test";
 import { run } from "../../src/drift/prepare-run.mjs";
+import { simulateJobs } from "../s1/helpers/actions-if.mjs";
 import { DRIFT_KEYS, driftLock, driftWorkflow, driftPreset, listTree, script, tempDir } from "./helpers/fixtures.mjs";
 import { createGateWorkspace, BASH_SKIP } from "./helpers/gate-harness.mjs";
 import { createRepo } from "./helpers/git-fixture.mjs";
@@ -186,10 +188,49 @@ test("AC8: the compiled escalate_failure job of every drift workflow is guarded 
   }
 });
 
-test("AC8: the safe_outputs job of every compiled drift workflow carries an if: that references inputs.dry_run", () => {
+test("AC8: every compiled job of a drift workflow that holds a write permission carries an if: that references inputs.dry_run (the built-in activation job excepted)", () => {
   for (const key of DRIFT_KEYS) {
-    const job = driftLock(key).workflow.jobs.safe_outputs;
-    assert.match(String(job.if), /inputs\.dry_run/, `${key}: safe_outputs.if is ${JSON.stringify(job.if)}`);
+    const { jobs } = driftLock(key).workflow;
+    const writers = Object.entries(jobs)
+      .filter(([, job]) => Object.values(job.permissions ?? {}).includes("write"))
+      .map(([name]) => name);
+    for (const expected of ["safe_outputs", "conclusion", "escalate_failure"]) assert.ok(writers.includes(expected), `${key}: ${expected} holds a write permission (found ${writers})`);
+    for (const name of writers.filter((candidate) => candidate !== "activation")) assert.match(String(jobs[name].if), /inputs\.dry_run/, `${key}: ${name}.if is ${JSON.stringify(jobs[name].if)}`);
+  }
+});
+
+test("AC8: the one write-capable job without a dry-run guard, activation, writes an issue only to report a blocked compiler version", () => {
+  for (const key of DRIFT_KEYS) {
+    const { activation } = driftLock(key).workflow.jobs;
+    assert.equal(/inputs\.dry_run/.test(String(activation.if ?? "")), false, `${key}: the agent needs the activation job, a dry run included, so it cannot carry the guard`);
+    const reporting = new Set();
+    for (const step of activation.steps) for (const name of Object.keys(step.env ?? {})) if (/(?:REPORT|CREATE)_(?:\w+_)?(?:AS_)?ISSUE|ISSUE_REPORT/.test(name)) reporting.add(name);
+    assert.deepEqual([...reporting], ["GH_AW_BLOCKED_VERSION_REPORT_AS_ISSUE"], `${key}: the only issue that activation can open is the compiler's blocked-version notification`);
+  }
+});
+
+test("AC8: the conclusion job, which opens the failure, missing-tool and incomplete-run issues, is skipped in a dry run and runs after a failed agent otherwise", () => {
+  for (const key of DRIFT_KEYS) {
+    const { jobs } = driftLock(key).workflow;
+    const steps = jobs.conclusion.steps.map((step) => `${step.name ?? ""} ${JSON.stringify(step.env ?? {})}`).join("\n");
+    assert.match(steps, /Handle agent failure[\s\S]*GH_AW_FAILURE_REPORT_AS_ISSUE/, `${key}: conclusion is the job that opens an issue when the agent fails`);
+    assert.equal(driftWorkflow(key).frontmatter.jobs.conclusion.if, "inputs.dry_run != true", `${key}: the source renders the guard`);
+    const scenario = (agent, dryRun) => simulateJobs(jobs, { results: { agent }, inputs: dryRun === undefined ? {} : { dry_run: dryRun } });
+    for (const agent of ["success", "failure", "cancelled"]) assert.equal(scenario(agent, true).ran.includes("conclusion"), false, `${key}: a dry run whose agent job ended ${agent}`);
+    assert.equal(scenario("failure", false).ran.includes("conclusion"), true, `${key}: a real run still reports the failure`);
+    assert.equal(scenario("failure", undefined).ran.includes("conclusion"), true, `${key}: so does a scheduled run, which has no inputs at all`);
+    assert.equal(scenario("failure", undefined).ran.includes("escalate_failure"), true, `${key}: and it still escalates`);
+  }
+});
+
+test("AC8: a dry run reaches no job that writes: not safe_outputs, not conclusion, not escalate_failure, however the agent job ended", () => {
+  for (const key of DRIFT_KEYS) {
+    const { jobs } = driftLock(key).workflow;
+    for (const agent of ["success", "failure", "cancelled"]) {
+      const { ran } = simulateJobs(jobs, { results: { agent }, inputs: { dry_run: true } });
+      assert.ok(ran.includes("agent"), `${key}: the dry run itself runs the agent`);
+      for (const name of ["safe_outputs", "conclusion", "escalate_failure"]) assert.equal(ran.includes(name), false, `${key}: ${name} after an agent that ended ${agent}`);
+    }
   }
 });
 

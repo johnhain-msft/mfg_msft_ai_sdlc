@@ -9,15 +9,17 @@
 //
 // The step exits 1, before the agent starts, when a non-empty target_repo differs from the configured repository. It
 // writes <out>/run-context.json with the correlation id, the dispatch inputs and the base commit of the target checkout
-// (`baseSha`); the validator of the lab audit compares the checkout against that commit. For a dry run it also leaves
-// <out>/dry-run-proposal.json, the file in which the agent records the pull request it would have proposed.
-// The script only reads the checkout and writes under --out.
+// (`baseSha`). The verification steps that run after the agent do not read that file for the base commit, because the agent can
+// edit anything under <out>: when the runner provides GITHUB_ENV, this step also appends SDLC_BASE_SHA=<base commit> to it, and
+// the runner hands that variable to every later step (the validator of the lab audit compares the checkout against it). For a
+// dry run it also leaves <out>/dry-run-proposal.json, the file in which the agent records the pull request it would have proposed.
+// The script only reads the checkout and writes under --out (and appends the one line to GITHUB_ENV).
 
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { parseBoolean, parseFlags, repoName, requireSlug, UsageError } from "./lib/args.mjs";
 import { writeFilesAtomically } from "./lib/atomic.mjs";
-import { outDirectory, resolveIo, runAsMain, stableJson, workspaceOf } from "./lib/cli.mjs";
+import { BASE_SHA_VARIABLE, outDirectory, resolveIo, runAsMain, stableJson, workspaceOf } from "./lib/cli.mjs";
 
 const OPTIONS = {
   out: { type: "string" },
@@ -65,6 +67,22 @@ function baseCommitOf(checkout, env) {
   return output;
 }
 
+/**
+ * Hands the base commit to the later steps of the job: the runner reads the file that GITHUB_ENV names when this step ends and sets the
+ * variable for every step after it. Outside Actions (no GITHUB_ENV) there is nothing to hand it to. The commit id was checked above to be
+ * hexadecimal, so the line cannot carry anything else into the environment file.
+ */
+function exportBaseCommit(baseSha, io) {
+  const file = String(io.env.GITHUB_ENV ?? "").trim();
+  if (file === "") return false;
+  try {
+    io.fs.appendFileSync(file, `${BASE_SHA_VARIABLE}=${baseSha}\n`);
+  } catch (error) {
+    throw new RunFailure(`the base commit cannot be exported to the later steps through GITHUB_ENV (${file}): ${String(error.message ?? error).split("\n")[0]}`);
+  }
+  return true;
+}
+
 /** @returns {Promise<number>} the exit code */
 export async function run(argv, ioInput = {}) {
   const io = resolveIo(ioInput);
@@ -84,6 +102,7 @@ export async function run(argv, ioInput = {}) {
     const checkoutName = flags.checkout ?? repoName(configured);
     const checkout = path.resolve(workspaceOf(io), checkoutName);
     const baseSha = baseCommitOf(checkout, io.env);
+    const exported = exportBaseCommit(baseSha, io);
 
     const out = path.resolve(io.cwd, outDirectory(flags.out, io.env));
     const files = [
@@ -113,7 +132,7 @@ export async function run(argv, ioInput = {}) {
       });
     }
     writeFilesAtomically(files, { fs: io.fs });
-    io.stdout(`prepare-run: run context for ${configured} written to ${path.join(out, "run-context.json")} (base ${baseSha.slice(0, 12)}, dry run: ${dryRun ? "yes" : "no"}, correlation id ${correlationId})\n`);
+    io.stdout(`prepare-run: run context for ${configured} written to ${path.join(out, "run-context.json")} (base ${baseSha.slice(0, 12)}${exported ? `, exported as ${BASE_SHA_VARIABLE}` : ""}, dry run: ${dryRun ? "yes" : "no"}, correlation id ${correlationId})\n`);
     return 0;
   } catch (error) {
     if (error instanceof UsageError) {

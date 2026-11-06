@@ -114,6 +114,30 @@ test("AC5: run as a command, prepare-run writes its run context under --out and 
   }
 });
 
+test("AC5: where the runner provides GITHUB_ENV, prepare-run adds one line to that file and still writes its artifacts only under --out", async () => {
+  const fixtureWorkspace = ownershipFixture();
+  const recorder = recordingFs();
+  const envFile = path.join(tempDir("sdlc-s2-github-env-"), "github-env");
+  fs.writeFileSync(envFile, "");
+  try {
+    const before = fixtureWorkspace.fingerprint();
+    const result = await invoke(prepare, ["--out", fixtureWorkspace.out, "--target-repo", TARGET, "--correlation-id", "c-3", "--dry-run", "false", "--checkout", "checkout"], {
+      env: cleanEnv({ CONFIGURED_TARGET_REPO: TARGET, GITHUB_WORKSPACE: fixtureWorkspace.workspace, GITHUB_ENV: envFile }),
+      cwd: fixtureWorkspace.workspace,
+      fs: recorder.fs,
+    });
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(recorder.writes.filter((written) => !isUnder(written, fixtureWorkspace.out)), [path.resolve(envFile)], "the one file outside --out is the runner's environment file");
+    assert.equal(fs.readFileSync(envFile, "utf8"), `SDLC_BASE_SHA=${fixtureWorkspace.repo.head()}\n`);
+    assert.deepEqual(listTree(fixtureWorkspace.out), ["run-context.json"]);
+    assert.equal(fixtureWorkspace.fingerprint(), before, "the workspace and the target checkout are as they were");
+    assert.equal(fixtureWorkspace.status(), "");
+  } finally {
+    fs.rmSync(path.dirname(envFile), { recursive: true, force: true });
+    fixtureWorkspace.cleanup();
+  }
+});
+
 test("AC5: the scripts that produce no artifact (escalation, response check, audit validator) write no file at all", async () => {
   const recorder = recordingFs();
   const lab = createRepo(labFiles());

@@ -93,6 +93,13 @@ for (const section of ["Summary", "Findings", "Consolidation Candidates", "Metad
   });
 }
 
+test("AC33: the same report passes on a tree that holds the audit template and no audit report, which is how the lab's default branch looks before a weekly audit merges", async () => {
+  repo.remove("docs/_meta/audit-report.md");
+  assert.ok(fs.existsSync(path.join(repo.dir, "docs", "_meta", "audit-report.template.md")));
+  const result = await validateWith(labFiles()["docs/_meta/self-improvement-report.md"]);
+  assert.equal(result.code, 0, `a self-improve run is not asked for the audit report: ${result.stderr}`);
+});
+
 test("AC33: the prompt of the self-improving workflow is a draft policy and carries no reviewer, leaving assignment to CODEOWNERS", () => {
   const { frontmatter } = driftWorkflow("self-improving-agents");
   assert.equal(frontmatter["safe-outputs"]["create-pull-request"].draft, true);

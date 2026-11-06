@@ -13,6 +13,13 @@ export const DEFAULT_OUT = "/tmp/gh-aw/agent";
 /** The artifact directory: --out, else SDLC_DRIFT_OUT (a test or an operator that moves it), else the default. */
 export const outDirectory = (flag, env) => flag ?? ((env.SDLC_DRIFT_OUT ?? "").trim() || DEFAULT_OUT);
 
+/**
+ * The environment variable that carries the base commit of the target checkout from the first step of a job to the later ones
+ * (SPEC-02 AC8, AC22). prepare-run appends it to GITHUB_ENV, which the runner reads when that step ends; the verification steps
+ * therefore receive it from the runner and not from a file under the artifact directory, which the agent can write.
+ */
+export const BASE_SHA_VARIABLE = "SDLC_BASE_SHA";
+
 /** True when the module at `metaUrl` is the script that node was started with. */
 export function isMain(metaUrl, entry = process.argv[1]) {
   if (!entry) return false;

@@ -1,7 +1,8 @@
-// AC23: node src/validate-copilot-lab-audit.mjs exits 0 only when all 11 top-level keys of docs/_meta/registry.yaml are present, when
-// docs/_meta/audit-report.md has its four required sections (and the sections of docs/_meta/audit-report.template.md), and, for a
-// self-improve run (--self-improve), when self-improvement-report.md has its four required sections; otherwise it exits non-zero and
-// names the missing key or section on stderr. The report-only rule of AC22 is tested in report-only-schema-version.test.mjs.
+// AC23: node src/validate-copilot-lab-audit.mjs exits 0 only when all 11 top-level keys of docs/_meta/registry.yaml are present and,
+// for an audit run, docs/_meta/audit-report.md has its four required sections (and the sections of docs/_meta/audit-report.template.md),
+// or, for a self-improve run (--self-improve), self-improvement-report.md has its four required sections: a self-improve run does not
+// need the audit report, which the weekly audit generates in its own pull request. Otherwise it exits non-zero and names the missing
+// key or section on stderr. The report-only rule of AC22 is tested in report-only-schema-version.test.mjs.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
@@ -12,7 +13,7 @@ import { BASH_SKIP, createGateWorkspace } from "./helpers/gate-harness.mjs";
 import { createRepo } from "./helpers/git-fixture.mjs";
 import { labFiles, withoutSection, withoutTopLevelKey, withSectionOrder } from "./helpers/lab-fixture.mjs";
 import { invoke } from "./helpers/run-script.mjs";
-import { runNode } from "./helpers/stub-server.mjs";
+import { cleanEnv, runNode } from "./helpers/stub-server.mjs";
 
 const REQUIRED_KEYS = ["schema_version", "copilot_cli_version_floor", "gh_aw_schema_version", "mcp_protocol_spec_version", "mcp_servers", "prepared_core", "models", "model_default_availability_policy", "enterprise_managed_settings", "labs", "audit"];
 let repo;
@@ -136,22 +137,99 @@ test("AC23: how a self-improve run is selected is the --self-improve argument, w
   assert.equal(driftWorkflow("self-improving-agents").frontmatter["post-steps"][0].run, verify[0]);
 });
 
-test("AC23: without a base commit the report-only rule cannot be checked, so the run fails closed; the base can come from run-context.json", async () => {
+test("AC23: without a base commit the report-only rule cannot be checked, so the run fails closed; the base is --base-sha or SDLC_BASE_SHA, never run-context.json", async () => {
   const none = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out });
   assert.notEqual(none.code, 0);
   assert.match(none.stderr, /the base commit is unknown/);
+  assert.match(none.stderr, /SDLC_BASE_SHA is not set and --base-sha was not given/);
   fs.writeFileSync(path.join(out, "run-context.json"), JSON.stringify({ baseSha: base }));
-  const fromContext = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out });
-  assert.equal(fromContext.code, 0, fromContext.stderr);
-  fs.writeFileSync(path.join(out, "run-context.json"), "{ not json");
-  const broken = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out });
-  assert.notEqual(broken.code, 0);
-  fs.rmSync(path.join(out, "run-context.json"));
+  try {
+    const fromContext = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out });
+    assert.notEqual(fromContext.code, 0, "a file under --out is not a source of the base commit: the agent can edit it");
+    assert.match(fromContext.stderr, /the base commit is unknown/);
+    fs.writeFileSync(path.join(out, "run-context.json"), "{ not json");
+    const fromVariable = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base }) });
+    assert.equal(fromVariable.code, 0, `the variable that prepare-run exported is the source, whatever the run context holds: ${fromVariable.stderr}`);
+  } finally {
+    fs.rmSync(path.join(out, "run-context.json"), { force: true });
+  }
+  const fromVariable = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base }) });
+  assert.equal(fromVariable.code, 0, fromVariable.stderr);
+  assert.match(fromVariable.stdout, new RegExp(`unchanged since ${base.slice(0, 12)}`));
   const unknown = await invoke(run, ["--checkout", repo.dir, "--out", out, "--base-sha", "0".repeat(40)], { cwd: out });
   assert.notEqual(unknown.code, 0, "a base commit that is not in the checkout");
   assert.match(unknown.stderr, /is not in the target checkout/);
+  const notACommit = await invoke(run, ["--checkout", repo.dir, "--out", out, "--base-sha", "main"], { cwd: out });
+  assert.notEqual(notACommit.code, 0, "a branch name is not a base commit");
+  assert.match(notACommit.stderr, /is not a full commit id/);
   assert.notEqual((await invoke(run, ["--bogus"], { cwd: out })).code, 0);
   assert.equal((await invoke(run, ["--bogus"], { cwd: out })).code, 2, "an unknown option is a usage error");
+});
+
+test("AC23: a self-improve run needs no audit report and no template: the lab's default branch holds only the template, and the weekly audit turns it into a report inside its own pull request", async () => {
+  const defaultBranch = (checkout) => checkout.remove("docs/_meta/audit-report.md");
+  const selfImprove = await validate(["--self-improve"], defaultBranch);
+  assert.equal(selfImprove.code, 0, selfImprove.stderr);
+  assert.equal(selfImprove.stderr, "");
+  assert.match(selfImprove.stdout, /the self-improvement report complete/);
+  const audit = await validate([], defaultBranch);
+  assert.notEqual(audit.code, 0, "an audit run on the same tree is asked for the report");
+  assert.ok(audit.stderr.includes("docs/_meta/audit-report.md is missing"), audit.stderr);
+  const noTemplate = await validate(["--self-improve"], (checkout) => {
+    defaultBranch(checkout);
+    checkout.remove("docs/_meta/audit-report.template.md");
+  });
+  assert.equal(noTemplate.code, 0, `the template is the audit report's own input: ${noTemplate.stderr}`);
+  const damaged = await validate(["--self-improve"], (checkout) => checkout.write("docs/_meta/audit-report.md", "# nothing\n"));
+  assert.equal(damaged.code, 0, `a report that this run did not write is not this run's business: ${damaged.stderr}`);
+});
+
+test("AC23: a self-improve run still holds the registry, the self-improvement report and the report-only rule, with no audit report in the tree", async () => {
+  const defaultBranch = (checkout) => checkout.remove("docs/_meta/audit-report.md");
+  const registry = await validate(["--self-improve"], (checkout) => {
+    defaultBranch(checkout);
+    checkout.write("docs/_meta/registry.yaml", withoutTopLevelKey(checkout.read("docs/_meta/registry.yaml"), "labs"));
+  });
+  assert.notEqual(registry.code, 0);
+  assert.ok(registry.stderr.includes("missing the top-level key 'labs'"), registry.stderr);
+  const report = await validate(["--self-improve"], (checkout) => {
+    defaultBranch(checkout);
+    checkout.write("docs/_meta/self-improvement-report.md", withoutSection(checkout.read("docs/_meta/self-improvement-report.md"), "Findings"));
+  });
+  assert.notEqual(report.code, 0);
+  assert.ok(report.stderr.includes("missing the section '## Findings'"), report.stderr);
+  const missing = await validate(["--self-improve"], (checkout) => {
+    defaultBranch(checkout);
+    checkout.remove("docs/_meta/self-improvement-report.md");
+  });
+  assert.notEqual(missing.code, 0);
+  assert.match(missing.stderr, /self-improvement-report\.md is missing/);
+  assert.equal(/audit-report/.test(missing.stderr), false, "and the audit report is not what it names");
+  const workflows = await validate(["--self-improve"], (checkout) => {
+    defaultBranch(checkout);
+    checkout.write(".github/workflows/stand-in.lock.yml", "name: recompiled\n");
+  });
+  assert.notEqual(workflows.code, 0);
+  assert.match(workflows.stderr, /\.github\/workflows\/stand-in\.lock\.yml differs from the base commit/);
+});
+
+test("AC23: the rendered post-step of drift-self-improving-agents passes on a lab tree that has the audit template and no audit report, as the default branch of the lab does", { skip: BASH_SKIP }, async () => {
+  const step = driftWorkflow("self-improving-agents").frontmatter["post-steps"][0];
+  assert.equal(step.run, 'node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" --self-improve');
+  const files = labFiles();
+  delete files["docs/_meta/audit-report.md"];
+  assert.ok("docs/_meta/audit-report.template.md" in files);
+  const gate = createGateWorkspace({ checkoutName: "day-in-the-life-copilot-lab", files });
+  try {
+    const passed = await gate.runSteps([step]);
+    assert.equal(passed.code, 0, passed.log);
+    gate.remove("docs/_meta/self-improvement-report.md");
+    const failed = await gate.runSteps([step]);
+    assert.equal(failed.code, 1);
+    assert.ok(failed.log.includes("self-improvement-report.md is missing"), failed.log);
+  } finally {
+    gate.cleanup();
+  }
 });
 
 test("AC23: the scanner reads top-level keys only: quoted keys, comments, block scalars, CRLF and a byte order mark", () => {

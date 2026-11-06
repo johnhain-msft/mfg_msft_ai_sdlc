@@ -1,6 +1,8 @@
 // Running the rendered post-steps and pre-agent steps of a drift workflow the way the Actions runner does (SPEC-02 AC19, AC20,
 // AC24, AC29): in order, each step in its own `bash --noprofile --norc -eo pipefail` shell, in the step's working directory,
-// with the first non-zero exit ending the run. The orchestrator workspace has `src/` of this repository linked in, the
+// with the first non-zero exit ending the run, and with the GITHUB_ENV protocol of the runner: a step may append NAME=value lines
+// to the file that GITHUB_ENV names, and the steps after it (later calls, a job's later steps) are started with those variables.
+// The orchestrator workspace has `src/` of this repository linked in, the
 // target checkout is a real git repository, and `/tmp/gh-aw` is a scratch directory. gh, npm and git are the recording shims.
 
 import fs from "node:fs";
@@ -61,6 +63,9 @@ export class GateWorkspace {
     git(this.checkout, ["add", "-A"]);
     git(this.checkout, ["commit", "-q", "--allow-empty", "-m", "base"]);
     this.baseSha = git(this.checkout, ["rev-parse", "HEAD"]);
+    // What the first pre-agent step of the job (prepare-run) leaves behind: the run context under the artifact directory, and the base
+    // commit that the runner hands to every later step because the step appended it to GITHUB_ENV (see runScript).
+    this.exported = { SDLC_BASE_SHA: this.baseSha };
     this.writeRunContext();
   }
 
@@ -84,15 +89,22 @@ export class GateWorkspace {
     return git(this.checkout, args);
   }
 
-  /** Runs one `run` body; resolves to { code, stdout, stderr }. It is asynchronous so that a stub server of the test can answer. */
+  /**
+   * Runs one `run` body; resolves to { code, stdout, stderr }. It is asynchronous so that a stub server of the test can answer.
+   * Like the runner it gives the step a fresh GITHUB_ENV file, and when the step ends it reads the NAME=value lines that the step
+   * appended and keeps them in `this.exported`, so that every later step of the job (a later call) is started with them.
+   */
   runScript(script, { env = {}, workingDirectory = "" } = {}) {
     const relocated = script.replaceAll("/tmp/gh-aw", forward(this.artifacts));
-    const file = path.join(this.root, `step-${Math.random().toString(16).slice(2)}.sh`);
+    const unique = Math.random().toString(16).slice(2);
+    const file = path.join(this.root, `step-${unique}.sh`);
+    const envFile = path.join(this.root, `github-env-${unique}`);
     fs.writeFileSync(file, `${relocated}\n`);
+    fs.writeFileSync(envFile, "");
     return new Promise((resolve) => {
       const child = spawn(BASH, ["--noprofile", "--norc", "-eo", "pipefail", file], {
         cwd: path.join(this.workspace, workingDirectory),
-        env: this.shims.env({ GITHUB_WORKSPACE: shellPath(this.workspace), RUNNER_TEMP: forward(os.tmpdir()), SDLC_DRIFT_OUT: forward(this.agentDir), ...env }),
+        env: this.shims.env({ GITHUB_WORKSPACE: shellPath(this.workspace), RUNNER_TEMP: forward(os.tmpdir()), SDLC_DRIFT_OUT: forward(this.agentDir), ...this.exported, GITHUB_ENV: forward(envFile), ...env }),
         windowsHide: true,
       });
       let stdout = "";
@@ -102,6 +114,10 @@ export class GateWorkspace {
       child.stderr.on("data", (chunk) => (stderr += chunk));
       child.on("close", (code) => {
         clearTimeout(timer);
+        for (const line of fs.readFileSync(envFile, "utf8").split(/\r?\n/)) {
+          const entry = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
+          if (entry) this.exported[entry[1]] = entry[2];
+        }
         resolve({ code, stdout, stderr });
       });
     });

@@ -5,7 +5,7 @@
 //     --target-repo "$TARGET_REPO" --correlation-id "$CORRELATION_ID" --run-url "$RUN_URL"
 //
 // It runs in the escalate_failure job of the orchestrator repository when the agent job failed (a gate of post-steps, or
-// any earlier failure), with the job's GITHUB_TOKEN (GH_TOKEN or GITHUB_TOKEN) and issues: write. It opens one issue in the
+// any earlier failure), with the job's GITHUB_TOKEN (GH_TOKEN or GITHUB_TOKEN), issues: write and actions: read. It opens one issue in the
 // repository named by GITHUB_REPOSITORY, labelled sdlc-gate-failure and titled "[sdlc-failure] <workflowId> (<targetRepo>)",
 // or, when an open issue with that title already exists, updates it: the same failure of the same workflow on the same
 // target never opens a second one. The body names the failing command, the run URL and the correlation id, counts the
@@ -13,8 +13,9 @@
 // never written. Requests are serial and a rate-limited response is retried as the server states.
 //
 // The failing command is --failing-command when given. Otherwise it is looked up as the first failed step of the agent
-// job of the run (post-steps are named by their command); that lookup needs the actions: read permission, which the job
-// does not hold by default, so a refusal leaves the command "not determined" and the run URL stays the pointer.
+// job of the run (post-steps are named by their command); that lookup needs the actions: read permission, which the
+// escalate_failure job is given (a private repository refuses the read without it). A refusal or a run that cannot be found
+// leaves the command "not determined" and the run URL stays the pointer; a rate limit that outlasts the retries fails the step.
 
 import { parseFlags, requireSlug, UsageError } from "./lib/args.mjs";
 import { resolveIo, runAsMain } from "./lib/cli.mjs";
@@ -86,14 +87,18 @@ export function composeBody({ workflowId, targetRepo, failingCommand, runUrl, co
 }
 
 async function findFailingStep(client, central, runId) {
+  let jobs;
   try {
-    const jobs = await client.requestJson("GET", `/repos/${central}/actions/runs/${runId}/jobs?per_page=100&filter=latest`, { expect: [200] });
-    const agent = (Array.isArray(jobs?.jobs) ? jobs.jobs : []).find((job) => job?.name === "agent" && job?.conclusion === "failure");
-    const step = (Array.isArray(agent?.steps) ? agent.steps : []).find((candidate) => candidate?.conclusion === "failure");
-    return typeof step?.name === "string" && step.name !== "" ? step.name : null;
-  } catch {
+    jobs = await client.requestJson("GET", `/repos/${central}/actions/runs/${runId}/jobs?per_page=100&filter=latest`, { expect: [200] });
+  } catch (error) {
+    // A refusal (the token cannot read the run) or a run that is not found leaves the command undetermined. A rate limit that outlasts
+    // the bounded retries fails the step like every other request of this script (AC32), and so does any error that is not an API error.
+    if (!(error instanceof GitHubApiError) || error.rateLimited) throw error;
     return null;
   }
+  const agent = (Array.isArray(jobs?.jobs) ? jobs.jobs : []).find((job) => job?.name === "agent" && job?.conclusion === "failure");
+  const step = (Array.isArray(agent?.steps) ? agent.steps : []).find((candidate) => candidate?.conclusion === "failure");
+  return typeof step?.name === "string" && step.name !== "" ? step.name : null;
 }
 
 function wholeNumber(value, label, fallback) {
