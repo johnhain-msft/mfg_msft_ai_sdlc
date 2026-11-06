@@ -122,7 +122,7 @@ function assertContract(frontmatter, project) {
   for (const command of audit.buildCommands) assert.ok(frontmatter.tools.bash.includes(command.trim().split(/\s+/)[0]), `bash allows the first word of '${command}'`);
   assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure"]);
   const job = frontmatter.jobs.escalate_failure;
-  assert.deepEqual(job.permissions, { contents: "read", issues: "write" });
+  assert.deepEqual(job.permissions, { actions: "read", contents: "read", issues: "write" });
   assert.deepEqual(job.needs, ["agent", "detection", "safe_outputs"]);
   assert.equal(job.if, "failure() && inputs.dry_run != true");
   assert.equal("concurrency" in job, false);

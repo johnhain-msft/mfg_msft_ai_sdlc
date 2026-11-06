@@ -70,8 +70,8 @@ post-steps:
   - name: node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" --self-improve
     run: node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" --self-improve
     working-directory: day-in-the-life-copilot-lab
-  - name: ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
-    run: ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
+  - name: ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; XDG_DATA_HOME="$GH_DATA_DIR"; export XDG_DATA_HOME; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
+    run: ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; XDG_DATA_HOME="$GH_DATA_DIR"; export XDG_DATA_HOME; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
     env:
       GH_TOKEN: ${{ github.token }}
     working-directory: day-in-the-life-copilot-lab
@@ -126,6 +126,8 @@ jobs:
     if: needs.agent.result == 'success'
   safe_outputs:
     if: needs.agent.result == 'success' && inputs.dry_run != true
+  conclusion:
+    if: inputs.dry_run != true
   escalate_failure:
     needs:
       - agent
@@ -134,6 +136,7 @@ jobs:
     if: failure() && inputs.dry_run != true
     detection-gate: status-only
     permissions:
+      actions: read
       contents: read
       issues: write
     steps:

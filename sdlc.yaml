@@ -99,7 +99,7 @@ projects:
       buildCommands: []
       verifyCommands:
         - node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs"
-        - ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
+        - ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; XDG_DATA_HOME="$GH_DATA_DIR"; export XDG_DATA_HOME; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
       draft: false
       reviewers: []
 
@@ -138,7 +138,7 @@ projects:
       buildCommands: []
       verifyCommands:
         - node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" --self-improve
-        - ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
+        - ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; XDG_DATA_HOME="$GH_DATA_DIR"; export XDG_DATA_HOME; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
       draft: true
       reviewers: []
 

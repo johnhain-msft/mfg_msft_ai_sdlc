@@ -139,6 +139,8 @@ jobs:
     if: needs.agent.result == 'success'
   safe_outputs:
     if: needs.agent.result == 'success' && inputs.dry_run != true
+  conclusion:
+    if: inputs.dry_run != true
   escalate_failure:
     needs:
       - agent
@@ -147,6 +149,7 @@ jobs:
     if: failure() && inputs.dry_run != true
     detection-gate: status-only
     permissions:
+      actions: read
       contents: read
       issues: write
     steps:

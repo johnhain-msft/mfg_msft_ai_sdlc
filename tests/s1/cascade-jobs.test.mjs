@@ -85,7 +85,7 @@ test("AC35: every drift workflow has exactly one custom job, escalate_failure, w
     const job = custom.escalate_failure;
     assert.equal(job.if, "failure() && inputs.dry_run != true", id);
     assert.deepEqual(job.needs, NEEDS);
-    assert.deepEqual(job.permissions, { contents: "read", issues: "write" });
+    assert.deepEqual(job.permissions, { actions: "read", contents: "read", issues: "write" });
     assert.equal("concurrency" in job, false);
     assert.deepEqual(job.steps[0], { uses: "actions/checkout@v4", with: { "sparse-checkout": "src\nschemas", "persist-credentials": false } });
     assert.deepEqual(job.steps[1], { run: "npm ci --ignore-scripts" });

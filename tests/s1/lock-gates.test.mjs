@@ -19,11 +19,11 @@ const lockOf = (id) => YAML.parse(readText(abs(W, `${id}.lock.yml`)));
 const conditionOf = (job) => String(job.if).replace(/\s+/g, " ").trim();
 
 /** Which jobs of a compiled lock run when the agent, detection and safe_outputs jobs end with the given results. */
-function simulateGates(id, lock, { agent = "success", detection = "success", safe_outputs: safeOutputs = "success" }) {
+function simulateGates(id, lock, { agent = "success", detection = "success", safe_outputs: safeOutputs = "success", dryRun = false }) {
   return simulateJobs(lock.jobs, {
     results: { agent, detection, safe_outputs: safeOutputs },
     outputs: { detection: { detection_success: detection === "success" ? "true" : "false" } },
-    inputs: { dry_run: id.startsWith("drift-") ? false : "false" },
+    inputs: { dry_run: id.startsWith("drift-") ? dryRun : String(dryRun) },
   });
 }
 
@@ -120,7 +120,9 @@ test("AC29: the condition evaluator follows the Actions expression semantics tha
 });
 
 const DRIFT_SAFE_OUTPUTS_GUARD = `${AGENT_SUCCESS_GUARD} && inputs.dry_run != true`;
-const expectedSafeOutputsGuard = (name) => (name.split("/").pop().startsWith("drift-") ? DRIFT_SAFE_OUTPUTS_GUARD : AGENT_SUCCESS_GUARD);
+const DRIFT_CONCLUSION_GUARD = "inputs.dry_run != true";
+const isDrift = (name) => name.split("/").pop().startsWith("drift-");
+const expectedSafeOutputsGuard = (name) => (isDrift(name) ? DRIFT_SAFE_OUTPUTS_GUARD : AGENT_SUCCESS_GUARD);
 
 test("AC29: detection and safe_outputs are rendered as the agent-success guard alone (with dry_run on drift safe_outputs): nothing widens when they run", () => {
   for (const id of ids) {
@@ -130,6 +132,51 @@ test("AC29: detection and safe_outputs are rendered as the agent-success guard a
   }
   for (const [name, text] of renderFleet(request).files) {
     if (name.endsWith(".md")) assert.ok(text.includes(`  safe_outputs:\n    if: ${expectedSafeOutputsGuard(name)}\n`), name);
+  }
+});
+
+test("AC29: the conclusion job is rendered as a dry-run guard in a drift workflow and left to the compiler in every other workflow", () => {
+  for (const id of ids) {
+    const { jobs } = readWorkflow(`${id}.md`).frontmatter;
+    if (isDrift(id)) assert.deepEqual(jobs.conclusion, { if: DRIFT_CONCLUSION_GUARD }, `${id}.conclusion`);
+    else assert.equal("conclusion" in jobs, false, `${id} has no conclusion section`);
+  }
+  for (const [name, text] of renderFleet(request).files) {
+    if (name.endsWith(".md") && isDrift(name)) assert.ok(text.includes(`  conclusion:\n    if: ${DRIFT_CONCLUSION_GUARD}\n`), name);
+  }
+});
+
+test("AC29: in every committed drift lock the conclusion job also requires inputs.dry_run != true, and keeps the compiler's own condition", () => {
+  for (const id of ids.filter(isDrift)) {
+    const { conclusion } = lockOf(id).jobs;
+    assert.ok(conclusion, `${id} has a conclusion job`);
+    const condition = conditionOf(conclusion);
+    assert.ok(condition.endsWith(" && (inputs.dry_run != true)"), `${id}: if ${condition}`);
+    assert.ok(condition.includes("needs.agent.result != 'skipped'"), `${id}: the compiler's condition is still there, the guard only narrows it`);
+  }
+});
+
+test("AC8: a dry run of a drift workflow reaches neither safe_outputs, conclusion nor escalate_failure, whatever the agent job ended with", () => {
+  for (const id of ids.filter(isDrift)) {
+    const lock = lockOf(id);
+    for (const agent of ["success", "failure", "cancelled"]) {
+      const run = simulateGates(id, lock, { agent, dryRun: true });
+      for (const name of ["safe_outputs", "conclusion", "escalate_failure"]) assert.equal(run.ran.includes(name), false, `${id}: ${name} in a dry run after an agent that ended ${agent}`);
+    }
+    assert.ok(simulateGates(id, lock, { agent: "failure", dryRun: true }).ran.includes("agent"), `${id}: the dry run itself still runs the agent`);
+    assert.ok(simulateGates(id, lock, { agent: "failure" }).ran.includes("conclusion"), `${id}: outside a dry run the failure is still reported`);
+  }
+});
+
+test("AC8: the conclusion condition that the compiler writes on its own ran in a dry run after a failed agent job (the defect)", () => {
+  for (const id of ids.filter(isDrift)) {
+    const lock = structuredClone(lockOf(id));
+    const guarded = conditionOf(lock.jobs.conclusion);
+    const unguarded = /^\((.*)\) && \(inputs\.dry_run != true\)$/.exec(guarded)?.[1];
+    assert.ok(unguarded, `${id}: the compiled condition is the compiler's own, joined with the guard: ${guarded}`);
+    assert.equal(simulateGates(id, lock, { agent: "failure", dryRun: true }).ran.includes("conclusion"), false, `${id}: guarded`);
+    lock.jobs.conclusion.if = unguarded;
+    assert.equal(simulateGates(id, lock, { agent: "failure", dryRun: true }).ran.includes("conclusion"), true, `${id}: without the guard the failure issue is opened in a dry run`);
   }
 });
 
@@ -144,6 +191,8 @@ test("AC29: the guard is rendered for any manifest, not only for the preset: eve
       const { jobs } = parseWorkflow(text).frontmatter;
       assert.deepEqual(jobs.detection, { if: AGENT_SUCCESS_GUARD }, `${name}.detection`);
       assert.deepEqual(jobs.safe_outputs, { if: expectedSafeOutputsGuard(name) }, `${name}.safe_outputs`);
+      if (isDrift(name)) assert.deepEqual(jobs.conclusion, { if: DRIFT_CONCLUSION_GUARD }, `${name}.conclusion`);
+      else assert.equal("conclusion" in jobs, false, `${name} has no conclusion section`);
     }
   } finally {
     workspace.cleanup();

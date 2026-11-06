@@ -56,7 +56,7 @@ for (const [index, value] of TRICKY.entries()) {
     assert.ok(result.ok, JSON.stringify(result.result));
     const drift = parseWorkflow(files.get(`${W}/drift-alpha-service.md`)).frontmatter;
     assert.deepEqual(Object.keys(drift).sort(), DRIFT_KEYS);
-    assert.deepEqual(Object.keys(drift.jobs).sort(), ["detection", "escalate_failure", "safe_outputs"], "no job is added to the two guard sections and the one custom job");
+    assert.deepEqual(Object.keys(drift.jobs).sort(), ["conclusion", "detection", "escalate_failure", "safe_outputs"], "no job is added to the three guard sections and the one custom job");
     assert.equal(drift["pre-agent-steps"].length, 3);
     assert.equal(drift["post-steps"].length, 2, "one step per verify command, however many lines it has");
     assert.deepEqual(drift["safe-outputs"]["create-pull-request"].reviewers, [value], "the reviewer is a scalar");

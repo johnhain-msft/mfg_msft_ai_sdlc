@@ -827,12 +827,19 @@ function isPostRunCheck(command) {
  * `(!cancelled()) && needs.agent.result != 'skipped' && needs.detection.result == 'success'`), so a failing
  * gate would still reach the pull request. The compiler joins `jobs.<built-in>.if` to its own condition with
  * `&&`, so this guard can only narrow when the two jobs run (SPEC-01 AC29).
+ *
+ * A dry run of a drift workflow (SPEC-02 AC8) must create no branch, pull request, issue or label, so every built-in
+ * job that holds a write permission is guarded on `inputs.dry_run` as well: `safe_outputs` (it publishes) and
+ * `conclusion` (it opens the failure, missing-tool and incomplete-run issues). The `activation` job cannot be
+ * guarded, because the agent needs it, and it writes only the compiler's own blocked-version notification.
  */
 const AGENT_SUCCESS_GUARD = "needs.agent.result == 'success'";
-const DRIFT_SAFE_OUTPUTS_GUARD = "needs.agent.result == 'success' && inputs.dry_run != true";
+const DRIFT_DRY_RUN_GUARD = "inputs.dry_run != true";
+const DRIFT_SAFE_OUTPUTS_GUARD = `${AGENT_SUCCESS_GUARD} && ${DRIFT_DRY_RUN_GUARD}`;
 const agentSuccessGuards = ({ drift = false } = {}) => ({
   detection: { if: AGENT_SUCCESS_GUARD },
   safe_outputs: { if: drift ? DRIFT_SAFE_OUTPUTS_GUARD : AGENT_SUCCESS_GUARD },
+  ...(drift ? { conclusion: { if: DRIFT_DRY_RUN_GUARD } } : {}),
 });
 
 // ---------------------------------------------------------------------------------------
@@ -889,7 +896,9 @@ function driftEscalation(ctx, project, workflowId) {
     needs: ["agent", "detection", "safe_outputs"],
     if: "failure() && inputs.dry_run != true",
     "detection-gate": "status-only",
-    permissions: { contents: "read", issues: "write" },
+    // actions: read lets the job's GITHUB_TOKEN list the jobs of the run, which names the failing command in the issue (SPEC-02 AC30);
+    // a private repository refuses that read to a token without it.
+    permissions: { actions: "read", contents: "read", issues: "write" },
     steps: [
       { uses: "actions/checkout@v4", with: { "sparse-checkout": "src\nschemas", "persist-credentials": false } },
       { run: "npm ci --ignore-scripts" },

@@ -66,8 +66,8 @@ export function loadRenderedFixture(directory = fixture("rendered-minimal")) {
 /** Step list of a job or of a top-level key such as `pre-agent-steps`. */
 export const stepsOf = (value) => (Array.isArray(value) ? value : value?.steps ?? []);
 
-/** The built-in jobs whose `if:` the renderer guards with the agent-success condition (AC29); they are sections, not custom jobs. */
-export const BUILT_IN_JOB_SECTIONS = ["detection", "safe_outputs"];
+/** The built-in jobs whose `if:` the renderer guards (AC29): `detection` and `safe_outputs` with the agent-success condition, and, in a drift workflow, `conclusion` with the dry-run guard; they are sections, not custom jobs. */
+export const BUILT_IN_JOB_SECTIONS = ["detection", "safe_outputs", "conclusion"];
 export const AGENT_SUCCESS_GUARD = "needs.agent.result == 'success'";
 
 /** The custom jobs among the `jobs:` entries of a generated workflow (AC35): everything but the built-in guard sections. */
