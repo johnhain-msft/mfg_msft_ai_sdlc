@@ -44,15 +44,24 @@ function engineAuthModeOf(env, manifest) {
   return "copilot-requests";
 }
 
-function assertDownstreamOwner(downstream, central) {
+/**
+ * AC49: the owner of a downstream repository must be the owner of the central orchestrator repository, compared ASCII
+ * case-insensitively, because one GitHub App installation token is scoped to a single owner. `requested` is the value of
+ * --downstream when `downstream` is the repository that GitHub resolved it to (a renamed or transferred repository
+ * resolves to its current owner, which can differ from the one that was typed).
+ */
+function assertDownstreamOwner(downstream, central, requested = downstream) {
   const { owner } = splitSlug(downstream);
-  if (!sameOwner(owner, central.owner)) {
-    throw new SdlcError(
-      `--downstream ${downstream} (owner '${owner}') is under a different owner than the central orchestrator repository ${central.slug} (owner '${central.owner}'): ` +
-        "one GitHub App installation token is scoped to a single owner, so a downstream repository must share the owner of the central repository. Nothing was written.",
-      { code: "cross-owner-downstream" },
-    );
-  }
+  if (sameOwner(owner, central.owner)) return;
+  const subject =
+    requested === downstream
+      ? `--downstream ${downstream}`
+      : `--downstream ${requested} resolves to ${downstream} (the repository was renamed or transferred), and ${downstream}`;
+  throw new SdlcError(
+    `${subject} (owner '${owner}') is under a different owner than the central orchestrator repository ${central.slug} (owner '${central.owner}'): ` +
+      "one GitHub App installation token is scoped to a single owner, so a downstream repository must share the owner of the central repository. Nothing was written.",
+    { code: "cross-owner-downstream" },
+  );
 }
 
 async function inspectTarget({ target, api, ctx }) {
@@ -88,13 +97,15 @@ async function onboard(argv, ctx) {
   const app = await loadExistingApp({ api, credentials, logger });
 
   // AC45: the read-only inspection of the target (and of the downstream repository).
-  const operator = readOperatorInstructions(options.instructions, ctx.cwd);
+  const operator = readOperatorInstructions(options.instructions, ctx.cwd, central.workingCopy);
   const target = classifyTarget(options.repo, ctx.cwd);
   const { inspection: upstream } = await inspectTarget({ target, api, ctx });
   for (const warning of upstream.warnings) logger.warn(`${upstream.repo}: ${warning}`);
   let downstream = null;
   if (options.downstream !== undefined) {
     ({ inspection: downstream } = await inspectTarget({ target: { kind: "remote", slug: options.downstream }, api, ctx }));
+    // AC49: GitHub reports the repository under its current name, which names another owner when it was transferred or renamed.
+    assertDownstreamOwner(downstream.repo, central, options.downstream);
     for (const warning of downstream.warnings) logger.warn(`${downstream.repo}: ${warning}`);
   }
 
@@ -160,6 +171,10 @@ async function onboard(argv, ctx) {
 
   const plan = planManifestUpdate(manifestData, { project, explicitProject, downstreamProject, edge, explicitEdge });
   if (plan.keyCollision) throw new SdlcError(`${plan.keyCollision}. Nothing was written.`, { code: "key-collision" });
+  // AC49 once more, on the repositories that this run is about to write: the same-owner check precedes every file write and every variable request.
+  for (const written of [downstreamProject?.repo, edge?.downstreamRepo]) {
+    if (written !== undefined) assertDownstreamOwner(written, central, options.downstream);
+  }
   for (const other of manifestData.projects) {
     if (other.projectKey !== projectKey && String(other.repo).toLowerCase() === upstream.repo.toLowerCase()) {
       logger.warn(`${upstream.repo} is already managed by the project '${other.projectKey}'; the new entry '${projectKey}' is a second entry for the same repository`);
@@ -170,7 +185,7 @@ async function onboard(argv, ctx) {
   const existingInstructions = fs.existsSync(instructionsPath) ? fs.readFileSync(instructionsPath, "utf8") : null;
   const operatorText = operator ? operator.text : existingInstructions !== null ? operatorTextOf(existingInstructions) : "";
   const instructionsText = composeInstructions(operatorText, generatedSection(upstream));
-  const manifestOut = applyDataToText(manifestText, manifestData, plan.data);
+  const manifestOut = applyDataToText(manifestText, manifestData, plan.data, { label: options.manifest });
   const written = writeFilesAtomically(
     [
       { path: central.manifestPath, text: manifestOut },

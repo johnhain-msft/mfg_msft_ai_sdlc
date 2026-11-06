@@ -416,6 +416,36 @@ test("AC49: mixed-case-owner-accepted: --downstream Example-Owner/example-downst
   }, { repos: DOWNSTREAM_REPOS });
 });
 
+const RENAMED_REPOS = {
+  ...REPOS,
+  ...fixtureRepos({ "other-owner/edge-ok": "edge-ok" }),
+  ...fixtureRepos({ "example-owner/edge-ok": "edge-ok" }, { "example-owner/edge-ok": { fullName: "other-owner/edge-ok" } }),
+};
+
+for (const typed of ["example-owner/edge-ok", "Example-Owner/edge-ok"]) {
+  test(`AC49: resolved-owner-rejected: --downstream ${typed} is under the orchestrator's owner as typed but GitHub resolves it to other-owner/edge-ok (transferred or renamed): rejected before any file write, variable request or S1 call`, async () => {
+    await onboarded(["--repo", "example-owner/node-app", "--downstream", typed], ({ run, scenario }) => {
+      assert.notEqual(run.code, 0);
+      for (const named of [typed, "other-owner/edge-ok", "'other-owner'", "'example-owner'"]) assert.ok(run.stderr.includes(named), `${named} in: ${run.stderr}`);
+      assert.match(run.stderr, /is under a different owner than the central orchestrator repository/);
+      assert.equal(scenario.workspace.read("sdlc.yaml"), readFixture("manifest.standard.yaml"), "sdlc.yaml is untouched");
+      assert.equal(scenario.workspace.exists("instructions/node-app.md"), false);
+      assert.deepEqual(scenario.fake.requests("* /repos/:owner/:repo/actions/variables", "* /repos/:owner/:repo/actions/variables/:name"), [], "no state-variable request");
+      assert.deepEqual(scenario.fake.nonGet(), [], "no write of any kind");
+      assert.equal(scenario.reconcile.calls.length, 0);
+      assert.equal(run.stdout, "");
+    }, { repos: RENAMED_REPOS });
+  });
+}
+
+test("AC49: a downstream that GitHub resolves to the same owner in another letter case is still accepted, and the edge records the resolved spelling", async () => {
+  const repos = { ...REPOS, ...fixtureRepos({ "example-owner/edge-ok": "edge-ok" }, { "example-owner/edge-ok": { fullName: "Example-Owner/edge-ok" } }) };
+  await onboarded(["--repo", "example-owner/node-app", "--downstream", "example-owner/edge-ok"], ({ run, manifest }) => {
+    assert.equal(run.code, 0, run.stderr);
+    assert.equal(manifest().dependencyEdges.at(-1).downstreamRepo, "Example-Owner/edge-ok");
+  }, { repos });
+});
+
 for (const downstream of ["example-owner2/example-downstream", "example/example-downstream", "example-owner-/example-downstream", "xexample-owner/example-downstream"]) {
   test(`AC49: ${downstream} is a different owner, even though it contains the orchestrator's owner`, async () => {
     await onboarded(["--repo", "example-owner/node-app", "--downstream", downstream], ({ run, scenario }) => {
