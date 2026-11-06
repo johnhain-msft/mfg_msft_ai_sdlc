@@ -304,17 +304,22 @@ test("AC52 QA: globs capable of reaching beneath a locked directory are rejected
 });
 
 test("AC17 QA: a timed-out compiler fails the run and restores operator files and purged orphans", async (t) => {
+  // Both numbers are generous because the whole suite runs in parallel: on a loaded machine the stub compiler (a launcher, then node)
+  // can take seconds to start, and it has to be running when the timeout fires and still be asleep when it does. The stub sleeps
+  // without burning CPU, so a long delay costs time but no load.
+  const timeoutMs = 15000;
+  const compilerDelayMs = 20000;
   const work = workspace(t);
   work.write(".github/workflows/operator.yml", "# retain these exact operator bytes\r\n");
   work.write(".github/workflows/orphan.lock.yml", "# retain this purged orphan\r\n");
   work.write(".gitattributes", "* text=auto eol=lf\n");
-  work.shims.compile({ mode: "ok", delayMs: 6000, sideFiles: true });
+  work.shims.compile({ mode: "ok", delayMs: compilerDelayMs, sideFiles: true });
   const before = work.hash(["."]);
-  const result = await reconcile(referenceRequest(), { cwd: work.dir, env: work.shims.env(), timeoutMs: 3000 });
+  const result = await reconcile(referenceRequest(), { cwd: work.dir, env: work.shims.env(), timeoutMs });
   assert.equal(work.shims.compileCalls().length, 1, "the sleeping compiler was actually reached");
   assert.equal(result.status, "error", "timeout must not turn a success-capable compiler into a successful run");
   assert.ok(errorsOf(result).some((error) => error.startsWith("compile-failed: ")));
   const compilerStarted = fs.statSync(work.shims.logPath).mtimeMs;
-  await new Promise((resolve) => setTimeout(resolve, Math.max(0, compilerStarted + 7000 - Date.now())));
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, compilerStarted + compilerDelayMs + 1000 - Date.now())));
   assert.equal(work.hash(["."]), before, "all files, including compiler side effects, are restored after termination");
 });
