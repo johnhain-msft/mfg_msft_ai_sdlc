@@ -169,6 +169,8 @@ test("AC53: the OQ51 check is not vacuous: it names what the rendered workflow l
   const lacks = (steps, allowedHosts = []) => missingToRunTheCommand({ steps, allowedHosts }).map((entry) => NAMES.find(([pattern]) => pattern.test(entry))[1]);
   assert.deepEqual(lacks([{ ...complete[0], with: { version: "v1.0.0" } }, ...complete.slice(1)]), ["cli"], "a CLI older than 1.0.1 does not count");
   assert.deepEqual(lacks([{ run: "gh extension install github/gh-aw@v0.86.2" }, ...complete.slice(1)]), ["cli"], "an old pin does not count");
+  const runtime = { uses: `github/gh-aw-actions/setup@${"c".repeat(40)}`, with: { destination: "${{ runner.temp }}/gh-aw/actions" } };
+  assert.deepEqual(lacks([runtime, ...complete.slice(1)]), ["cli"], "the pinned gh-aw runtime setup that every compiled job runs is not the CLI install (the stand-in that this test once accepted)");
   assert.deepEqual(lacks(complete.slice(0, 1).concat(complete.slice(2))), ["dependencies"], "no dependency install");
   assert.deepEqual(lacks([...complete.slice(0, 2), { ...complete[2], env: {} }]), ["credentials"], "no credentials in the environment of the runner");
   const minting = { uses: `actions/create-github-app-token@${"b".repeat(40)}`, with: { "client-id": "${{ vars.APP_CLIENT_ID }}", "private-key": "${{ secrets.APP_PRIVATE_KEY }}" } };
