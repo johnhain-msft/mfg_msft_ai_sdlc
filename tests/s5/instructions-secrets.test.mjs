@@ -103,6 +103,81 @@ for (const text of BENIGN) {
   });
 }
 
+// --- a credential inside a name or a path ----------------------------------------------------------------------------------------
+// What the inspection finds (a manifest path, a workflow path, the key of a provenance file) is held to this scanner too, and a credential
+// sits as easily in the middle of such a name (`packages/backup_<token>/package.json`, `<token>_old`) as it stands alone. `\b` counts `_` as
+// a part of a word, so it did not see a token after `backup_` or, for a token of a fixed length, before `_old`, while the same token standing
+// alone was seen. Every provider that the scanner knows is therefore tried in each of those places. The tokens are assembled at run time.
+
+const SAMPLE = "A1b2C3d4E5f6G7h8I9j0";
+const HEX_32 = "0123456789abcdef".repeat(2);
+const GITHUB_CLASSIC = ["ghp", SAMPLE.repeat(2)].join("_");
+const GITHUB_FINE_GRAINED = ["github", "pat", SAMPLE.repeat(3)].join("_");
+const GITHUB_SERVER = ["ghs", SAMPLE.repeat(2)].join("_");
+
+const NAMED_CREDENTIALS = [
+  ["a classic GitHub token", GITHUB_CLASSIC],
+  ["a GitHub server-to-server token", GITHUB_SERVER],
+  ["a fine-grained GitHub token", GITHUB_FINE_GRAINED],
+  ["an AWS access key ID", AWS_KEY_ID],
+  ["an Anthropic API key", ANTHROPIC],
+  ["an OpenAI API key", OPENAI],
+  ["a Google API key", GOOGLE],
+  ["a Google OAuth client secret", `GOCSPX-${SAMPLE}`],
+  ["a Slack token", SLACK],
+  ["a Stripe key", STRIPE],
+  ["an npm token", NPM],
+  ["a Hugging Face token", HUGGING_FACE],
+  ["a SendGrid key", `SG.${SAMPLE}.${SAMPLE}`],
+  ["a JSON Web Token", JWT],
+  ["a GitLab token", `glpat-${SAMPLE}`],
+  ["a DigitalOcean token", `dop_v1_${"a1b2c3d4".repeat(8)}`],
+  ["a Databricks token", `dapi${HEX_32}`],
+  ["a Docker Hub token", `dckr_pat_${SAMPLE}`],
+  ["a PyPI token", `pypi-AgEIcHlwaS5vcmc${SAMPLE}`],
+  ["a Twilio key", `SK${HEX_32}`],
+  ["a Shopify token", `shpat_${HEX_32}`],
+  ["a Telegram bot token", `123456789:AA${SAMPLE.repeat(2).slice(0, 33)}`],
+  ["the content of ~/.netrc", "machine github.com login svc password hunter2hunter2"],
+  ["the key data of a kubeconfig", `client-key-data: ${"LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQ"}`],
+  ["a PuTTY key file", "PuTTY-User-Key-File-3: ssh-ed25519"],
+  ["an Azure storage account key", `AccountKey=${"QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVo"}=`],
+  ["a password inside a URL", URL_PASSWORD],
+  ["an Authorization header", `Authorization: Bearer ${"abcdef0123456789abcdef"}`],
+];
+
+const refusedAsCredential = (text, token) =>
+  assert.throws(
+    () => assertNoCredentials(text, "a name or a path detected in the inspected repository"),
+    (error) => error.code === "instructions-credential" && /^a name or a path detected in the inspected repository appears to contain a credential/.test(error.message) && !error.message.includes(token),
+    text.replace(token, "<credential>"),
+  );
+
+for (const [label, token] of NAMED_CREDENTIALS) {
+  test(`AC50: ${label} is refused inside a name as it is standing alone: after a file-name prefix, before a suffix, in a path`, () => {
+    for (const text of [token, `backup_${token}`, `${token}_old`, `backup_${token}_old`, `packages/backup_${token}/package.json`, `public/${token}_old/source.json`, `.github/workflows/backup_${token}.yml`]) {
+      refusedAsCredential(text, token);
+    }
+  });
+}
+
+test("AC50: a GitHub token is refused wherever it stands in a name, also when letters or digits are glued to it", () => {
+  for (const token of [GITHUB_CLASSIC, GITHUB_SERVER, GITHUB_FINE_GRAINED]) {
+    for (const text of [`backup${token}`, `backup2${token}`, `packages/Backup7${token}/package.json`, `x${token}`]) refusedAsCredential(text, token);
+  }
+});
+
+// The boundary is only widened to `_`: a name that merely contains the start of a token inside a word is still no token, or a repository with a long, hyphenated file name could not be onboarded.
+for (const text of [
+  "docs/task-description-for-the-long-running-migration-job.md", // `sk-` inside a word starts no API key
+  "docs/risk_test_assessmentreportsforthequarter.md", // nor does `sk_test_`
+  "public/laughs_and_giggles_for_everyone/source.json", // `ghs_` is not followed by the 20 letters or digits of a token
+]) {
+  test(`AC50: a name that only resembles the start of a token is still ordinary text: ${JSON.stringify(text)}`, () => {
+    assert.doesNotThrow(() => assertNoCredentials(text, "a name or a path detected in the inspected repository"));
+  });
+}
+
 test("AC50: the scan of a large text is linear: a megabyte of keywords and of colons is checked in well under the time that a quadratic scan would need", () => {
   for (const text of ["token".repeat(200000), `http://${"a:".repeat(300000)}`, `${"api_key ".repeat(120000)}`]) {
     const started = process.hrtime.bigint();

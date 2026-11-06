@@ -165,15 +165,15 @@ test("R5 AC50: assertNoCredentialsIn looks at every string of nested objects and
   }
 });
 
-/** Runs the onboarding of node-app over `repositories` and expects a refusal that wrote nothing and echoed nothing. */
-async function expectRefusedFacts(repositories, args = []) {
+/** Runs the onboarding of node-app over `repositories` and expects a refusal that wrote nothing and echoed nothing (`secret` is the credential that must not be echoed). */
+async function expectRefusedFacts(repositories, args = [], secret = TOKEN) {
   const scenario = await createScenario({ fake: { repos: repositories } });
   try {
     const before = scenario.workspace.read("sdlc.yaml");
     const run = await runOnboard(scenario, ["--repo", "example-owner/node-app", ...args]);
     assert.notEqual(run.code, 0, run.stdout);
     assert.match(run.stderr, /appears to contain a credential/);
-    assert.equal(`${run.stdout}${run.stderr}`.includes(TOKEN), false, "the credential is not echoed, not even by a warning");
+    assert.equal(`${run.stdout}${run.stderr}`.includes(secret), false, "the credential is not echoed, not even by a warning");
     assert.equal(scenario.workspace.read("sdlc.yaml"), before);
     assert.equal(scenario.workspace.exists("instructions/node-app.md"), false);
     assert.equal(scenario.reconcile.calls.length, 0);
@@ -239,6 +239,56 @@ test("R5 AC50: an instructions file that already holds a credential is refused w
   } finally {
     await scenario.cleanup();
   }
+});
+
+// --- R5 follow-up (AC50): a credential inside a name is refused whichever provider it belongs to ----------------------------------
+// The same credential is refused standing alone (`public/<token>/source.json`) and inside a name (`packages/backup_<token>/package.json`,
+// `<token>_old.yml`): the boundary of the scanner is not `\b`, which counts `_` as part of a word. qa-path-tokens.regression.mjs runs the GitHub
+// tokens through the four places that the inspection reads; these run other providers through the command.
+
+const AWS_KEY_ID = `AK${"IA"}${"Z".repeat(16)}`;
+const NPM_TOKEN = `npm_${"A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"}`;
+const SLACK_TOKEN = `xox${"b"}-1234567890-abcdefghijklmnop`;
+
+for (const [label, secret, args, change] of [
+  [
+    "an AWS access key ID after a file-name prefix in the path of a package manifest",
+    AWS_KEY_ID,
+    [],
+    (files) => {
+      files[`packages/backup_${AWS_KEY_ID}/package.json`] = "{}";
+    },
+  ],
+  [
+    "an npm token before a suffix in the path of a scheduled workflow",
+    NPM_TOKEN,
+    [],
+    (files) => {
+      files[`.github/workflows/${NPM_TOKEN}_old.yml`] = "on:\n  schedule:\n    - cron: '0 5 * * 0'\n";
+    },
+  ],
+  [
+    "a Slack token between a prefix and a suffix in the path of the provenance file",
+    SLACK_TOKEN,
+    [],
+    (files) => {
+      files[`public/backup_${SLACK_TOKEN}_old/source.json`] = JSON.stringify({ commit: SHA });
+    },
+  ],
+]) {
+  test(`R5 AC50: ${label} is refused like the same credential standing alone: nothing is written, requested or echoed`, async () => {
+    const repositories = repos();
+    change(repositories["example-owner/node-app"].files);
+    await expectRefusedFacts(repositories, args, secret);
+  });
+}
+
+test("R5 AC50: a Slack token after a file-name prefix in the provenance path of the downstream is refused before its edge is synthesized or its state is seeded", async () => {
+  const repositories = repos();
+  const files = repositories["example-owner/edge-ok"].files;
+  delete files["public/imported/source.json"];
+  files[`public/backup_${SLACK_TOKEN}/source.json`] = JSON.stringify({ commit: SHA });
+  await expectRefusedFacts(repositories, ["--downstream", "example-owner/edge-ok"], SLACK_TOKEN);
 });
 
 // --- R6 (AC51): the boundary of the generated section ---------------------------------------------------------------------------

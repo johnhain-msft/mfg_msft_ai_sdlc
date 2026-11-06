@@ -17,48 +17,53 @@ const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // \r\n, because a checkout with core.autocrlf turns the \n of the file into one.
 const GENERATED_BOUNDARY = new RegExp(`(?<![^\\n])${escapeRegExp(GENERATED_MARKER)}\\r?\\n${escapeRegExp(GENERATED_HEADING)}(?![^\\r\\n])`, "gi");
 
-// Credential formats that are recognisable on sight. A text that holds one is refused.
+// Credential formats that are recognisable on sight. A text that holds one is refused, wherever the credential stands: alone, in a sentence or in the middle of a name
+// (`packages/backup_ghp_...` and `AKIA..._old` are paths that the inspection reads, and they are held to this scanner too). Where a pattern needs a boundary to stay
+// precise (`sk-` would otherwise find an API key in `task-description-for-the-long-running-job`), the boundary is a character that is not a letter or a digit:
+// `(?<![A-Za-z0-9])` before the credential, and `(?![A-Za-z0-9])` after a credential of a fixed length. It is not `\b`, which counts `_` as a part of a word and so
+// misses a credential after a file-name prefix (`backup_`) or before a suffix (`_old`) that it sees when the same credential stands alone. The GitHub prefixes are
+// specific enough to need no boundary, as `gho_` never did.
 const CREDENTIAL_PATTERNS = [
   // private keys: PEM, OpenSSH and PGP blocks
   /-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/,
   // GitHub: personal access tokens (classic and fine-grained), OAuth, user-to-server, server-to-server and refresh tokens
-  /\bgh[pousr]_[A-Za-z0-9]{20,}/,
-  /\bgithub_pat_[A-Za-z0-9_]{20,}/,
+  /gh[pousr]_[A-Za-z0-9]{20,}/,
+  /github_pat_[A-Za-z0-9_]{20,}/,
   /gho_/,
   // AWS access key IDs and secret access keys
-  /\b(?:AKIA|ASIA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ABIA|ACCA)[A-Z0-9]{16}\b/,
+  /(?<![A-Za-z0-9])(?:AKIA|ASIA|AGPA|AIDA|AIPA|ANPA|ANVA|AROA|ABIA|ACCA)[A-Z0-9]{16}(?![A-Za-z0-9])/,
   /aws_secret_access_key["']?[ \t]*[:=][ \t]*["']?[A-Za-z0-9/+]{40}/i,
   // engine and model-provider API keys: Anthropic, OpenAI, Google
-  /\bsk-ant-[A-Za-z0-9_-]{16,}/,
-  /\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}/,
-  /\bAIza[0-9A-Za-z_-]{35}/,
-  /\bGOCSPX-[A-Za-z0-9_-]{20,}/,
+  /(?<![A-Za-z0-9])sk-ant-[A-Za-z0-9_-]{16,}/,
+  /(?<![A-Za-z0-9])sk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}/,
+  /(?<![A-Za-z0-9])AIza[0-9A-Za-z_-]{35}/,
+  /(?<![A-Za-z0-9])GOCSPX-[A-Za-z0-9_-]{20,}/,
   // other widely used formats: Slack, Stripe, npm, Hugging Face, SendGrid and JSON Web Tokens
-  /\bxox[abeoprs]-[A-Za-z0-9-]{10,}/,
-  /\b[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/,
-  /\bnpm_[A-Za-z0-9]{36}\b/,
-  /\bhf_[A-Za-z0-9]{30,}/,
-  /\bSG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/,
-  /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/,
+  /(?<![A-Za-z0-9])xox[abeoprs]-[A-Za-z0-9-]{10,}/,
+  /(?<![A-Za-z0-9])[rs]k_(?:live|test)_[A-Za-z0-9]{16,}/,
+  /(?<![A-Za-z0-9])npm_[A-Za-z0-9]{36}(?![A-Za-z0-9])/,
+  /(?<![A-Za-z0-9])hf_[A-Za-z0-9]{30,}/,
+  /(?<![A-Za-z0-9])SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,}/,
+  /(?<![A-Za-z0-9])eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/,
   // GitLab, DigitalOcean, Databricks, Docker Hub, PyPI, Twilio, Shopify and Telegram
-  /\bglpat-[A-Za-z0-9_-]{20,}/,
-  /\bdop_v1_[a-f0-9]{64}\b/,
-  /\bdapi[0-9a-f]{32}\b/,
-  /\bdckr_pat_[A-Za-z0-9_-]{20,}/,
-  /\bpypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{20,}/,
-  /\bSK[0-9a-f]{32}\b/,
-  /\bshp(?:at|ca|pa|ss)_[a-f0-9]{32}\b/,
-  /\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b/,
+  /(?<![A-Za-z0-9])glpat-[A-Za-z0-9_-]{20,}/,
+  /(?<![A-Za-z0-9])dop_v1_[a-f0-9]{64}(?![A-Za-z0-9])/,
+  /(?<![A-Za-z0-9])dapi[0-9a-f]{32}(?![A-Za-z0-9])/,
+  /(?<![A-Za-z0-9])dckr_pat_[A-Za-z0-9_-]{20,}/,
+  /(?<![A-Za-z0-9])pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{20,}/,
+  /(?<![A-Za-z0-9])SK[0-9a-f]{32}(?![A-Za-z0-9])/,
+  /(?<![A-Za-z0-9])shp(?:at|ca|pa|ss)_[a-f0-9]{32}(?![A-Za-z0-9])/,
+  /(?<![A-Za-z0-9])\d{8,10}:AA[A-Za-z0-9_-]{33}(?![A-Za-z0-9])/,
   // the credential files of tools: netrc, the key data of a kubeconfig, a PuTTY key and the auth of a Docker config
-  /\bmachine[ \t]+\S+[ \t]+login[ \t]+\S+[ \t]+password[ \t]+\S+/i,
-  /\bclient-key-data[ \t]*:[ \t]*[A-Za-z0-9+/=]{20,}/,
-  /\bPuTTY-User-Key-File-\d+:/,
+  /(?<![A-Za-z0-9])machine[ \t]+\S+[ \t]+login[ \t]+\S+[ \t]+password[ \t]+\S+/i,
+  /(?<![A-Za-z0-9])client-key-data[ \t]*:[ \t]*[A-Za-z0-9+/=]{20,}/,
+  /(?<![A-Za-z0-9])PuTTY-User-Key-File-\d+:/,
   /"auth"[ \t]*:[ \t]*"[A-Za-z0-9+/=]{16,}"/,
   // Azure storage and Service Bus connection strings
-  /\b(?:AccountKey|SharedAccessKey)=[A-Za-z0-9+/=]{20,}/i,
+  /(?<![A-Za-z0-9])(?:AccountKey|SharedAccessKey)=[A-Za-z0-9+/=]{20,}/i,
   // a password or token inside a URL (a `$VAR`, `{...}` or `<...>` reference is not one), and an Authorization header
-  /\b[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:(?![$<{%])[^\s/@]+@/i,
-  /\bAuthorization[ \t]*:[ \t]*(?:Bearer|Basic|Token)[ \t]+[A-Za-z0-9._~+/=-]{16,}/i,
+  /(?<![A-Za-z0-9])[a-z][a-z0-9+.-]*:\/\/[^\s/:@]+:(?![$<{%])[^\s/@]+@/i,
+  /(?<![A-Za-z0-9])Authorization[ \t]*:[ \t]*(?:Bearer|Basic|Token)[ \t]+[A-Za-z0-9._~+/=-]{16,}/i,
 ];
 
 // `NAME=value` and `NAME: value` where the name says that the value is a secret (API_KEY, client_secret, GH_TOKEN, password, ...)
