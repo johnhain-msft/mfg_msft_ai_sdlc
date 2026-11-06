@@ -19,7 +19,7 @@ import { loadExistingApp, readAppCredentials, selectAppPath } from "./app-identi
 import { createApi, resolveApiBase, resolveOperatorToken } from "./github-api.mjs";
 import { classifyTarget, inspectRepository, localIdentity, localReader, remoteIdentity, remoteReader } from "./inspect-repo.mjs";
 import { projectKeyOf, resolveStrategy, synthesizeEdge, synthesizeProject } from "./synthesize.mjs";
-import { composeInstructions, generatedSection, operatorTextOf, readOperatorInstructions } from "./instructions-file.mjs";
+import { assertNoCredentials, assertNoCredentialsIn, composeInstructions, generatedSection, operatorTextOf, readOperatorInstructions } from "./instructions-file.mjs";
 import { applyDataToText, planManifestUpdate } from "./manifest-edit.mjs";
 import { restoreFiles, writeFilesAtomically } from "./atomic-write.mjs";
 import { stateVariablePlan, seedStateVariables } from "./state-variables.mjs";
@@ -76,6 +76,26 @@ async function inspectTarget({ target, api, ctx }) {
   return { identity, inspection };
 }
 
+/**
+ * AC50: the names and paths that the inspection found, and the keys of a provenance file, end up in sdlc.yaml and in
+ * instructions/<projectKey>.md (or in a warning or a diagnostic of this run), so they are held to the guard of the operator's text,
+ * and a repository that holds a credential in one of them is refused as soon as it is read, before anything can print or write it.
+ * Only what S5 prints or writes is looked at: the path of a workflow without a schedule is neither.
+ */
+function assertDetectedFactsHaveNoCredentials(inspection) {
+  assertNoCredentialsIn(
+    [
+      inspection.repo,
+      inspection.defaultBranch,
+      inspection.packageManifests,
+      inspection.workflows.filter((workflow) => workflow.scheduled).map((workflow) => workflow.path),
+      inspection.provenanceFiles.map((file) => [file.path, file.pointer]),
+      inspection.warnings,
+    ],
+    "a name or a path detected in the inspected repository",
+  );
+}
+
 async function onboard(argv, ctx) {
   const { logger, env } = ctx;
 
@@ -100,12 +120,14 @@ async function onboard(argv, ctx) {
   const operator = readOperatorInstructions(options.instructions, ctx.cwd, central.workingCopy);
   const target = classifyTarget(options.repo, ctx.cwd);
   const { inspection: upstream } = await inspectTarget({ target, api, ctx });
+  assertDetectedFactsHaveNoCredentials(upstream);
   for (const warning of upstream.warnings) logger.warn(`${upstream.repo}: ${warning}`);
   let downstream = null;
   if (options.downstream !== undefined) {
     ({ inspection: downstream } = await inspectTarget({ target: { kind: "remote", slug: options.downstream }, api, ctx }));
     // AC49: GitHub reports the repository under its current name, which names another owner when it was transferred or renamed.
     assertDownstreamOwner(downstream.repo, central, options.downstream);
+    assertDetectedFactsHaveNoCredentials(downstream);
     for (const warning of downstream.warnings) logger.warn(`${downstream.repo}: ${warning}`);
   }
 
@@ -185,6 +207,10 @@ async function onboard(argv, ctx) {
   const existingInstructions = fs.existsSync(instructionsPath) ? fs.readFileSync(instructionsPath, "utf8") : null;
   const operatorText = operator ? operator.text : existingInstructions !== null ? operatorTextOf(existingInstructions) : "";
   const instructionsText = composeInstructions(operatorText, generatedSection(upstream));
+  // AC50, before anything is written: neither the file nor the entries of sdlc.yaml may hold a credential, whatever their source (the
+  // operator's text, the inspected paths, the keys of a provenance file or a flag).
+  assertNoCredentials(instructionsText, `the instructions file ${instructionsRelative}`);
+  assertNoCredentialsIn([project, downstreamProject, edge], "the entries of sdlc.yaml that this run writes");
   const manifestOut = applyDataToText(manifestText, manifestData, plan.data, { label: options.manifest });
   const written = writeFilesAtomically(
     [

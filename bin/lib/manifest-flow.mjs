@@ -77,8 +77,7 @@ function closeServer(server) {
  * @param {AbortSignal} [input.signal] an interrupt closes the listener and aborts
  * @param {{ onListening?: (address: {address:string, port:number}) => void }} [input.hooks]
  */
-export async function runManifestFlow({ buildManifest, registrationBase, convert, openBrowser, logger, env = process.env, timeoutMs = FLOW_TIMEOUT_MS, signal, hooks }) {
-  const state = crypto.randomBytes(32).toString("hex");
+export async function runManifestFlow(input) {
   const server = http.createServer();
   await new Promise((resolve, reject) => {
     server.once("error", reject);
@@ -87,6 +86,18 @@ export async function runManifestFlow({ buildManifest, registrationBase, convert
       resolve();
     });
   });
+  // The listener is bound from here on, and it is closed whatever follows: a callback, the timeout, an interrupt and also a failure
+  // of the manifest builder or of a hook, which would otherwise leave the port open for as long as the process lives (AC11).
+  try {
+    return await serveRegistration(server, input);
+  } finally {
+    await closeServer(server);
+  }
+}
+
+/** The part of the flow that needs the bound listener. The caller closes it, however this ends. */
+async function serveRegistration(server, { buildManifest, registrationBase, convert, openBrowser, logger, env = process.env, timeoutMs = FLOW_TIMEOUT_MS, signal, hooks }) {
+  const state = crypto.randomBytes(32).toString("hex");
   const { address, port } = server.address();
   hooks?.onListening?.({ address, port });
   const origin = `http://127.0.0.1:${port}`;
@@ -191,6 +202,5 @@ export async function runManifestFlow({ buildManifest, registrationBase, convert
   } finally {
     clearTimeout(timer);
     signal?.removeEventListener("abort", onAbort);
-    await closeServer(server);
   }
 }

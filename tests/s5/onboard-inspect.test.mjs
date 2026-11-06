@@ -245,6 +245,7 @@ test("AC45: provenance files: the four names at any depth, with the shallowest 4
     "data/lab-sources.json": JSON.stringify({ meta: { commit: "not-a-sha" }, source: { commit: sha } }),
     "x/provenance.json": JSON.stringify({ "a/b": { "c~d": { commit: sha } } }),
     "y/provenance.json": "{ not json",
+    "z/source.json": JSON.stringify({ sources: [{ name: "first" }, { commit: sha }] }),
     "docs/_meta/registry.yaml": "labs: {}\n",
     "other.json": JSON.stringify({ commit: sha }),
   });
@@ -254,10 +255,12 @@ test("AC45: provenance files: the four names at any depth, with the shallowest 4
     { path: "source.json", commit: sha, pointer: "/commit" },
     { path: "x/provenance.json", commit: sha, pointer: "/a~1b/c~0d/commit" },
     { path: "y/provenance.json", commit: null, pointer: null },
+    { path: "z/source.json", commit: sha, pointer: "/sources/1/commit" },
   ]);
   assert.ok(inspection.warnings.some((line) => line === "y/provenance.json is not valid JSON"));
   assert.deepEqual(findCommitPointer({ commit: "short" }), null);
-  assert.deepEqual(findCommitPointer([{ commit: sha }]), null, "arrays are not walked");
+  assert.deepEqual(findCommitPointer([{ commit: sha }]), { commit: sha, pointer: "/0/commit" }, "arrays are walked and an element is addressed by its index");
+  assert.deepEqual(findCommitPointer([1, "x", null, [], [[]], {}]), null, "an array without a commit key yields none");
 });
 
 test("AC45: CODEOWNERS: individuals in first-appearance order without duplicates, teams apart, e-mail owners and comments ignored", () => {

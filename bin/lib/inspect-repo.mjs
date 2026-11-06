@@ -128,15 +128,27 @@ export function localIdentity(directory) {
   return { repo, defaultBranch, headSha };
 }
 
-/** The first 40-hex `commit` value of a JSON document and its JSON Pointer, shallowest first; null when there is none. */
+/**
+ * The first 40-hex `commit` value of a JSON document and its JSON Pointer (RFC 6901), shallowest first; null when there is none.
+ * Objects and arrays are both searched: an element of an array is addressed by its index (`{ "sources": [{ "commit": ... }] }` gives
+ * `/sources/0/commit`), and `~` and `/` in a key are escaped as `~0` and `~1`.
+ */
 export function findCommitPointer(value) {
+  const isContainer = (node) => node !== null && typeof node === "object";
   const queue = [{ node: value, pointer: "" }];
-  while (queue.length > 0) {
-    const { node, pointer } = queue.shift();
-    if (node === null || typeof node !== "object" || Array.isArray(node)) continue;
+  // An index walks the queue instead of shift(), which would be quadratic on a provenance file that holds a very large array.
+  for (let next = 0; next < queue.length; next += 1) {
+    const { node, pointer } = queue[next];
+    if (!isContainer(node)) continue;
+    if (Array.isArray(node)) {
+      node.forEach((child, index) => {
+        if (isContainer(child)) queue.push({ node: child, pointer: `${pointer}/${index}` });
+      });
+      continue;
+    }
     if (typeof node.commit === "string" && SHA.test(node.commit)) return { commit: node.commit, pointer: `${pointer}/commit` };
     for (const [key, child] of Object.entries(node)) {
-      queue.push({ node: child, pointer: `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}` });
+      if (isContainer(child)) queue.push({ node: child, pointer: `${pointer}/${key.replace(/~/g, "~0").replace(/\//g, "~1")}` });
     }
   }
   return null;

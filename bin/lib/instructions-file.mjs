@@ -1,14 +1,21 @@
 // instructions/<projectKey>.md (AC50): the operator's --instructions text verbatim (the content of the file when the
 // value is an existing file path of the central repository's working copy), followed by a generated section that lists
 // what the inspection found. The file is UTF-8 with a trailing newline and never holds a credential or the content of a
-// secret file: a file outside the working copy, a file whose name says it holds secrets and a text that looks like a
-// credential are refused, and the diagnostic never echoes what was read.
+// secret file: a file outside the working copy, a file whose name or directory says it holds secrets, a file that is not
+// UTF-8 text and a text that looks like a credential are refused, and the diagnostic never echoes what was read.
 
 import fs from "node:fs";
 import path from "node:path";
 import { SdlcError } from "./errors.mjs";
 
 export const GENERATED_MARKER = "<!-- sdlc-onboard:generated -->";
+const GENERATED_HEADING = "## Detected repository facts";
+
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+// Where the generated section of a file written by composeInstructions begins: the marker on a line of its own (or at the very start
+// of the file), directly followed by the heading of the section; the letter case of the two is not significant. The line break may be
+// \r\n, because a checkout with core.autocrlf turns the \n of the file into one.
+const GENERATED_BOUNDARY = new RegExp(`(?<![^\\n])${escapeRegExp(GENERATED_MARKER)}\\r?\\n${escapeRegExp(GENERATED_HEADING)}(?![^\\r\\n])`, "gi");
 
 // Credential formats that are recognisable on sight. A text that holds one is refused.
 const CREDENTIAL_PATTERNS = [
@@ -55,7 +62,9 @@ const CREDENTIAL_PATTERNS = [
 ];
 
 // `NAME=value` and `NAME: value` where the name says that the value is a secret (API_KEY, client_secret, GH_TOKEN, password, ...)
-// and the value is a token-like string of letters and digits: the shape of an .env or credentials file whatever the provider.
+// and the value is a token-like string of at least 12 characters with a letter in it: the shape of an .env or credentials file
+// whatever the provider. A secret is not made harmless by lacking a digit (`PASSWORD=OnlyLettersInThisOne`); a value without a
+// letter (`token_count=1234567890123`) is a number, not a secret.
 const SECRET_NAME = /(?:api[_-]?key|secret|token|passw(?:or)?d|credential|private[_-]?key|access[_-]?key)/gi;
 const ASSIGNED_VALUE = /^["']?[ \t]*[:=][ \t]*["']?([A-Za-z0-9/+_=.~-]{12,})/;
 
@@ -67,7 +76,7 @@ function hasSecretAssignment(text) {
     while (end < text.length && /[\w.-]/.test(text[end])) end += 1; // the rest of the name
     consumed = end;
     const assigned = ASSIGNED_VALUE.exec(text.slice(end, end + 400));
-    if (assigned && /[A-Za-z]/.test(assigned[1]) && /\d/.test(assigned[1])) return true;
+    if (assigned && /[A-Za-z]/.test(assigned[1])) return true;
   }
   return false;
 }
@@ -82,16 +91,33 @@ export function assertNoCredentials(text, label) {
   }
 }
 
+/**
+ * assertNoCredentials for every string that `value` holds, at any depth of its objects and arrays (the strings of an entry that
+ * S5 synthesizes: a path, a branch, a key of a provenance file). Like the diagnostic of assertNoCredentials, that of this function
+ * names `label` and never the string.
+ */
+export function assertNoCredentialsIn(value, label) {
+  const pending = [value];
+  while (pending.length > 0) {
+    const item = pending.pop();
+    if (typeof item === "string") {
+      assertNoCredentials(item, label);
+    } else if (item !== null && typeof item === "object") {
+      for (const child of Array.isArray(item) ? item : Object.values(item)) pending.push(child);
+    }
+  }
+}
+
 // Files whose name says that they hold secrets, and the directories that hold them; refused even inside the working copy.
 const SECRET_FILE_NAMES = [
-  /^\.env(?:\..*)?$/i,
+  /^\.env/i, // .env, .env.production, .envrc, .env-local, .environment, ...
   /^\.(?:npmrc|netrc|pypirc|git-credentials|htpasswd)$/i,
   /^credentials(?:\.json)?$/i,
   /^secrets?\.(?:json|ya?ml|toml|ini|properties)$/i,
   /^id_(?:rsa|dsa|ecdsa|ed25519)$/i,
   /\.(?:pem|key|p12|pfx|jks|keystore|ppk|kdbx)$/i,
 ];
-const SECRET_DIRECTORIES = new Set([".git", ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker"]);
+const SECRET_DIRECTORIES = new Set([".git", ".ssh", ".aws", ".azure", ".gnupg", ".kube", ".docker", "credentials"]);
 
 /** The reason why a repository-relative path is a secret file, or null. */
 function secretFileReason(relative) {
@@ -108,6 +134,24 @@ const realPath = (target) => {
     return path.resolve(target);
   }
 };
+
+/**
+ * The text of the bytes of an --instructions file, or the refusal of a file that is not text: bytes that are not valid UTF-8 (a
+ * lenient decoder would turn each of them into U+FFFD, and the copy would no longer be the file) and a NUL byte. A leading byte order
+ * mark stays in the text (`ignoreBOM`), so that the copy of a valid UTF-8 file remains byte for byte.
+ */
+function decodeText(bytes, value) {
+  let text;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes);
+  } catch {
+    text = null;
+  }
+  if (text === null || text.includes("\u0000")) {
+    throw new SdlcError(`the instructions file ${value} is not a text file; nothing was written`, { code: "instructions-binary" });
+  }
+  return text;
+}
 
 /**
  * Reads --instructions: an existing file path is read (and its text is not stored in the project entry), anything else is literal text.
@@ -138,8 +182,7 @@ export function readOperatorInstructions(value, cwd, root = cwd) {
         if (reason !== null) {
           throw new SdlcError(`--instructions ${value} names a file that is not copied because ${reason}; instructions are committed, so a secret file cannot be used. Nothing was written.`, { code: "instructions-secret-file" });
         }
-        const text = fs.readFileSync(real, "utf8");
-        if (text.includes("\u0000")) throw new SdlcError(`the instructions file ${value} is not a text file; nothing was written`, { code: "instructions-binary" });
+        const text = decodeText(fs.readFileSync(real), value);
         assertNoCredentials(text, `the instructions file ${value}`);
         return { text, literal: "" };
       }
@@ -166,7 +209,7 @@ export function generatedSection(inspection) {
   const provenance = inspection.provenanceFiles.map((file) => file.path).filter(safeItem);
   const lines = [
     GENERATED_MARKER,
-    "## Detected repository facts",
+    GENERATED_HEADING,
     "",
     `Repository \`${inspection.repo}\`, default branch \`${inspection.defaultBranch}\`.`,
     "",
@@ -195,9 +238,15 @@ export function composeInstructions(operatorText, generated) {
   return `${operatorText}${separator}${generated}\n`;
 }
 
-/** The operator's text of an instructions file written by composeInstructions (the part before the generated marker). */
+/**
+ * The operator's text of an instructions file written by composeInstructions: the part before its generated section. The section
+ * starts at the last line that holds the marker, directly followed by the heading of the section, and not at the first occurrence
+ * of the marker: an operator can quote the marker in their own text (`Document this marker: <!-- sdlc-onboard:generated -->`), and
+ * the text after that quotation is theirs, not generated. A file without such a boundary is the operator's text as a whole.
+ */
 export function operatorTextOf(existing) {
-  const index = existing.indexOf(GENERATED_MARKER);
+  let index = -1;
+  for (const match of existing.matchAll(GENERATED_BOUNDARY)) index = match.index;
   if (index === -1) return existing;
   const before = existing.slice(0, index);
   if (before === "") return "";
