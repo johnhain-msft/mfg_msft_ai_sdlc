@@ -11,10 +11,20 @@
 //     check the audit report: the weekly audit generates it in its own pull request, so the default branch of the lab holds only the
 //     template, and a self-improve run neither writes nor needs it;
 //  4. the checkout differs from the base commit neither in `gh_aw_schema_version` nor in any file under .github/workflows/ (the
-//     version and the compiled workflows are report-only). The base commit is --base-sha, else SDLC_BASE_SHA, which prepare-run
-//     appended to GITHUB_ENV in the first step of the job, so that the runner and not a file that the agent can edit supplies it.
+//     version and the compiled workflows are report-only), whether the difference is in the HEAD commit or in the index and the
+//     working tree. The base commit is --base-sha, else SDLC_BASE_SHA, which prepare-run appended to GITHUB_ENV in the first step of
+//     the job, so that the runner and not a file that the agent can edit supplies it.
 // Anything else exits 1 and names each missing key or section, or the changed value or path, on stderr.
 // The script only reads the checkout; it writes nothing.
+//
+// The agent has just worked in that checkout and can write all of it, its .git directory included (its `git` tool takes any arguments),
+// so rule 4 asks git for what the objects say and for nothing else that the agent can bend. Every git call runs with --no-replace-objects:
+// `git replace <base> HEAD` would otherwise make git return the agent's own commit wherever it reads the base. A checkout that carries a
+// replace ref or a graft file is refused, because the runner's checkout has neither and that option does not switch grafts off. The
+// committed difference is taken from the two commit objects (`git diff-tree <base> HEAD`) and not from the index and the working tree,
+// which the agent can put back after it has committed, and `gh_aw_schema_version` is read from the HEAD commit as well as the working tree.
+// What the script cannot do is protect its own file: it runs from the orchestrator checkout, the working directory of the agent step, so an
+// agent that can write there and rewrites the script passes (SPEC-02 §4, item 6, says what that leaves open).
 
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -126,17 +136,72 @@ export function sectionProblems(label, markdown, required, templateHeadings = []
   return problems;
 }
 
+/**
+ * git, as every check of this script uses it. The checkout is the agent's workspace and the agent can write its .git directory, so no call
+ * trusts a replace ref: --no-replace-objects (and GIT_NO_REPLACE_OBJECTS, for a git that git itself starts) makes a read of an object return
+ * that object, where `git replace <base> HEAD` would make a read of the base commit return the agent's own commit.
+ */
 function git(args, { cwd, env }) {
-  return execFileSync("git", args, { cwd, env: { ...env, GIT_OPTIONAL_LOCKS: "0" }, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+  return execFileSync("git", ["--no-replace-objects", ...args], { cwd, env: { ...env, GIT_NO_REPLACE_OBJECTS: "1", GIT_OPTIONAL_LOCKS: "0" }, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
 }
 
 const gitMessage = (error) => String(error?.stderr ?? error?.message ?? error).trim().split("\n")[0];
 
-/** Every path that differs from the base commit: committed, staged, modified, deleted or untracked. */
-export function changedPaths(checkout, baseSha, env) {
-  const tracked = git(["diff", "--name-only", "-z", "--no-renames", baseSha], { cwd: checkout, env });
-  const untracked = git(["ls-files", "--others", "--exclude-standard", "-z"], { cwd: checkout, env });
-  return [...new Set([...tracked.split("\0"), ...untracked.split("\0")].filter((entry) => entry !== ""))].sort();
+/**
+ * Every path that differs from the base commit. What the commits change comes first and is read from the two commit objects alone
+ * (`diff-tree`): an agent that commits a change and then puts the file back in its working tree leaves nothing for `git diff <base>` to
+ * see, and the pull request carries the commit. The index and the working tree add what is staged, modified, deleted or untracked.
+ */
+export function changedPaths(checkout, baseSha, env, headSha = "HEAD") {
+  const options = { cwd: checkout, env };
+  const committed = git(["diff-tree", "-r", "--name-only", "-z", "--no-renames", baseSha, headSha], options);
+  const tracked = git(["diff", "--name-only", "-z", "--no-renames", baseSha], options);
+  const untracked = git(["ls-files", "--others", "--exclude-standard", "-z"], options);
+  return [...new Set([committed, tracked, untracked].flatMap((output) => output.split("\0")).filter((entry) => entry !== ""))].sort();
+}
+
+/** The value of the pinned key in the text of a registry: null when the registry has no such key. */
+function pinnedValueOf(registry) {
+  const entry = scanTopLevelKeys(registry).find((candidate) => candidate.key === PINNED_KEY);
+  return entry === undefined ? null : scalarOf(entry.rest);
+}
+
+/** The pinned value as the registry of a commit holds it: null when the commit has no registry, or its registry has no such key. */
+export function pinnedValueAt(checkout, revision, env) {
+  try {
+    return pinnedValueOf(git(["cat-file", "blob", `${revision}:${REGISTRY_FILE}`], { cwd: checkout, env }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Evidence that git has been told to answer differently from what the objects say. --no-replace-objects already makes the checks ignore a
+ * replace ref, but the runner's checkout has none, so one is refused as the mark of an agent that made it. A graft file is not switched off
+ * by that option (git still reads it), so a checkout that has one is refused as well. `--git-path` names the file that git would read,
+ * GIT_GRAFT_FILE included.
+ */
+function tamperProblems(checkout, io) {
+  const problems = [];
+  const options = { cwd: checkout, env: io.env };
+  try {
+    const graftFile = path.resolve(checkout, git(["rev-parse", "--git-path", path.posix.join("info", "grafts")], options).trim());
+    if (io.fs.existsSync(graftFile)) {
+      problems.push(`the target checkout has a graft file (${graftFile}); git still reads it, --no-replace-objects does not switch it off, and a checkout that the runner made has none`);
+    }
+  } catch {
+    // not a repository: the check of the base commit says so
+  }
+  try {
+    const refs = git(["for-each-ref", "--format=%(refname)", "refs/replace/"], options).split(/\r?\n/).filter((ref) => ref !== "");
+    if (refs.length > 0) {
+      const shown = `${refs.slice(0, 3).join(", ")}${refs.length > 3 ? ", ..." : ""}`;
+      problems.push(`the target checkout has ${refs.length === 1 ? "a replace ref" : `${refs.length} replace refs`} (${shown}); the checks ignore ${refs.length === 1 ? "it" : "them"}, but a checkout that the runner made has none`);
+    }
+  } catch {
+    // not a repository: the check of the base commit says so
+  }
+  return problems;
 }
 
 const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
@@ -168,14 +233,21 @@ function runContextProblems(out, base, io) {
 }
 
 function reportOnlyProblems({ checkout, baseSha, headRegistry, io }) {
-  const problems = [];
+  const problems = tamperProblems(checkout, io);
+  const options = { cwd: checkout, env: io.env };
+  let headSha;
   try {
-    git(["rev-parse", "--verify", `${baseSha}^{commit}`], { cwd: checkout, env: io.env });
+    git(["rev-parse", "--verify", `${baseSha}^{commit}`], options);
   } catch (error) {
-    return [`the base commit ${baseSha} is not in the target checkout: ${gitMessage(error)}`];
+    return [...problems, `the base commit ${baseSha} is not in the target checkout: ${gitMessage(error)}`];
   }
   try {
-    for (const entry of changedPaths(checkout, baseSha, io.env)) {
+    headSha = git(["rev-parse", "--verify", "HEAD^{commit}"], options).trim();
+  } catch (error) {
+    return [...problems, `HEAD of the target checkout is not a commit: ${gitMessage(error)}`];
+  }
+  try {
+    for (const entry of changedPaths(checkout, baseSha, io.env, headSha)) {
       const lower = entry.toLowerCase();
       if (lower === ".github/workflows" || lower.startsWith(PROTECTED_DIRECTORY)) {
         problems.push(`${entry} differs from the base commit ${baseSha.slice(0, 12)}; nothing under .github/workflows/ may be edited, recompiled or deleted`);
@@ -184,20 +256,15 @@ function reportOnlyProblems({ checkout, baseSha, headRegistry, io }) {
   } catch (error) {
     problems.push(`the changes against the base commit ${baseSha.slice(0, 12)} cannot be listed: ${gitMessage(error)}`);
   }
-  if (headRegistry !== null) {
-    let baseValue = null;
-    try {
-      const entry = scanTopLevelKeys(git(["show", `${baseSha}:${REGISTRY_FILE}`], { cwd: checkout, env: io.env })).find((candidate) => candidate.key === PINNED_KEY);
-      baseValue = entry === undefined ? null : scalarOf(entry.rest);
-    } catch {
-      baseValue = null;
-    }
-    const headEntry = scanTopLevelKeys(headRegistry).find((candidate) => candidate.key === PINNED_KEY);
-    const headValue = headEntry === undefined ? null : scalarOf(headEntry.rest);
-    if (headValue !== baseValue && !(headEntry === undefined && baseValue === null)) {
-      problems.push(`${PINNED_KEY} changed from ${baseValue === null ? "(absent)" : `'${baseValue}'`} to ${headValue === null ? "(absent)" : `'${headValue}'`}; it is report-only`);
-    }
-  }
+  // The pinned value is read where the pull request gets it, the HEAD commit, and where the validator already looks at everything else, the
+  // working tree. A registry that is missing from the working tree is reported by the caller, so only the commit is read then.
+  const baseValue = pinnedValueAt(checkout, baseSha, io.env);
+  const observed = [["the HEAD commit", pinnedValueAt(checkout, headSha, io.env)]];
+  if (headRegistry !== null) observed.push(["the working tree", pinnedValueOf(headRegistry)]);
+  const changedTo = new Map();
+  for (const [where, value] of observed) if (value !== baseValue) changedTo.set(value, [...(changedTo.get(value) ?? []), where]);
+  const shown = (value) => (value === null ? "(absent)" : `'${value}'`);
+  for (const [value, where] of changedTo) problems.push(`${PINNED_KEY} changed from ${shown(baseValue)} to ${shown(value)}; it is report-only (in ${where.join(" and ")})`);
   return problems;
 }
 

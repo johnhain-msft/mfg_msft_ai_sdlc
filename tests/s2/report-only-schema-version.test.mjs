@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test, { after, before } from "node:test";
 import { run as prepare } from "../../src/drift/prepare-run.mjs";
-import { run } from "../../src/validate-copilot-lab-audit.mjs";
+import { changedPaths, pinnedValueAt, run } from "../../src/validate-copilot-lab-audit.mjs";
 import { DRIFT_KEYS, driftWorkflow, tempDir } from "./helpers/fixtures.mjs";
 import { BASH_SKIP, createGateWorkspace } from "./helpers/gate-harness.mjs";
 import { createRepo } from "./helpers/git-fixture.mjs";
@@ -46,6 +46,14 @@ async function afterChange(change, args = []) {
 }
 
 const setVersion = (version) => (checkout) => checkout.write("docs/_meta/registry.yaml", checkout.read("docs/_meta/registry.yaml").replace('gh_aw_schema_version: "0.86.2"', `gh_aw_schema_version: ${version}`));
+
+/** Puts the shared checkout back as the base commit left it: replace refs and a graft file (which an agent can make in .git) included. */
+function restore() {
+  for (const ref of repo.git("for-each-ref", "--format=%(refname:lstrip=2)", "refs/replace/").split("\n").filter(Boolean)) repo.git("replace", "-d", ref);
+  fs.rmSync(path.join(repo.dir, ".git", "info", "grafts"), { force: true });
+  repo.git("reset", "-q", "--hard", base);
+  repo.git("clean", "-fdq");
+}
 
 test("AC22: a checkout that changes gh_aw_schema_version exits non-zero and names the old and the new value", async () => {
   const result = await afterChange(setVersion('"0.88.2"'));
@@ -200,6 +208,123 @@ test("AC22: a base commit that is not a full commit id is refused before git see
   }
 });
 
+// The agent works in the checkout that the validator then reads, and it can write the .git directory of that checkout (the compiled agent step
+// allows `git` with any arguments). Whatever in that directory decides what git answers, other than the objects themselves, must not decide what
+// the report-only rule compares.
+
+test("AC22: an agent that commits a change and runs `git replace <base> HEAD` does not get past the rule: git is asked for the real base commit", async () => {
+  const forms = {
+    "a bumped gh_aw_schema_version": { change: () => setVersion('"9.9.9"')(repo), expected: "gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only" },
+    "a recompiled workflow": { change: () => repo.write(".github/workflows/stand-in.lock.yml", "name: recompiled by the agent\n"), expected: ".github/workflows/stand-in.lock.yml differs from the base commit" },
+  };
+  for (const [name, { change, expected }] of Object.entries(forms)) {
+    change();
+    const head = repo.commitAll(name);
+    repo.git("replace", base, head);
+    try {
+      assert.equal(repo.git("diff", "--name-only", base), "", `${name}: with the replace ref in place, plain git answers that nothing differs from the base`);
+      const result = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: withBase(base) });
+      assert.equal(result.code, 1, `${name}: the replaced base must not decide\n${result.stdout}`);
+      assert.ok(result.stderr.includes(expected), `${name}: ${result.stderr}`);
+      assert.match(result.stderr, /the target checkout has a replace ref \(refs\/replace\/[0-9a-f]{40}\)/, "and the replace ref itself is named");
+    } finally {
+      restore();
+    }
+  }
+});
+
+test("AC22: git is asked for the objects as they are: under a replace ref, changedPaths and pinnedValueAt still read the real base commit", () => {
+  setVersion('"9.9.9"')(repo);
+  const head = repo.commitAll("bump the pinned version");
+  repo.git("replace", base, head);
+  try {
+    assert.equal(repo.git("diff", "--name-only", base), "", "plain git, with the replace ref in place, answers that nothing differs from the base");
+    assert.deepEqual(changedPaths(repo.dir, base, cleanEnv(), head), ["docs/_meta/registry.yaml"]);
+    assert.equal(pinnedValueAt(repo.dir, base, cleanEnv()), "0.86.2");
+    assert.equal(pinnedValueAt(repo.dir, head, cleanEnv()), "9.9.9");
+  } finally {
+    restore();
+  }
+});
+
+test("AC22: a checkout that has a graft file is refused, because --no-replace-objects does not switch grafts off", async () => {
+  const graftFile = path.join(repo.dir, ".git", "info", "grafts");
+  fs.mkdirSync(path.dirname(graftFile), { recursive: true });
+  fs.writeFileSync(graftFile, `${base}\n`);
+  try {
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: withBase(base) });
+    assert.equal(result.code, 1, result.stdout);
+    assert.match(result.stderr, /the target checkout has a graft file \(.*grafts\)/);
+  } finally {
+    restore();
+  }
+  const named = path.join(out, "named-grafts");
+  fs.writeFileSync(named, `${base}\n`);
+  try {
+    const refused = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base, GIT_GRAFT_FILE: named }) });
+    assert.equal(refused.code, 1, "the graft file that git is told to read is the one that counts");
+    assert.match(refused.stderr, /the target checkout has a graft file/);
+    const absent = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base, GIT_GRAFT_FILE: path.join(out, "no-such-grafts") }) });
+    assert.equal(absent.code, 0, `a graft file that is not there is nothing: ${absent.stderr}`);
+  } finally {
+    fs.rmSync(named, { force: true });
+  }
+});
+
+test("AC22: a change that is committed and then put back in the working tree is still reported: the commits are what the pull request carries", async () => {
+  const forms = {
+    "a bumped gh_aw_schema_version": { change: () => setVersion('"9.9.9"')(repo), file: "docs/_meta/registry.yaml", expected: "gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only (in the HEAD commit)" },
+    "a recompiled workflow": { change: () => repo.write(".github/workflows/stand-in.lock.yml", "name: recompiled by the agent\n"), file: ".github/workflows/stand-in.lock.yml", expected: ".github/workflows/stand-in.lock.yml differs from the base commit" },
+    "a deleted workflow": { change: () => repo.remove(".github/workflows/stand-in.lock.yml"), file: ".github/workflows/stand-in.lock.yml", expected: ".github/workflows/stand-in.lock.yml differs from the base commit" },
+  };
+  for (const [name, { change, file, expected }] of Object.entries(forms)) {
+    change();
+    repo.commitAll(name);
+    repo.git("checkout", base, "--", file); // the index and the working tree are the base's again; the commit keeps the change
+    try {
+      assert.equal(repo.git("diff", "--name-only", base), "", `${name}: the working tree no longer differs from the base`);
+      const result = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: withBase(base) });
+      assert.equal(result.code, 1, `${name}\n${result.stdout}`);
+      assert.ok(result.stderr.includes(expected), `${name}: ${result.stderr}`);
+    } finally {
+      restore();
+    }
+  }
+});
+
+test("AC22: commits that change neither the pinned version nor a workflow pass, however many there are and whatever else they edit", async () => {
+  repo.write("labs/lab01.md", "A mechanical fix.\n");
+  repo.commitAll("fix a lab file");
+  repo.write("docs/_meta/registry.yaml", repo.read("docs/_meta/registry.yaml").replace('copilot_cli_version_floor: "1.0.82"', 'copilot_cli_version_floor: "1.0.99"'));
+  repo.write("docs/_meta/audit-report.md", `${repo.read("docs/_meta/audit-report.md")}\nA note.\n`);
+  repo.commitAll("update the registry and the report");
+  try {
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: withBase(base) });
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr, "");
+  } finally {
+    restore();
+  }
+});
+
+test("AC22: every git call of the validator is made with --no-replace-objects", async () => {
+  const trace = path.join(out, "git-trace2.jsonl");
+  try {
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base, GIT_TRACE2_EVENT: trace }) });
+    assert.equal(result.code, 0, result.stderr);
+    const starts = fs
+      .readFileSync(trace, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((event) => event.event === "start");
+    assert.ok(starts.length > 0, "the trace holds the git calls of the run");
+    for (const { argv } of starts) assert.equal(argv[1], "--no-replace-objects", argv.join(" "));
+  } finally {
+    fs.rmSync(trace, { force: true });
+  }
+});
+
 test("AC22: prepare-run appends the base commit to GITHUB_ENV, and the one line is all it adds there", async () => {
   const workspace = tempDir("sdlc-s2-export-");
   const checkout = createRepo({ "README.md": "target\n" }, { dir: path.join(workspace, "example-target") });
@@ -260,6 +385,34 @@ test("AC22: through the rendered steps, an agent that bumps the pinned version a
     assert.equal(passed.code, 0, `the chain itself works: ${passed.log}`);
   } finally {
     honest.cleanup();
+  }
+});
+
+test("AC22: through the rendered steps, an agent that commits a bump of the pinned version and then plants a replace ref, or puts its working tree back, still fails the lab's post-step", { skip: BASH_SKIP }, async () => {
+  const { frontmatter } = driftWorkflow("copilot-lab");
+  const [prepareStep] = frontmatter["pre-agent-steps"];
+  const [validator] = frontmatter["post-steps"];
+  const lab = labFiles();
+  const bumped = lab["docs/_meta/registry.yaml"].replace('gh_aw_schema_version: "0.86.2"', 'gh_aw_schema_version: "9.9.9"');
+  const forgeries = {
+    "git replace <base> HEAD": (gate) => gate.git("replace", gate.baseSha, "HEAD"),
+    "the working tree put back": (gate) => gate.git("checkout", gate.baseSha, "--", "docs/_meta/registry.yaml"),
+  };
+  for (const [name, forge] of Object.entries(forgeries)) {
+    const gate = createGateWorkspace({ checkoutName: "day-in-the-life-copilot-lab", files: lab });
+    try {
+      gate.exported = {};
+      assert.equal((await gate.runSteps([prepareStep])).code, 0);
+      gate.write("docs/_meta/registry.yaml", bumped);
+      gate.git("add", "-A");
+      gate.git("commit", "-q", "-m", "bump the pinned version");
+      forge(gate);
+      const finished = await gate.runSteps([validator]);
+      assert.equal(finished.code, 1, `${name}\n${finished.log}`);
+      assert.ok(finished.log.includes("gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only"), `${name}\n${finished.log}`);
+    } finally {
+      gate.cleanup();
+    }
   }
 });
 
