@@ -2,7 +2,9 @@
 // diff against the recorded base commit changes gh_aw_schema_version or touches anything under .github/workflows/; and
 // exclude-lock-yml: true and protected-files with policy "blocked" stay as AC2 renders them, with no exclude entry that covers
 // .github/workflows/. The base commit is the one that prepare-run, the first step of the job, hands to the later steps through
-// GITHUB_ENV (SDLC_BASE_SHA); it is never read from run-context.json, which the agent can edit.
+// GITHUB_ENV (SDLC_BASE_SHA); it is never read from run-context.json, which the agent can edit. Nor does anything else that the agent can
+// write in the checkout decide what the rule compares: a replace ref (`git replace <base> HEAD`), a graft file, and a change that is
+// committed and then put back in the working tree are tested here too. The validator's own file is not protected (SPEC-02 §4, item 6).
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
