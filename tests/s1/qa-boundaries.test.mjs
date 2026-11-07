@@ -225,7 +225,8 @@ test("AC12 QA: missing CLI arguments and malformed or null request JSON produce 
       cwd: work.dir,
       env: { ...process.env, ...work.shims.env() },
       encoding: "utf8",
-      timeout: 10000,
+      // each call is a node start of well under a second: the limit only ends a hang, and 10 s was tight for a host that is busy with other work
+      timeout: 120000,
     });
     assert.equal(outcome.status, 1, `${JSON.stringify(args)}: ${outcome.stderr}`);
     const result = JSON.parse(outcome.stdout);

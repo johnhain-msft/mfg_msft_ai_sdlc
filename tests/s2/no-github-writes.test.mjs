@@ -15,6 +15,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { abs, REPO_ROOT, S2_ROOT, tempDir } from "./helpers/fixtures.mjs";
 import { BASH_SKIP } from "./helpers/gate-harness.mjs";
+import { hermeticWorkers } from "./helpers/load.mjs";
 import { createShims, SHIM_DIRECTORY } from "./helpers/shims.mjs";
 import { cleanEnv, runNode } from "./helpers/stub-server.mjs";
 
@@ -44,7 +45,7 @@ function isWrite(entry) {
 }
 
 let hermeticRun;
-/** Runs the other files once, a few at a time, and returns what the children and the guards recorded. */
+/** Runs the other files once, a few at a time (hermeticWorkers: no more than the runner has files going), and returns what the children and the guards recorded. */
 function hermetic() {
   hermeticRun ??= (async () => {
     const shims = createShims();
@@ -80,7 +81,7 @@ function hermetic() {
         );
       }
     };
-    await Promise.all(Array.from({ length: Math.max(1, Math.min(8, os.availableParallelism())) }, worker));
+    await Promise.all(Array.from({ length: hermeticWorkers() }, worker));
     const read = (file) => fs.readFileSync(file, "utf8").split("\n").filter((line) => line.trim() !== "");
     const run = { results, shimCalls: read(allShimLog).map((line) => JSON.parse(line)), denied: read(denyLog).map((line) => JSON.parse(line)), env };
     shims.cleanup();

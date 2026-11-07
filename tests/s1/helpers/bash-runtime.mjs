@@ -6,8 +6,10 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-// Generous on purpose: starting bash and git is slow on a busy Windows machine, and a real hang must still end the test.
-const TIMEOUT_MS = 60000;
+// Generous on purpose: starting bash and git is slow on a busy Windows machine (a `git hash-object` of this helper was seen to wait for more than a
+// minute while other projects' builds ran on the same host, and the test that owned it failed with ETIMEDOUT), and a real hang must still end the
+// test, only later. The helpers of tests/s2 allow two minutes; this allows three. package.json bounds how many test files run at once for the same reason.
+export const TIMEOUT_MS = 180000;
 
 function findBash() {
   const candidates = [

@@ -153,13 +153,20 @@ const CREDENTIAL_VARIABLES = [
   "GITHUB_RUN_ATTEMPT",
   "CONFIGURED_TARGET_REPO",
   "GH_DATA_DIR",
+  // where gh finds its extensions. A shell that runs the suite may export it (the maintainer's workstation points it at an isolated gh-aw install for
+  // the reconciler), and the lab gate of AC24 sets it itself, so a test that asks what the parent had must not see the shell's value.
+  "XDG_DATA_HOME",
+  // the switch that asks for the real gh-aw compiler (`SDLC_REAL_GH_AW=1 npm test`). The gh of a child of this suite is a shim that cannot compile, so a
+  // child that inherited it would try the real compiler through the shim and fail (the version probe finds the real gh.exe further down PATH on Windows,
+  // the reconciler then spawns the shim): the checks that need the real compiler run in the test process, which has the real gh, and skip in the children.
+  "SDLC_REAL_GH_AW",
   "GITHUB_ENV",
   "GITHUB_OUTPUT",
   "RUNNER_TEMP",
   "SDLC_BASE_SHA",
 ];
 
-/** The environment of a child: the current one without any credential or workflow variable, plus `extra`. */
+/** The environment of a child: the current one without any credential, workflow variable, data directory of gh or switch of the real compiler, plus `extra`. */
 export function cleanEnv(extra = {}) {
   const env = { ...process.env };
   for (const name of CREDENTIAL_VARIABLES) delete env[name];
