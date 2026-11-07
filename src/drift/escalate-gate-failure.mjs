@@ -12,6 +12,10 @@
 // occurrences and keeps a short history. Every request goes to /repos/<that repository>/ and the target repository is
 // never written. Requests are serial and a rate-limited response is retried as the server states.
 //
+// Whether the issue exists is read from the open issues that carry the label, which are read to the end of the list (at most MAX_ISSUE_PAGES pages).
+// When the list is longer than that and none of the issues read is the one, the step exits 1 and writes nothing: a second issue would duplicate
+// one that may be further down, and an unknown state is never "no issue yet".
+//
 // The failing command is --failing-command when given. Otherwise it is looked up as the first failed step of the agent
 // job of the run (post-steps are named by their command); that lookup needs the actions: read permission, which the
 // escalate_failure job is given (a private repository refuses the read without it). A refusal or a run that cannot be found
@@ -44,6 +48,12 @@ export const TITLE = (workflowId, targetRepo) => `[sdlc-failure] ${workflowId} (
 const MARKER = "sdlc-gate-failure:v1";
 const WORKFLOW_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 const HISTORY_LIMIT = 20;
+const ISSUES_PER_PAGE = 100;
+/**
+ * How far down the open issues that carry the label are read: the list is read to its end, up to this many pages (a hundred issues each). The list is the
+ * only way to tell that an issue of this workflow and target exists, so a list that is cut short is not read as "no such issue" (see run()).
+ */
+export const MAX_ISSUE_PAGES = 100;
 
 /** Untrusted text made safe for an inline code span in an issue body. */
 const inline = (value, limit = 300) => {
@@ -149,8 +159,13 @@ export async function run(argv, ioInput = {}) {
     }
 
     const title = TITLE(workflowId, targetRepo);
-    const { items } = await client.paginate(`/repos/${central}/issues?state=open&labels=${encodeURIComponent(label)}&per_page=100`, { maxPages: 5 });
+    const { items, truncated } = await client.paginate(`/repos/${central}/issues?state=open&labels=${encodeURIComponent(label)}&per_page=${ISSUES_PER_PAGE}`, { maxPages: MAX_ISSUE_PAGES });
     const existing = items.find((issue) => issue?.title === title && issue?.pull_request === undefined);
+    // A list that stopped at the page limit is not the whole list: the issue of this workflow and target may be further down, and opening one now would
+    // duplicate it. An unknown state is never "no issue yet" (as for a rate limit that outlasts the retries, AC32): the step fails and writes nothing.
+    if (existing === undefined && truncated) {
+      throw new GitHubApiError(`more than ${MAX_ISSUE_PAGES * ISSUES_PER_PAGE} open issues carry the label ${label} and none of those read is '${title}'; an issue for it may be further down the list, so none is opened (a second one would duplicate it)`);
+    }
     const body = composeBody({
       workflowId,
       targetRepo,

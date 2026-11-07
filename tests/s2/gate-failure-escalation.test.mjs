@@ -14,7 +14,7 @@ import path from "node:path";
 import test from "node:test";
 import { runCorrelationId } from "../../src/drift/lib/correlation.mjs";
 import { run as prepare } from "../../src/drift/prepare-run.mjs";
-import { composeBody, DEFAULT_LABEL, readEarlierBody, run, TITLE } from "../../src/drift/escalate-gate-failure.mjs";
+import { composeBody, DEFAULT_LABEL, MAX_ISSUE_PAGES, readEarlierBody, run, TITLE } from "../../src/drift/escalate-gate-failure.mjs";
 import { DRIFT_KEYS, driftLock, driftPreset, driftWorkflow, script, stepWith, tempDir } from "./helpers/fixtures.mjs";
 import { BASH_SKIP, createGateWorkspace } from "./helpers/gate-harness.mjs";
 import { createRepo } from "./helpers/git-fixture.mjs";
@@ -126,6 +126,87 @@ test("AC30: only an open issue with the label is updated: a closed one, a pull r
   assert.deepEqual(issues.slice(0, 4).map((issue) => issue.body), ["old", "pr", "other", "no label"], "none of the four was touched");
 });
 
+/**
+ * The open issues that carry the label as the API pages them: `listed` (newest first) a hundred to a page, with the rel="next" link of every page but the last.
+ * It records the pages that were asked for, the issues that were created and the numbers of those that were updated.
+ */
+function paged(listed) {
+  const record = { pages: [], creates: 0, updates: [] };
+  const handler = (entry) => {
+    if (entry.method === "GET" && entry.path === `${base}/issues`) {
+      const page = Number(new URLSearchParams(entry.search).get("page") ?? 1);
+      record.pages.push(page);
+      const start = (page - 1) * 100;
+      const next = start + 100 < listed.length ? { link: `<https://api.github.com${base}/issues?state=open&labels=${DEFAULT_LABEL}&per_page=100&page=${page + 1}>; rel="next"` } : {};
+      return json(200, listed.slice(start, start + 100), next);
+    }
+    if (entry.method === "POST" && entry.path === `${base}/issues`) {
+      record.creates += 1;
+      return json(201, { number: listed.length + 1, ...JSON.parse(entry.body) });
+    }
+    const patch = /^\/repos\/[^/]+\/[^/]+\/issues\/(\d+)$/.exec(entry.path);
+    if (entry.method === "PATCH" && patch) {
+      record.updates.push(Number(patch[1]));
+      return json(200, { number: Number(patch[1]), ...JSON.parse(entry.body) });
+    }
+    return json(404, { message: "Not Found" });
+  };
+  return { record, handler };
+}
+
+const labelled = (number, title, extra = {}) => ({ number, title, body: "", state: "open", labels: [{ name: DEFAULT_LABEL }], ...extra });
+const otherIssues = (count) => Array.from({ length: count }, (_, index) => labelled(index + 1, `[sdlc-failure] other-${index + 1} (example/other)`));
+const escalateTo = (listed) => {
+  const { record, handler } = paged(listed);
+  const clock = createClock();
+  const attempt = () => invoke(run, args(["--failing-command", "npm test"]), { env: env(), fetch: createFakeFetch(handler), sleep: clock.sleep, now: clock.now });
+  return { record, attempt };
+};
+
+test("AC30: the issue of the workflow and target is found however far down the open issues with the label it lies: it is updated, and no duplicate is opened", async () => {
+  const title = TITLE("drift-copilot-lab", TARGET);
+  const body = composeBody({ workflowId: "drift-copilot-lab", targetRepo: TARGET, failingCommand: "npm ci", runUrl: RUN_URL, correlationId: "earlier", nowMs: Date.UTC(2026, 10, 6, 12, 0, 0), earlier: null });
+  // 500 other issues put it on the sixth page, which the script used to give up before: it read five pages, saw no issue of its own and opened a second one
+  for (const before of [0, 99, 100, 500, 2500]) {
+    const listed = [...otherIssues(before), labelled(9000, title, { body })];
+    const { record, attempt } = escalateTo(listed);
+    const result = await attempt();
+    const page = Math.ceil(listed.length / 100);
+    assert.equal(result.code, 0, `${before} other issues: ${result.stderr}`);
+    assert.ok(record.pages.includes(page), `${before} other issues: the page that holds the issue (${page}) was read, the pages read were ${record.pages.join(", ")}`);
+    assert.equal(record.creates, 0, `${before} other issues: no duplicate`);
+    assert.deepEqual(record.updates, [9000], `${before} other issues: the existing issue was updated`);
+  }
+});
+
+test("AC30: a list of open issues that ends without the issue of the workflow and target opens it once, however many pages the list has, up to the last page that the script reads", async () => {
+  for (const count of [0, 250, MAX_ISSUE_PAGES * 100]) {
+    const { record, attempt } = escalateTo(otherIssues(count));
+    const result = await attempt();
+    assert.equal(result.code, 0, `${count} other issues: ${result.stderr}`);
+    assert.equal(record.creates, 1, `${count} other issues: the issue is opened`);
+    assert.deepEqual(record.updates, []);
+    assert.deepEqual(record.pages, Array.from({ length: Math.max(1, Math.ceil(count / 100)) }, (_, index) => index + 1), `${count} other issues: the list was read to its end`);
+  }
+});
+
+test("AC30: a list that runs on past the pages that the script reads, with no issue of its own among them, fails the step and writes nothing: the issue may be further down, and a second one would duplicate it", async () => {
+  const { record, attempt } = escalateTo(otherIssues(MAX_ISSUE_PAGES * 100 + 1));
+  const result = await attempt();
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(result.stderr, new RegExp(`more than ${MAX_ISSUE_PAGES * 100} open issues carry the label ${DEFAULT_LABEL}`));
+  assert.ok(result.stderr.includes(`'${TITLE("drift-copilot-lab", TARGET)}'`), "and it names the issue that could not be ruled out");
+  assert.equal(record.creates, 0, "no issue was opened");
+  assert.deepEqual(record.updates, [], "and none was updated");
+  assert.equal(record.pages.length, MAX_ISSUE_PAGES, "the bound is the number of pages that were read");
+  // the issue is on a page that was read: it is certain that it exists, so it is updated even though the list went on
+  const found = escalateTo([labelled(9000, TITLE("drift-copilot-lab", TARGET)), ...otherIssues(MAX_ISSUE_PAGES * 100 + 1)]);
+  const updated = await found.attempt();
+  assert.equal(updated.code, 0, updated.stderr);
+  assert.equal(found.record.creates, 0);
+  assert.deepEqual(found.record.updates, [9000]);
+});
+
 test("AC30: the failing command is looked up as the first failed step of the agent job, and is 'not determined' when the token cannot read the jobs", async () => {
   const jobs = { jobs: [{ name: "activation", conclusion: "success", steps: [] }, { name: "agent", conclusion: "failure", steps: [{ name: "Checkout", conclusion: "success" }, { name: "npm run test:deck", conclusion: "failure" }, { name: "npm test -- --skip-links", conclusion: "skipped" }] }] };
   const readable = tracker({ jobs });
@@ -216,10 +297,10 @@ test("AC30: the body keeps a bounded history and parses back what it wrote", () 
   assert.deepEqual(readEarlierBody("a body that this script did not write"), { history: [], occurrences: 0 });
 });
 
-test("AC30: a missing token, a personal access token, a bad workflow id or repository and an API error each exit non-zero without a second write", async () => {
+test("AC30: a missing token, a personal access token, an OAuth token, a user access token of an App, a bad workflow id or repository and an API error each exit non-zero without a second write", async () => {
   const none = createFakeFetch(tracker().handler);
   assert.equal((await invoke(run, args(), { env: cleanEnv({ GITHUB_REPOSITORY: CENTRAL }), fetch: none })).code, 1, "no token");
-  for (const token of ["ghp_personal", "github_pat_fixture", "gho_oauth"]) {
+  for (const token of ["ghp_personal", "github_pat_fixture", "gho_oauth", "ghu_appusertoken"]) {
     const result = await invoke(run, args(), { env: env({ GH_TOKEN: token }), fetch: none });
     assert.equal(result.code, 1, token);
     assert.equal(result.stderr.includes(token), false);

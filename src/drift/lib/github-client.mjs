@@ -5,8 +5,9 @@
 //    retried after the time the server states: retry-after, else x-ratelimit-reset, else a minute that doubles with
 //    every retry. After the bounded number of retries the call fails; it is never read as an empty result.
 //  - Between two writes the client leaves at least a second (the documented guidance for many POST/PATCH requests).
-//  - Credentials go only to the configured API origin, over https (plain http only for a loopback address), and a
-//    personal access token or an OAuth token is refused: every call of these scripts uses an App installation token.
+//  - Credentials go only to the configured API origin, over https (plain http only for a loopback address), and only a GitHub App
+//    installation token is accepted (assertInstallationToken): every call of these scripts uses one, so a personal access token, an
+//    OAuth token, a user access token of an App (`ghu_`, which acts as a user) and a token of a kind that is not known are all refused.
 //
 // The network, the clock and the sleep are injected, so a test runs it with a fake clock and no socket.
 
@@ -54,11 +55,16 @@ export function resolveApiBase(env = process.env) {
   return parsed.href.replace(/\/+$/, "");
 }
 
-/** Throws when a token is a personal access token or an OAuth token: these scripts authenticate as the App only. */
+/**
+ * Throws unless the token is a GitHub App installation token (`ghs_`, which is also what the GITHUB_TOKEN of a job is): these scripts authenticate as
+ * the App's installation only. Every other kind is refused, those that the prefix names (a personal access token, an OAuth token, a user access token
+ * of an App) and the kinds that it does not, so that a credential that acts as a person never authenticates a request here, whatever its format is. The
+ * message names the kind and never the token.
+ */
 export function assertInstallationToken(token, label = "the token") {
   const kind = tokenKind(token);
-  if (kind === "personal access token" || kind === "OAuth token") {
-    throw new GitHubApiError(`${label} is a ${kind}; a GitHub App installation token is required, and no personal credential is used`);
+  if (kind !== "App installation token") {
+    throw new GitHubApiError(`${label} is not a GitHub App installation token (${kind}); a GitHub App installation token is required, and no personal or user credential is used`);
   }
   return token;
 }

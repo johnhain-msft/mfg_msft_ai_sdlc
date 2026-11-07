@@ -188,8 +188,8 @@ test("AC10: an App that is not installed on the owner, a key that is not a key a
   }
 });
 
-test("AC9 and AC10: a personal access token or an OAuth token is refused before any request, and nothing is written", async () => {
-  for (const token of ["ghp_personalaccesstoken", "github_pat_11ABCDEFG_fixture", "gho_oauthtoken"]) {
+test("AC9 and AC10: a personal access token, an OAuth token or a user access token of an App is refused before any request, and nothing is written", async () => {
+  for (const token of ["ghp_personalaccesstoken", "github_pat_11ABCDEFG_fixture", "gho_oauthtoken", "ghu_appusertokenfixture"]) {
     const fake = listing();
     const directory = out();
     const result = await invoke(run, ["--out", directory], { env: env({ GH_APP_INSTALLATION_TOKEN: token }), fetch: fake });

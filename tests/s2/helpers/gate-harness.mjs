@@ -36,6 +36,8 @@ export const shellPath = (value) => (process.platform === "win32" ? forward(valu
 function evaluate(value) {
   return String(value)
     .replace(/\$\{\{\s*github\.token\s*\}\}/g, "ghs_fixturetoken")
+    // the job's GITHUB_TOKEN is the same installation token (`ghs_...`) however it is spelled, and the scripts refuse every other kind of token
+    .replace(/\$\{\{\s*secrets\.GITHUB_TOKEN\s*\}\}/g, "ghs_fixturetoken")
     .replace(/\$\{\{\s*secrets\.[A-Za-z_]+\s*\}\}/g, "fixture-secret")
     .replace(/\$\{\{\s*vars\.[A-Za-z_]+\s*\}\}/g, "fixture-var")
     .replace(/\$\{\{\s*inputs\.\w+\s*\}\}/g, "")

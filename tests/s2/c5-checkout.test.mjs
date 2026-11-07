@@ -3,10 +3,11 @@
 // create-pull-request requires that checkout. No workflow and no repository variable is required in the target repository, and no personal
 // access token authenticates the checkout or any GitHub API call of S2.
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 import { run as dedupe } from "../../src/drift/dedupe-open-prs.mjs";
 import { run as escalate } from "../../src/drift/escalate-gate-failure.mjs";
-import { DRIFT_KEYS, driftLock, driftPreset, driftWorkflow, driftWorkflowText, presetManifest } from "./helpers/fixtures.mjs";
+import { DRIFT_KEYS, driftLock, driftPreset, driftWorkflow, driftWorkflowText, presetManifest, tempDir } from "./helpers/fixtures.mjs";
 import { invoke } from "./helpers/run-script.mjs";
 import { cleanEnv, createFakeFetch, json } from "./helpers/stub-server.mjs";
 
@@ -74,13 +75,29 @@ test("AC9: the target repositories need no workflow: the fleet's workflows all l
   for (const key of DRIFT_KEYS) assert.equal(driftWorkflow(key).frontmatter.checkout.length, 1);
 });
 
-test("AC9: the scripts refuse a personal access token for the deduplication read and for the escalation, before any request", async () => {
-  for (const token of ["ghp_pat", "github_pat_fixture", "gho_oauth"]) {
+test("AC9: the scripts accept an App installation token and nothing else for the deduplication read and for the escalation: every other kind is refused before any request", async () => {
+  // a personal access token (classic and fine-grained), an OAuth token, a user access token of an App (it acts as a user), a refresh token,
+  // a token of the format that had no prefix, and a string that is no token
+  const refused = ["ghp_pat", "github_pat_fixture", "gho_oauth", "ghu_appusertoken", "ghr_refreshtoken", "0123456789abcdef0123456789abcdef01234567", "not-a-github-token"];
+  for (const token of refused) {
     const fake = createFakeFetch(() => json(200, []));
     const read = await invoke(dedupe, ["--out", "unused"], { env: cleanEnv({ CONFIGURED_TARGET_REPO: "example-owner/example-target", GH_APP_INSTALLATION_TOKEN: token }), fetch: fake });
     assert.equal(read.code, 1, `dedupe ${token}`);
     const escalation = await invoke(escalate, ["--workflow-id", "drift-x", "--target-repo", "example-owner/example-target"], { env: cleanEnv({ GITHUB_REPOSITORY: "example-owner/example-central", GH_TOKEN: token }), fetch: fake });
     assert.equal(escalation.code, 1, `escalate ${token}`);
-    assert.equal(fake.requests.length, 0);
+    assert.equal(fake.requests.length, 0, `${token}: no request carries it`);
+    assert.equal(`${read.stderr}${escalation.stderr}`.includes(token), false, `${token} is not echoed`);
+  }
+  // the control: with an installation token (also in the stateless format `ghs_<app id>_<JWT>`, which is no 40-character token) the same two calls send their
+  // requests, so that the loop above is a refusal of the kind of the token and not of every call
+  for (const token of ["ghs_installationtoken", "ghs_1234567_eyJhbGciOiJSUzI1NiJ9.eyJpc3MiOiJ4In0.c2lnbmF0dXJl"]) {
+    const read = createFakeFetch(() => json(200, []));
+    const directory = path.join(tempDir("sdlc-s2-installation-token-"), "agent");
+    assert.equal((await invoke(dedupe, ["--out", directory], { env: cleanEnv({ CONFIGURED_TARGET_REPO: "example-owner/example-target", GH_APP_INSTALLATION_TOKEN: token }), fetch: read })).code, 0, `dedupe ${token}`);
+    assert.deepEqual(read.requests.map((request) => request.headers.authorization), [`Bearer ${token}`]);
+    const issues = createFakeFetch((entry) => (entry.method === "GET" ? json(200, []) : json(201, { number: 1 })));
+    assert.equal((await invoke(escalate, ["--workflow-id", "drift-x", "--target-repo", "example-owner/example-target"], { env: cleanEnv({ GITHUB_REPOSITORY: "example-owner/example-central", GH_TOKEN: token }), fetch: issues })).code, 0, `escalate ${token}`);
+    assert.deepEqual(issues.requests.map((request) => request.method), ["GET", "POST"]);
+    assert.ok(issues.requests.every((request) => request.headers.authorization === `Bearer ${token}`));
   }
 });

@@ -1064,6 +1064,39 @@ test("AC22: a change that is staged and then put back in the working tree is sti
   }
 });
 
+test("AC22: a gh_aw_schema_version that is staged and then put back in the working tree is still reported, through the index: HEAD and the working tree hold the base's value, the index does not", async () => {
+  const REGISTRY = "docs/_meta/registry.yaml";
+  const original = repo.read(REGISTRY);
+  /** What the index holds of the registry after the agent staged `change` and put the working tree's registry back as the base commit has it. */
+  const stagedThenPutBack = (change) => {
+    repo.write(REGISTRY, change(original));
+    repo.git("add", "--", REGISTRY);
+    repo.write(REGISTRY, original);
+    assert.equal(repo.head(), base, "HEAD is the base commit");
+    assert.equal(repo.git("diff", "--name-only", base), "", "a comparison of the working tree with the base commit sees nothing");
+    assert.equal(repo.read(REGISTRY), original, "the working tree holds the base's registry");
+  };
+  const forms = {
+    "a bump": { change: (text) => text.replace('gh_aw_schema_version: "0.86.2"', 'gh_aw_schema_version: "9.9.9"'), code: 1, stderr: "gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only (in the index)" },
+    "a registry that loses the key": { change: (text) => text.replace('gh_aw_schema_version: "0.86.2"\n', ""), code: 1, stderr: "gh_aw_schema_version changed from '0.86.2' to (absent); it is report-only (in the index)" },
+    // the controls: what differs in the index is not the value, so nothing is reported (the check is about the value, and not about every difference of the index)
+    "another registry value": { change: (text) => text.replace('copilot_cli_version_floor: "1.0.82"', 'copilot_cli_version_floor: "1.0.99"'), code: 0 },
+    "the same value in another quote style": { change: (text) => text.replace('gh_aw_schema_version: "0.86.2"', "gh_aw_schema_version: '0.86.2'"), code: 0 },
+  };
+  for (const [name, form] of Object.entries(forms)) {
+    try {
+      stagedThenPutBack(form.change);
+      assert.notEqual(repo.git("diff", "--cached", "--name-only", base), "", `${name}: the index differs from the base commit`);
+      const result = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: withBase(base) });
+      assert.equal(result.code, form.code, `${name}\n${result.stdout}${result.stderr}`);
+      if (form.stderr !== undefined) assert.ok(result.stderr.includes(form.stderr), `${name}: ${result.stderr}`);
+      else assert.equal(result.stderr, "", name);
+    } finally {
+      restore();
+    }
+  }
+});
+
 test("AC22: the checkout is only read: a stat-dirty index is neither refreshed nor rewritten, nothing else in .git changes, and the scratch repository of every run is removed, whether the run passes or fails", async () => {
   const scratchRoot = tempDir("sdlc-s2-scratch-root-");
   const saved = Object.fromEntries(["TMPDIR", "TMP", "TEMP"].map((name) => [name, process.env[name]]));
@@ -1394,5 +1427,5 @@ test("AC22: a sha256 checkout is read in a scratch repository of the same object
   gitIn(dir, ["commit", "-q", "-m", "bump"]);
   const bumped = await invoke(run, ["--checkout", dir, "--out", out], { cwd: out, env: withBase(sha) });
   assert.equal(bumped.code, 1, bumped.stdout);
-  assert.ok(bumped.stderr.includes("gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only (in the HEAD commit and the working tree)"), bumped.stderr);
+  assert.ok(bumped.stderr.includes("gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only (in the HEAD commit, the index and the working tree)"), bumped.stderr);
 });

@@ -194,7 +194,7 @@ export function repositoryDirectories(checkout, fs) {
  *  - `workTreeOptions`: with the checkout directory as its working tree (`GIT_WORK_TREE`; the process itself starts in the scratch directory) and an
  *    index file of its own, so that a `git diff` or `git ls-files` there reads the files of the checkout and nothing of the checkout's `.git` directory
  *    except its objects;
- *  - `checkoutIndexOptions`: with the index file of the checkout, which git reads as data for `diff-index --cached` and does not write.
+ *  - `checkoutIndexOptions`: with the index file of the checkout, which git reads as data for `diff-index --cached` and for the files that the index holds (`indexFileText`), and does not write.
  * A checkout that keeps its refs in the reftable format cannot be read this way and is refused.
  * @returns {{ directory: string, directories: { gitDir: string, commonDir: string }, configuration: { objectFormat: string, commandKeys: { scope: string, key: string }[], error: Error | null }, options: { cwd: string, env: NodeJS.ProcessEnv }, indexOptions: { cwd: string, env: NodeJS.ProcessEnv }, workTreeOptions: { cwd: string, env: NodeJS.ProcessEnv }, checkoutIndexOptions: { cwd: string, env: NodeJS.ProcessEnv, file: string }, dispose: () => void }}
  */
@@ -267,6 +267,19 @@ export function indexPaths(scratch, baseSha, fs) {
   const { file } = scratch.checkoutIndexOptions;
   if (!fs.existsSync(file)) throw new Error(`the index file ${file} does not exist`);
   return unique(git(["diff-index", "--cached", "--name-only", "-z", "--no-renames", baseSha, "--"], scratch.checkoutIndexOptions));
+}
+
+/**
+ * The text of a file as the index of the checkout holds it (the stage-0 entry of `relative`), read as data the way `indexPaths` reads it: null when the
+ * index has no such entry or the object that it names cannot be read. A change that is staged and then put back in the working tree shows in neither
+ * HEAD nor the working tree, and a pull request can still be made of the index, so a value that matters is read here and not taken from either.
+ */
+export function indexFileText(scratch, relative) {
+  try {
+    return git(["cat-file", "blob", `:${relative}`], scratch.checkoutIndexOptions);
+  } catch {
+    return null;
+  }
 }
 
 const COMMAND_KEY = /^(?:core\.fsmonitor|filter\..+\.(?:clean|smudge|process)|diff\.external|diff\..+\.(?:command|textconv))$/i;

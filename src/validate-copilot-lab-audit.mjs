@@ -59,6 +59,7 @@ import {
   commitsAhead,
   git,
   gitMessage,
+  indexFileText,
   indexPaths,
   listRefs,
   openScratch,
@@ -319,8 +320,9 @@ function describeCommit(commit, headSha, refs) {
 /**
  * Rule 4 on everything that a pull request could be made of (see the header and drift/lib/git-artifacts.mjs): the HEAD commit, every other
  * commit that is not reachable from the base commit but is reachable from a ref, the index and the working tree, and each message of every
- * aw-*.patch file and each commit of every aw-*.bundle file in `artifactDirectory`. For each of them the changed paths and the value of the pinned
- * key are read from git objects; a path under .github/workflows/ that differs from the base commit, and a pinned value that differs from the
+ * aw-*.patch file and each commit of every aw-*.bundle file in `artifactDirectory`. For each commit, patch message and bundle commit the changed paths and the
+ * value of the pinned key are read from git objects; the index adds its own changed paths and its own value of the pinned key, the working tree its changed paths
+ * (its value is the caller's, `headRegistry`). A path under .github/workflows/ that differs from the base commit, and a pinned value that differs from the
  * base commit's, are problems, and so is a file that cannot be read.
  * @returns {{ problems: string[], subjects: { place: string, read: (relative: string) => string | null }[], counts: { commits: number, patches: number, bundles: number } }}
  *   `subjects` are the tips, whose files rules 1 to 3 are applied to as well.
@@ -410,6 +412,10 @@ function reportOnlyScan({ checkout, baseSha, headRegistry, io, artifactDirectory
     }
     try {
       for (const entry of indexPaths(scratch, baseSha, io.fs)) if (isProtectedPath(entry)) flag(entry, "the index");
+      // The registry as the index holds it: a bump that is staged and then put back in the working tree leaves HEAD and the working tree at the base's
+      // value, and a pull request can still be made of the index (a missing entry, or an object that cannot be read, is an absent value, as for a commit).
+      const staged = indexFileText(scratch, REGISTRY_FILE);
+      observed.push(["the index", staged === null ? null : pinnedValueOf(staged)]);
     } catch (error) {
       problems.push(`the changes of the index against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
     }
@@ -418,8 +424,8 @@ function reportOnlyScan({ checkout, baseSha, headRegistry, io, artifactDirectory
     } catch (error) {
       problems.push(`the changes of the working tree against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
     }
-    // The pinned value is read where the pull request gets it, in the commits, and where the validator already looks at everything else, the
-    // working tree. A registry that is missing from the working tree is reported by the caller, so only the commits are read then.
+    // The pinned value is read where the pull request gets it, in the commits and in the index, and where the validator already looks at everything else, the
+    // working tree. A registry that is missing from the working tree is reported by the caller, so only the commits and the index are read then.
     if (headRegistry !== null) observed.push(["the working tree", pinnedValueOf(headRegistry)]);
 
     for (const entry of files) {

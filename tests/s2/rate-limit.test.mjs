@@ -8,7 +8,7 @@ import path from "node:path";
 import test from "node:test";
 import { run as dedupe } from "../../src/drift/dedupe-open-prs.mjs";
 import { run as escalate } from "../../src/drift/escalate-gate-failure.mjs";
-import { createGitHubClient, GitHubApiError, rateLimitWaitMs, resolveApiBase, tokenKind } from "../../src/drift/lib/github-client.mjs";
+import { assertInstallationToken, createGitHubClient, GitHubApiError, rateLimitWaitMs, resolveApiBase, tokenKind } from "../../src/drift/lib/github-client.mjs";
 import { script, tempDir } from "./helpers/fixtures.mjs";
 import { invoke } from "./helpers/run-script.mjs";
 import { cleanEnv, createClock, createFakeFetch, json, runNode, startStubServer } from "./helpers/stub-server.mjs";
@@ -203,6 +203,12 @@ test("AC32: the address and the credential of the client are checked: https only
   assert.equal(tokenKind("ghp_x"), "personal access token");
   assert.equal(tokenKind("github_pat_x"), "personal access token");
   assert.equal(tokenKind("gho_x"), "OAuth token");
+  assert.equal(tokenKind("ghu_x"), "App user access token");
+  // only an installation token is accepted; every other kind is refused by its kind, and the message never carries the token
+  assert.equal(assertInstallationToken("ghs_secretvalue", "GH_TOKEN"), "ghs_secretvalue");
+  for (const token of ["ghp_secretvalue", "github_pat_secretvalue", "gho_secretvalue", "ghu_secretvalue", "ghr_secretvalue", "0123456789abcdef0123456789abcdef01234567", "secretvalue", ""]) {
+    assert.throws(() => assertInstallationToken(token, "GH_TOKEN"), (error) => error instanceof GitHubApiError && /^GH_TOKEN is not a GitHub App installation token \(.+\); a GitHub App installation token is required/.test(error.message) && (token === "" || !error.message.includes(token)), token);
+  }
   const failing = createFakeFetch(() => {
     throw new Error(`socket hang up while sending ${TOKEN}`);
   });

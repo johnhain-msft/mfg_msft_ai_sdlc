@@ -25,7 +25,8 @@
 //
 // Authentication is a GitHub App installation token: GH_APP_INSTALLATION_TOKEN when the caller minted one, else the
 // script signs a JSON Web Token with APP_CLIENT_ID and APP_PRIVATE_KEY and exchanges it for a token that is limited to the
-// target repository and to read access to its pull requests. A personal access token is refused. The API address is
+// target repository and to read access to its pull requests. A token that is not an App installation token (a personal access token, an
+// OAuth token, a user access token of an App) is refused before any request. The API address is
 // GITHUB_API_URL (or --api-url). Requests are serial and a rate-limited response is retried as the server states; when it
 // stays limited, or anything else goes wrong, the step exits 1 and writes nothing: an unknown state is never "no duplicate".
 // The script sends this one read and, for an App credential, the token request; it writes nothing to the target.
