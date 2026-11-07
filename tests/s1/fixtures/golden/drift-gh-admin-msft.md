@@ -60,7 +60,7 @@ pre-agent-steps:
       CONFIGURED_TARGET_REPO: johnhain-msft/gh-admin-msft
       APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO"
+    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --close-older-key sdlc-drift-gh-admin-msft --upkeep-strategy content-and-docs-sync
   - name: Snapshot watched sources and package manifests
     env:
       CONFIGURED_TARGET_REPO: johnhain-msft/gh-admin-msft
@@ -230,7 +230,7 @@ node presentation/build.mjs
 
 ## Operating rules
 
-- Read `/tmp/gh-aw/agent/open-pr-dedup.json` before you call `create_pull_request`; skip the upkeep when it lists a matching open pull request.
+- Read `/tmp/gh-aw/agent/open-pr-dedup.json` before you call `create_pull_request`; skip the upkeep when it lists a matching open pull request that you must not duplicate (`duplicate` is `true`: a match whose `decision` is `skip`). A match whose `decision` is `supersede` is an earlier pull request of this same workflow, which your new pull request replaces (`close-older-pull-requests: true`), and a match whose `decision` is `ignore` is the pull request of another upkeep: neither is a reason to skip. Never open a duplicate.
 - Corroborate every proposed change through the Microsoft Learn and Context7 servers or by fetching the cited page.
 - Commit rebuilt outputs and source edits to the working branch before you call `create_pull_request`.
 - Never run `git push`, `gh pr` or a write-method `gh api` call and never merge: the pull request is created only through the `create_pull_request` safe output.

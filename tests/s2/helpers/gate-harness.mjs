@@ -6,11 +6,11 @@
 // target checkout is a real git repository, and `/tmp/gh-aw` is a scratch directory. gh, npm and git are the recording shims.
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import { stageValidator } from "../../../src/drift/prepare-run.mjs";
 import { git, writeGitFixtureConfig } from "./git-fixture.mjs";
-import { REPO_ROOT, tempDir, writeTree } from "./fixtures.mjs";
+import { forceRemove, REPO_ROOT, tempDir, writeTree } from "./fixtures.mjs";
 import { createShims } from "./shims.mjs";
 
 const TIMEOUT_MS = 120000;
@@ -45,17 +45,26 @@ function evaluate(value) {
 }
 
 export class GateWorkspace {
-  constructor({ checkoutName, files }) {
+  /**
+   * @param {{ checkoutName: string, files: Record<string, string>, ownSource?: boolean }} options
+   *   `ownSource` gives the workspace a copy of src/ of its own, which a test may then change as the agent could change the orchestrator checkout;
+   *   without it src/ of this repository is linked in (a junction or a link), and a test must not write there.
+   */
+  constructor({ checkoutName, files, ownSource = false }) {
     this.root = tempDir("sdlc-s2-gate-");
     this.workspace = path.join(this.root, "workspace");
     this.artifacts = path.join(this.root, "artifacts");
     this.agentDir = path.join(this.artifacts, "agent");
+    // RUNNER_TEMP of this job: where prepare-run stages the validator, which the agent step mounts read-only.
+    this.runnerTemp = path.join(this.root, "runner-temp");
     this.checkoutName = checkoutName;
     this.checkout = path.join(this.workspace, checkoutName);
     this.shims = createShims();
     fs.mkdirSync(this.workspace, { recursive: true });
     fs.mkdirSync(this.agentDir, { recursive: true });
-    fs.symlinkSync(path.join(REPO_ROOT, "src"), path.join(this.workspace, "src"), process.platform === "win32" ? "junction" : "dir");
+    fs.mkdirSync(this.runnerTemp, { recursive: true });
+    if (ownSource) fs.cpSync(path.join(REPO_ROOT, "src"), path.join(this.workspace, "src"), { recursive: true });
+    else fs.symlinkSync(path.join(REPO_ROOT, "src"), path.join(this.workspace, "src"), process.platform === "win32" ? "junction" : "dir");
     fs.mkdirSync(this.checkout, { recursive: true });
     git(this.checkout, ["init", "-q"]);
     writeGitFixtureConfig(this.checkout);
@@ -63,10 +72,12 @@ export class GateWorkspace {
     git(this.checkout, ["add", "-A"]);
     git(this.checkout, ["commit", "-q", "--allow-empty", "-m", "base"]);
     this.baseSha = git(this.checkout, ["rev-parse", "HEAD"]);
-    // What the first pre-agent step of the job (prepare-run) leaves behind: the run context under the artifact directory, and the base
-    // commit that the runner hands to every later step because the step appended it to GITHUB_ENV (see runScript).
+    // What the first pre-agent step of the job (prepare-run) leaves behind: the run context under the artifact directory, the base
+    // commit that the runner hands to every later step because the step appended it to GITHUB_ENV (see runScript), and the copy of the
+    // validator that it stages read-only under RUNNER_TEMP (the same function, run on this workspace's own src/).
     this.exported = { SDLC_BASE_SHA: this.baseSha };
     this.writeRunContext();
+    stageValidator({ env: { RUNNER_TEMP: this.runnerTemp }, fs }, path.join(this.workspace, "src"));
   }
 
   writeRunContext(extra = {}) {
@@ -104,7 +115,7 @@ export class GateWorkspace {
     return new Promise((resolve) => {
       const child = spawn(BASH, ["--noprofile", "--norc", "-eo", "pipefail", file], {
         cwd: path.join(this.workspace, workingDirectory),
-        env: this.shims.env({ GITHUB_WORKSPACE: shellPath(this.workspace), RUNNER_TEMP: forward(os.tmpdir()), SDLC_DRIFT_OUT: forward(this.agentDir), ...this.exported, GITHUB_ENV: forward(envFile), ...env }),
+        env: this.shims.env({ GITHUB_WORKSPACE: shellPath(this.workspace), RUNNER_TEMP: forward(this.runnerTemp), SDLC_DRIFT_OUT: forward(this.agentDir), ...this.exported, GITHUB_ENV: forward(envFile), ...env }),
         windowsHide: true,
       });
       let stdout = "";
@@ -124,12 +135,15 @@ export class GateWorkspace {
   }
 
   /**
-   * The runner: steps in order, the first failing one ends the run.
-   * @returns {Promise<{ code: number, ran: string[], failed: string | null, log: string }>}
+   * The runner: steps in order, the first failing one ends the run. `log` is what the runner's log shows, a `Run <step name>` line before the
+   * output of each step; `output` is the output of the steps alone, which is what to read when the name of a step (the whole command, for a
+   * step that is named by its command) must not be mistaken for something that the step printed.
+   * @returns {Promise<{ code: number, ran: string[], failed: string | null, log: string, output: string }>}
    */
   async runSteps(steps, { env = {} } = {}) {
     const ran = [];
     let log = "";
+    let output = "";
     for (const step of steps) {
       const name = step.name ?? step.run;
       ran.push(name);
@@ -137,14 +151,15 @@ export class GateWorkspace {
       const stepEnv = Object.fromEntries(Object.entries(step.env ?? {}).map(([key, value]) => [key, evaluate(value)]));
       const outcome = await this.runScript(step.run, { env: { ...stepEnv, ...env }, workingDirectory: step["working-directory"] ?? "" });
       log += outcome.stdout + outcome.stderr;
-      if (outcome.code !== 0) return { code: 1, ran, failed: name, log };
+      output += outcome.stdout + outcome.stderr;
+      if (outcome.code !== 0) return { code: 1, ran, failed: name, log, output };
     }
-    return { code: 0, ran, failed: null, log };
+    return { code: 0, ran, failed: null, log, output };
   }
 
   cleanup() {
     this.shims.cleanup();
-    fs.rmSync(this.root, { recursive: true, force: true });
+    forceRemove(this.root);
   }
 }
 

@@ -20,6 +20,13 @@ export const outDirectory = (flag, env) => flag ?? ((env.SDLC_DRIFT_OUT ?? "").t
  */
 export const BASE_SHA_VARIABLE = "SDLC_BASE_SHA";
 
+/**
+ * The directory, below ${RUNNER_TEMP}/gh-aw, in which prepare-run stages a read-only copy of the post-step validator and of the modules that it
+ * imports (SPEC-02 AC22). The compiled agent step mounts ${RUNNER_TEMP}/gh-aw read-only and the workspace read-write, so the staged copy is the
+ * one that the agent cannot change, and the workflow compares the workspace copy with it before it runs that copy.
+ */
+export const VALIDATOR_STAGE_DIRECTORY = "sdlc-validator";
+
 /** True when the module at `metaUrl` is the script that node was started with. */
 export function isMain(metaUrl, entry = process.argv[1]) {
   if (!entry) return false;

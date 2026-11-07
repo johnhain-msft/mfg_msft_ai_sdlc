@@ -9,10 +9,15 @@
 // answered by the real compiler: tests/s2/c2-frontmatter.test.mjs run with SDLC_REAL_GH_AW=1 compiles the three workflows,
 // escalate_failure included, with --strict, so failure reporting does not fall back to safe-outputs issue reporting.
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import test from "node:test";
+import { runCorrelationId } from "../../src/drift/lib/correlation.mjs";
+import { run as prepare } from "../../src/drift/prepare-run.mjs";
 import { composeBody, DEFAULT_LABEL, readEarlierBody, run, TITLE } from "../../src/drift/escalate-gate-failure.mjs";
-import { DRIFT_KEYS, driftLock, driftPreset, driftWorkflow, script, stepWith } from "./helpers/fixtures.mjs";
+import { DRIFT_KEYS, driftLock, driftPreset, driftWorkflow, script, stepWith, tempDir } from "./helpers/fixtures.mjs";
 import { BASH_SKIP, createGateWorkspace } from "./helpers/gate-harness.mjs";
+import { createRepo } from "./helpers/git-fixture.mjs";
 import { invoke } from "./helpers/run-script.mjs";
 import { cleanEnv, createClock, createFakeFetch, json, runNode, startStubServer } from "./helpers/stub-server.mjs";
 
@@ -275,6 +280,105 @@ for (const key of DRIFT_KEYS) {
 
 /** The first step of a job that is not one that gh-aw adds itself. */
 const userSteps = (steps) => steps.filter((step) => !String(step.name ?? "").startsWith("Configure GH_HOST"));
+
+// --- the correlation id of a scheduled run ------------------------------------------------------------------------------------------------
+//
+// A scheduled run has no workflow_dispatch input, so `${{ inputs.correlation_id }}` is empty in the escalate_failure job. prepare-run derives
+// run-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT> for such a run, and the issue used to say "none": the run context and the failure issue of one run named
+// different ids. The script now derives the same id when it is given none.
+
+/** A failure of a run of the central repository, as the job would report it, with the correlation id argument and environment of the case. */
+async function failureIssueFor({ correlation, runUrl = RUN_URL, environment = {} }) {
+  const { issues, handler } = tracker();
+  const argv = ["--workflow-id", "drift-copilot-lab", "--target-repo", TARGET, ...(correlation === undefined ? [] : ["--correlation-id", correlation]), "--run-url", runUrl, "--failing-command", "npm test"];
+  const result = await invoke(run, argv, { env: env(environment), fetch: createFakeFetch(handler) });
+  assert.equal(result.code, 0, result.stderr);
+  return issues[0].body;
+}
+
+const CORRELATION_CASES = [
+  { name: "the run and its attempt from the environment", correlation: "", environment: { GITHUB_RUN_ID: "4242", GITHUB_RUN_ATTEMPT: "3" }, expected: "run-4242-3" },
+  { name: "a run without an attempt is the first attempt", correlation: "", environment: { GITHUB_RUN_ID: "4242" }, expected: "run-4242-1" },
+  { name: "no correlation argument at all, as a step that does not pass it", correlation: undefined, environment: { GITHUB_RUN_ID: "4242", GITHUB_RUN_ATTEMPT: "2" }, expected: "run-4242-2" },
+  { name: "a blank argument", correlation: "   ", environment: { GITHUB_RUN_ID: "4242", GITHUB_RUN_ATTEMPT: "2" }, expected: "run-4242-2" },
+  { name: "only the run URL names the run", correlation: "", runUrl: `https://github.com/${CENTRAL}/actions/runs/777`, expected: "run-777-1" },
+  { name: "the run URL of a re-run names its attempt", correlation: "", runUrl: `https://github.com/${CENTRAL}/actions/runs/777/attempts/2`, expected: "run-777-2" },
+  { name: "the attempt variable is the run's, and the URL's own attempt is not mixed with another run id", correlation: "", environment: { GITHUB_RUN_ID: "5", GITHUB_RUN_ATTEMPT: "2" }, runUrl: `https://github.com/${CENTRAL}/actions/runs/777/attempts/4`, expected: "run-5-2" },
+  { name: "a run id from the environment takes the first attempt, not the URL's", correlation: "", environment: { GITHUB_RUN_ID: "5" }, runUrl: `https://github.com/${CENTRAL}/actions/runs/777/attempts/4`, expected: "run-5-1" },
+  { name: "a correlation_id that the dispatch gave wins over the run", correlation: "dispatch-9", environment: { GITHUB_RUN_ID: "4242", GITHUB_RUN_ATTEMPT: "3" }, expected: "dispatch-9" },
+  { name: "neither an argument nor a run (the run URL is not one of a run)", correlation: "", runUrl: "https://github.example/not-a-run", expected: null },
+];
+
+for (const { name, correlation, environment, runUrl, expected } of CORRELATION_CASES) {
+  test(`AC8 and AC30: the failure issue of a run names its correlation id: ${name}`, async () => {
+    const body = await failureIssueFor({ correlation, environment, runUrl });
+    if (expected === null) {
+      assert.match(body, /\| Correlation id \| none \|/);
+      assert.match(body, /— correlation id none — failing command: `npm test`/);
+    } else {
+      assert.match(body, new RegExp(`\\| Correlation id \\| \`${expected}\` \\|`));
+      assert.ok(body.includes(`— correlation id \`${expected}\` — failing command: \`npm test\``), "the history entry names it too");
+      assert.equal(/Correlation id \| none/.test(body), false);
+    }
+  });
+}
+
+test("AC8 and AC30: for one run the run context that prepare-run wrote and the failure issue name the same correlation id, with or without the dispatch input", async () => {
+  const root = tempDir("sdlc-s2-correlation-");
+  const workspace = path.join(root, "workspace");
+  const checkout = createRepo({ "README.md": "x\n" }, { dir: path.join(workspace, "example-target") });
+  try {
+    const runs = [
+      { id: "9001", attempt: "2", dispatched: "" },
+      { id: "9001", attempt: undefined, dispatched: "" },
+      { id: "12345678901", attempt: "7", dispatched: "" },
+      { id: "9001", attempt: "2", dispatched: "dispatch-3" },
+    ];
+    for (const [index, { id, attempt, dispatched }] of runs.entries()) {
+      const environment = { GITHUB_RUN_ID: id, ...(attempt === undefined ? {} : { GITHUB_RUN_ATTEMPT: attempt }) };
+      const outDirectory = path.join(root, `out-${index}`);
+      const prepared = await invoke(prepare, ["--out", outDirectory, "--target-repo", "", "--correlation-id", dispatched], { env: cleanEnv({ GITHUB_WORKSPACE: workspace, CONFIGURED_TARGET_REPO: "example-owner/example-target", ...environment }), cwd: root });
+      assert.equal(prepared.code, 0, prepared.stderr);
+      const recorded = JSON.parse(fs.readFileSync(path.join(outDirectory, "run-context.json"), "utf8")).correlation_id;
+      const body = await failureIssueFor({ correlation: dispatched, environment, runUrl: `https://github.com/${CENTRAL}/actions/runs/${id}` });
+      assert.ok(body.includes(`| Correlation id | \`${recorded}\` |`), `run ${id} attempt ${attempt}: the issue names ${recorded}\n${body}`);
+      assert.equal(recorded, dispatched === "" ? `run-${id}-${attempt ?? "1"}` : dispatched);
+    }
+  } finally {
+    checkout.cleanup();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("AC8: the rule that derives the id is one function: a run id that cannot make a valid id gives none, in the context and in the issue", () => {
+  assert.equal(runCorrelationId({ GITHUB_RUN_ID: "42", GITHUB_RUN_ATTEMPT: "1" }), "run-42-1");
+  assert.equal(runCorrelationId({ GITHUB_RUN_ID: "  42  " }), "run-42-1");
+  assert.equal(runCorrelationId({}), null);
+  assert.equal(runCorrelationId({}, ""), null);
+  assert.equal(runCorrelationId({ GITHUB_RUN_ID: "42", GITHUB_RUN_ATTEMPT: "x".repeat(200) }), null, "longer than a correlation id may be");
+  assert.equal(runCorrelationId({ GITHUB_RUN_ID: "a b" }), null, "a run id with a space is not one");
+  assert.equal(runCorrelationId({}, "https://github.example/o/r/actions/runs/99"), "run-99-1");
+  assert.equal(runCorrelationId({}, "https://github.example/o/r/actions/runs/99/attempts/3"), "run-99-3");
+});
+
+for (const key of DRIFT_KEYS) {
+  test(`AC30: the rendered escalation step of drift-${key}, run for a scheduled run (an empty correlation_id), writes the id of the run into the issue`, { skip: BASH_SKIP }, async () => {
+    const step = driftWorkflow(key).frontmatter.jobs.escalate_failure.steps.find((candidate) => String(candidate.run ?? "").includes("escalate-gate-failure.mjs"));
+    const { issues, handler } = tracker();
+    const server = await startStubServer(handler);
+    const gate = createGateWorkspace({ checkoutName: "unused", files: { "README.md": "x\n" } });
+    try {
+      // the step's env says CORRELATION_ID: ${{ inputs.correlation_id }}, which a schedule leaves empty; the runner sets GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT for every step
+      const outcome = await gate.runSteps([step], { env: { GITHUB_REPOSITORY: CENTRAL, GITHUB_API_URL: server.url, GITHUB_RUN_ID: "4242", GITHUB_RUN_ATTEMPT: "2", RUN_URL } });
+      assert.equal(outcome.code, 0, outcome.log);
+      assert.equal(issues.length, 1);
+      assert.ok(issues[0].body.includes("| Correlation id | `run-4242-2` |"), issues[0].body);
+    } finally {
+      gate.cleanup();
+      await server.close();
+    }
+  });
+}
 
 for (const key of DRIFT_KEYS) {
   test(`AC30: the compiled drift-${key}.lock.yml has an escalate_failure job with the guard, needs, permissions, checkout and npm ci ahead of the script`, () => {

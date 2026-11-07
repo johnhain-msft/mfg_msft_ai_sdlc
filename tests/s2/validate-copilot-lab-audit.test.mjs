@@ -132,8 +132,8 @@ test("AC23: a run that is not a self-improve run does not need the self-improvem
 
 test("AC23: how a self-improve run is selected is the --self-improve argument, which the preset passes", () => {
   const verify = projectOf(presetManifest(), "self-improving-agents").driftAudit.verifyCommands;
-  assert.equal(verify[0], 'node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" --self-improve');
-  assert.equal(projectOf(presetManifest(), "copilot-lab").driftAudit.verifyCommands[0], 'node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs"');
+  assert.match(verify[0], /node "\$GITHUB_WORKSPACE\/src\/validate-copilot-lab-audit\.mjs" --self-improve \)$/, "the validator is the last thing of the first command, with its argument");
+  assert.match(projectOf(presetManifest(), "copilot-lab").driftAudit.verifyCommands[0], /node "\$GITHUB_WORKSPACE\/src\/validate-copilot-lab-audit\.mjs" \)$/, "and the lab's audit has none");
   assert.equal(driftWorkflow("self-improving-agents").frontmatter["post-steps"][0].run, verify[0]);
 });
 
@@ -215,7 +215,7 @@ test("AC23: a self-improve run still holds the registry, the self-improvement re
 
 test("AC23: the rendered post-step of drift-self-improving-agents passes on a lab tree that has the audit template and no audit report, as the default branch of the lab does", { skip: BASH_SKIP }, async () => {
   const step = driftWorkflow("self-improving-agents").frontmatter["post-steps"][0];
-  assert.equal(step.run, 'node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" --self-improve');
+  assert.match(step.run, /node "\$GITHUB_WORKSPACE\/src\/validate-copilot-lab-audit\.mjs" --self-improve \)$/);
   const files = labFiles();
   delete files["docs/_meta/audit-report.md"];
   assert.ok("docs/_meta/audit-report.template.md" in files);
@@ -246,7 +246,7 @@ test("AC23: the scanner reads top-level keys only: quoted keys, comments, block 
 
 test("AC23: the post-step of drift-copilot-lab runs the validator from the orchestrator workspace in the target checkout", { skip: BASH_SKIP }, async () => {
   const step = driftWorkflow("copilot-lab").frontmatter["post-steps"][0];
-  assert.equal(step.run, 'node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs"');
+  assert.match(step.run, /node "\$GITHUB_WORKSPACE\/src\/validate-copilot-lab-audit\.mjs" \)$/);
   assert.equal(step["working-directory"], "day-in-the-life-copilot-lab");
   const gate = createGateWorkspace({ checkoutName: "day-in-the-life-copilot-lab", files: labFiles() });
   try {

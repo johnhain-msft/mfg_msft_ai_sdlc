@@ -32,7 +32,7 @@ for (const key of DRIFT_KEYS) {
 test("AC19: the lab's post-steps include the validator and the isolated-GH_DATA_DIR test command, both entries of its verifyCommands", () => {
   const lab = driftWorkflow("copilot-lab").frontmatter["post-steps"].map((step) => step.run);
   const commands = driftPreset("copilot-lab").driftAudit.verifyCommands;
-  assert.ok(lab.includes('node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs"'));
+  assert.ok(lab.some((command) => command.includes('node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs"')), "the validator, which runs after its own files were compared with the staged copy (AC22)");
   assert.ok(lab.some((command) => command.includes("GH_DATA_DIR") && command.includes("gh extension install github/gh-aw --pin v0.86.2") && command.includes("npm ci") && command.includes("npm test")));
   for (const command of lab) assert.ok(commands.includes(command));
   assert.ok(fs.readFileSync(path.resolve("sdlc.yaml"), "utf8").includes('node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs"'), "and sdlc.yaml has them");

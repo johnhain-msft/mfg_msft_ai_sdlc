@@ -614,6 +614,11 @@ function validateSemantics(manifest, request, context) {
       }
     }
     if (!audit.enabled) return;
+    if (audit.upkeepStrategy !== "custom" && !context.strategyFragments.has(audit.upkeepStrategy)) {
+      const fragment = readStrategyFragment(context.cwd, audit.upkeepStrategy);
+      if (fragment.error) errors.push(rule("drift-strategy-fragment", `${where}: ${fragment.error}`));
+      else context.strategyFragments.set(audit.upkeepStrategy, fragment.text);
+    }
     audit.knowledgeSources.watchUrls.forEach((entry, position) => {
       const verdict = validWatchUrl(entry.url);
       if (!verdict.ok) {
@@ -672,11 +677,12 @@ function bashAllowlist(commands) {
 /** Engines whose gh-aw compiler enforces a per-command `tools.bash` allowlist (gh-aw v1.0.1: copilot, claude and gemini). */
 const BASH_ALLOWLIST_ENGINES = new Set(["claude", "copilot", "gemini"]);
 
-function makeContext(request, manifest, instructionFiles) {
+function makeContext(request, manifest, instructionFiles, strategyFragments) {
   return {
     request,
     manifest,
     instructionFiles,
+    strategyFragments,
     bot: `${request.appSlug}[bot]`,
     githubApp: {
       "client-id": expr(`vars.${request.appClientIdVar}`),
@@ -846,6 +852,11 @@ const agentSuccessGuards = ({ drift = false } = {}) => ({
 // Drift workflows
 // ---------------------------------------------------------------------------------------
 
+/**
+ * The guidance of each built-in upkeep strategy. The source of truth is `prompts/drift/strategy-<value>.md` (SPEC-02 AC14), which the renderer reads
+ * from the repository that it renders; this table is only what is used when that file is absent, in a minimal workspace that does not carry
+ * `prompts/drift/` (the fixtures of the test suites). It repeats the text of the files, and a test holds the two equal.
+ */
 const STRATEGY_GUIDANCE = {
   "content-and-docs-sync":
     "Compare the watched-source snapshots with the target's documentation, labs and presentation content, and update only what a corroborated source contradicts.",
@@ -854,6 +865,32 @@ const STRATEGY_GUIDANCE = {
   "code-quality-and-improvement-scan":
     "Scan the target's code for quality improvements and produce suggestions; a project may open them as draft pull requests.",
 };
+const STRATEGY_FRAGMENT_DIR = "prompts/drift";
+const strategyHeading = (strategy) => `## Upkeep strategy: ${strategy}`;
+const strategyFragmentPath = (strategy) => `${STRATEGY_FRAGMENT_DIR}/strategy-${strategy}.md`;
+
+/**
+ * The prompt fragment of a built-in upkeep strategy: the text of `prompts/drift/strategy-<value>.md` (the heading `## Upkeep strategy: <value>`,
+ * a blank line and the guidance), or the built-in text when the repository has no such file. A file that exists must be usable: a regular file,
+ * not larger than an instructions file, beginning with its heading and without the expression opener that the manifest strings are refused for.
+ */
+function readStrategyFragment(cwd, strategy) {
+  const relative = strategyFragmentPath(strategy);
+  const absolute = path.resolve(cwd, relative);
+  let stat;
+  try {
+    stat = fs.statSync(absolute);
+  } catch (error) {
+    if (error?.code === "ENOENT" || error?.code === "ENOTDIR") return { text: `${strategyHeading(strategy)}\n\n${STRATEGY_GUIDANCE[strategy]}` };
+    return { error: `${relative} cannot be read: ${String(error?.message ?? error).split("\n")[0]}` };
+  }
+  if (!stat.isFile()) return { error: `${relative} is not a file` };
+  if (stat.size > MAX_INSTRUCTIONS_BYTES) return { error: `${relative} is larger than ${MAX_INSTRUCTIONS_BYTES} bytes` };
+  const text = lf(fs.readFileSync(absolute, "utf8")).trim();
+  if (!text.startsWith(`${strategyHeading(strategy)}\n`)) return { error: `${relative} must begin with the heading '${strategyHeading(strategy)}'` };
+  if (text.includes("${{")) return { error: `${relative} contains the expression opener "\${{"` };
+  return { text };
+}
 
 const driftCloseOlderKey = (projectKey) => `sdlc-drift-${projectKey}`;
 
@@ -881,7 +918,11 @@ function driftPreAgentSteps(ctx, project) {
     {
       name: "Deduplicate open pull requests",
       env: { CONFIGURED_TARGET_REPO: project.repo, ...credentials },
-      run: `node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out ${AGENT_DIR} --target-repo "$CONFIGURED_TARGET_REPO"`,
+      // The two arguments say which workflow this is: which pull requests are its own earlier ones (the key that the close-older marker of its
+      // pull requests carries) and which upkeep it does, so that a pull request of another workflow of the fleet is not taken for a duplicate (SPEC-02 AC10).
+      run:
+        `node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out ${AGENT_DIR} --target-repo "$CONFIGURED_TARGET_REPO"` +
+        ` --close-older-key ${shArg(driftCloseOlderKey(key))} --upkeep-strategy ${shArg(project.driftAudit.upkeepStrategy)}`,
     },
     {
       name: "Snapshot watched sources and package manifests",
@@ -942,9 +983,8 @@ function driftBody(ctx, project) {
     lines.push("");
   }
   if (audit.upkeepStrategy !== "custom") {
-    lines.push(`## Upkeep strategy: ${audit.upkeepStrategy}`);
-    lines.push("");
-    lines.push(STRATEGY_GUIDANCE[audit.upkeepStrategy]);
+    // the text of prompts/drift/strategy-<value>.md, heading included (readStrategyFragment found it, or used the built-in text for a workspace without it)
+    lines.push(ctx.strategyFragments.get(audit.upkeepStrategy));
     lines.push("");
   }
   lines.push("## Watched sources");
@@ -983,7 +1023,11 @@ function driftBody(ctx, project) {
   lines.push("");
   lines.push("## Operating rules");
   lines.push("");
-  lines.push(`- Read \`${AGENT_DIR}/open-pr-dedup.json\` before you call \`create_pull_request\`; skip the upkeep when it lists a matching open pull request.`);
+  lines.push(
+    `- Read \`${AGENT_DIR}/open-pr-dedup.json\` before you call \`create_pull_request\`; skip the upkeep when it lists a matching open pull request that you must not duplicate (\`duplicate\` is \`true\`: a match whose \`decision\` is \`skip\`). ` +
+      "A match whose `decision` is `supersede` is an earlier pull request of this same workflow, which your new pull request replaces (`close-older-pull-requests: true`), " +
+      "and a match whose `decision` is `ignore` is the pull request of another upkeep: neither is a reason to skip. Never open a duplicate.",
+  );
   lines.push("- Corroborate every proposed change through the Microsoft Learn and Context7 servers or by fetching the cited page.");
   lines.push("- Commit rebuilt outputs and source edits to the working branch before you call `create_pull_request`.");
   lines.push(
@@ -1994,12 +2038,13 @@ function prepareFleet(request, cwd) {
     cwd,
     manifestFile: request.manifestPath,
     instructionFiles: new Map(),
+    strategyFragments: new Map(),
   };
   const semantic = validateSemantics(manifest, request, context);
   if (semantic.length > 0) {
     return { failure: failureResult([{ file: request.manifestPath, valid: false, errors: semantic }]) };
   }
-  const ctx = makeContext(request, manifest, context.instructionFiles);
+  const ctx = makeContext(request, manifest, context.instructionFiles, context.strategyFragments);
   const workflows = [];
   for (const project of manifest.projects) {
     if (project.driftAudit.enabled) workflows.push(renderDrift(ctx, project));

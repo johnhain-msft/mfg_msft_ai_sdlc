@@ -7,8 +7,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { matchReasons, run } from "../../src/drift/dedupe-open-prs.mjs";
-import { DRIFT_KEYS, driftWorkflow, listTree, script, tempDir } from "./helpers/fixtures.mjs";
+import { belongsToWorkflow, decide, matchReasons, normalizeCloseOlderKey, run, UPKEEP_OF_STRATEGY, upkeepOf } from "../../src/drift/dedupe-open-prs.mjs";
+import { abs, DRIFT_KEYS, driftPreset, driftWorkflow, listTree, readText, script, tempDir } from "./helpers/fixtures.mjs";
 import { invoke, isUnder, leftovers, recordingFs } from "./helpers/run-script.mjs";
 import { cleanEnv, createClock, createFakeFetch, json, runNode, startStubServer } from "./helpers/stub-server.mjs";
 
@@ -286,3 +286,173 @@ for (const key of DRIFT_KEYS) {
     assert.ok(body.indexOf("open-pr-dedup.json") < body.indexOf("## Operating rules") || body.includes("## Operating rules"), "the rule is in the rendered prompt");
   });
 }
+
+// --- whose pull request it is: the current workflow's own earlier one is superseded, another workflow's is not a duplicate ------------------------
+//
+// `sdlc/*` is the head of every pull request of the orchestrator, so with the three preset workflows the self-improvement draft of
+// drift-self-improving-agents matched the weekly audit of drift-copilot-lab, and the other way round: each open pull request of one stopped the other,
+// and a workflow's own earlier pull request (which close-older-pull-requests replaces) stopped it too. The record now says, for each match, whose it is
+// (belongsTo), which upkeep it is for (upkeep) and what the workflow does about it (decision).
+
+const WEEKLY = { closeOlderKey: "sdlc-drift-copilot-lab", strategy: "content-and-docs-sync", upkeep: "weekly-audit" };
+const IMPROVE = { closeOlderKey: "sdlc-drift-self-improving-agents", strategy: "code-quality-and-improvement-scan", upkeep: "self-improve" };
+const marked = (key) => `Proposed changes.\n\n<!-- gh-aw-close-key: ${key} -->\n`;
+const owned = (number, ref, key, labels = []) => ({ ...pull(number, ref, labels), body: marked(key) });
+const FLEET = [
+  owned(21, "sdlc/weekly-audit-2026-10-25", WEEKLY.closeOlderKey, ["automated", "sdlc-drift", "needs-review"]),
+  owned(22, "sdlc/self-improve-2026-11-01", IMPROVE.closeOlderKey, ["automated", "sdlc-drift", "needs-review"]),
+  pull(23, "automation/weekly-audit-2026-11-01", ["content-audit"]),
+  pull(24, "automation/self-improve-2026-11-02", ["self-improving-agents"]),
+  pull(25, "sdlc/x"),
+  pull(26, "feature/x"),
+];
+const flags = (workflow) => ["--close-older-key", workflow.closeOlderKey, "--upkeep-strategy", workflow.strategy];
+const decisions = (directory) => Object.fromEntries(report(directory).matches.map((match) => [match.number, `${match.belongsTo === "current-workflow" ? "own" : "other"}:${match.decision}`]));
+
+test("AC10: for the weekly audit, its own earlier pull request is superseded, the self-improvement draft of the other workflow and the lab's own self-improvement pull request are of another upkeep, and the lab's own audit and a pull request of unknown upkeep are to be skipped for", async () => {
+  const directory = out();
+  const result = await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`, ...flags(WEEKLY)], { env: env(), fetch: listing(FLEET) });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(decisions(directory), { 21: "own:supersede", 22: "other:ignore", 23: "other:skip", 24: "other:ignore", 25: "other:skip" });
+  const recorded = report(directory);
+  assert.equal(recorded.duplicate, true, "the lab's own audit is open");
+  assert.deepEqual({ closeOlderKey: recorded.closeOlderKey, upkeep: recorded.upkeep }, { closeOlderKey: WEEKLY.closeOlderKey, upkeep: "weekly-audit" }, "the record says which workflow it was made for");
+  assert.deepEqual(recorded.matches.map((match) => [match.number, match.headRef, match.url]), [21, 22, 23, 24, 25].map((number) => [number, FLEET.find((candidate) => candidate.number === number).head.ref, `https://github.example/${OWNER}/${REPO}/pull/${number}`]), "number, head ref and URL of every match, as AC10 requires");
+  assert.equal(recorded.matches.every((match) => Array.isArray(match.reasons) && match.reasons.length > 0 && typeof match.draft === "boolean" && Array.isArray(match.labels)), true, "and the fields of the earlier record");
+  assert.deepEqual(recorded.matches.map((match) => match.upkeep), ["weekly-audit", "self-improve", "weekly-audit", "self-improve", null]);
+});
+
+test("AC10: for the self-improvement run it is the other way round: its own earlier pull request is superseded and the weekly audit's are of another upkeep", async () => {
+  const directory = out();
+  const result = await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`, ...flags(IMPROVE)], { env: env(), fetch: listing(FLEET) });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(decisions(directory), { 21: "other:ignore", 22: "own:supersede", 23: "other:ignore", 24: "other:skip", 25: "other:skip" });
+  assert.equal(report(directory).duplicate, true, "the lab's own self-improvement pull request is open");
+});
+
+test("AC10: an open pull request of the workflow itself, or of another workflow of the fleet, is not a reason to skip: nothing is a duplicate when only those are open", async () => {
+  const open = [FLEET[0], FLEET[1]];
+  for (const workflow of [WEEKLY, IMPROVE]) {
+    const directory = out();
+    const result = await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`, ...flags(workflow)], { env: env(), fetch: listing(open) });
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(report(directory).duplicate, false, workflow.closeOlderKey);
+    assert.equal(report(directory).matches.length, 2, "both are still recorded: number, head and URL stay in matches");
+    assert.deepEqual(new Set(report(directory).matches.map((match) => match.decision)), new Set(["supersede", "ignore"]));
+  }
+  const directory = out();
+  assert.equal((await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`, ...flags(WEEKLY)], { env: env(), fetch: listing([FLEET[0], FLEET[2]]) })).code, 0);
+  assert.equal(report(directory).duplicate, true, "with the lab's own audit open as well, it is");
+});
+
+test("AC10: without --close-older-key and --upkeep-strategy nothing is known of the workflow, so every match is to be skipped for, as before", async () => {
+  const directory = out();
+  const result = await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`], { env: env(), fetch: listing(FLEET) });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(decisions(directory), { 21: "other:skip", 22: "other:skip", 23: "other:skip", 24: "other:skip", 25: "other:skip" });
+  assert.deepEqual({ duplicate: report(directory).duplicate, closeOlderKey: report(directory).closeOlderKey, upkeep: report(directory).upkeep }, { duplicate: true, closeOlderKey: null, upkeep: null });
+  const onlyStrategy = out();
+  await invoke(run, ["--out", onlyStrategy, "--target-repo", `${OWNER}/${REPO}`, "--upkeep-strategy", "content-and-docs-sync"], { env: env(), fetch: listing(FLEET) });
+  assert.deepEqual(decisions(onlyStrategy), { 21: "other:skip", 22: "other:ignore", 23: "other:skip", 24: "other:ignore", 25: "other:skip" }, "with the upkeep alone the other upkeep is told apart, and its own pull request cannot be");
+  const unknownStrategy = out();
+  await invoke(run, ["--out", unknownStrategy, "--target-repo", `${OWNER}/${REPO}`, ...flags({ ...WEEKLY, strategy: "custom" })], { env: env(), fetch: listing(FLEET) });
+  assert.deepEqual(decisions(unknownStrategy), { 21: "own:supersede", 22: "other:skip", 23: "other:skip", 24: "other:skip", 25: "other:skip" }, "a strategy that has no upkeep of the lab's schedules tells nothing apart: what is not its own is skipped for");
+  assert.equal(report(unknownStrategy).upkeep, null);
+});
+
+test("AC10: whose a pull request is follows from the marker that gh-aw writes for the close-older key, and from nothing that the pull request merely claims", () => {
+  const own = { body: `x\n<!-- gh-aw-close-key: ${WEEKLY.closeOlderKey} -->\n`, head: { ref: "sdlc/weekly-audit-2026-11-01" }, labels: [] };
+  assert.equal(belongsToWorkflow(own, WEEKLY.closeOlderKey), true);
+  assert.equal(belongsToWorkflow(own, "  SDLC-Drift-Copilot-Lab "), true, "the key is normalized as gh-aw does: lower case, runs of other characters are one dash");
+  assert.equal(belongsToWorkflow(own, "sdlc-drift-copilot"), false, "a key that is a prefix of the marker's is another key");
+  assert.equal(belongsToWorkflow(own, IMPROVE.closeOlderKey), false);
+  assert.equal(belongsToWorkflow({ ...own, body: null }, WEEKLY.closeOlderKey), false, "no body, no marker");
+  assert.equal(belongsToWorkflow({ ...own, body: `gh-aw-close-key: ${WEEKLY.closeOlderKey}` }, WEEKLY.closeOlderKey), false, "the text of the marker without its comment wrapper is not the marker");
+  assert.equal(belongsToWorkflow({ head: { ref: "sdlc/weekly-audit-2026-11-01" }, labels: [{ name: "sdlc-drift" }] }, WEEKLY.closeOlderKey), false, "neither a head branch under sdlc/ nor the labels of the fleet make a pull request this workflow's");
+  assert.equal(belongsToWorkflow(own, ""), false, "and without a key nothing is its own");
+  assert.equal(normalizeCloseOlderKey("My Key!"), "my-key");
+  assert.equal(normalizeCloseOlderKey("__a--b__"), "a-b");
+  assert.equal(normalizeCloseOlderKey("!!!"), "");
+});
+
+test("AC10: the upkeep of a pull request is read from its head branch after automation/ or sdlc/ and from the two labels, and a pull request that says two upkeeps says none", () => {
+  assert.equal(upkeepOf(pull(1, "automation/weekly-audit-2026-11-01")), "weekly-audit");
+  assert.equal(upkeepOf(pull(1, "sdlc/weekly-audit-2026-11-01")), "weekly-audit");
+  assert.equal(upkeepOf(pull(1, "automation/self-improve-2026-11-02")), "self-improve");
+  assert.equal(upkeepOf(pull(1, "sdlc/self-improve-2026-11-02")), "self-improve");
+  assert.equal(upkeepOf(pull(1, "feature/x", ["content-audit"])), "weekly-audit");
+  assert.equal(upkeepOf(pull(1, "feature/x", ["self-improving-agents"])), "self-improve");
+  assert.equal(upkeepOf(pull(1, "sdlc/weekly-audit-x", ["content-audit"])), "weekly-audit", "the head and the label agree");
+  assert.equal(upkeepOf(pull(1, "sdlc/weekly-audit-x", ["self-improving-agents"])), null, "the head and the label disagree");
+  assert.equal(upkeepOf(pull(1, "sdlc/x")), null);
+  assert.equal(upkeepOf(pull(1, "weekly-audit-2026-11-01")), "weekly-audit", "a working branch without a prefix is read the same way");
+  assert.equal(upkeepOf(pull(1, "docs/sdlc/weekly-audit-x")), null, "a prefix has to be at the start");
+  assert.equal(upkeepOf({}), null);
+  assert.deepEqual(UPKEEP_OF_STRATEGY, { "content-and-docs-sync": "weekly-audit", "code-quality-and-improvement-scan": "self-improve" });
+  assert.deepEqual(decide(pull(1, "sdlc/x"), { closeOlderKey: null, upkeep: "weekly-audit" }), { belongsTo: "another-workflow-or-schedule", upkeep: null, decision: "skip" });
+  assert.equal(decide(pull(1, "sdlc/self-improve-x"), { closeOlderKey: null, upkeep: "weekly-audit" }).decision, "ignore");
+});
+
+test("AC10: a close-older key that contains nothing to match is a usage error before any request, and an unknown strategy is only a strategy with no upkeep", async () => {
+  const fake = listing(FLEET);
+  const refused = await invoke(run, ["--out", out(), "--target-repo", `${OWNER}/${REPO}`, "--close-older-key", "!!!"], { env: env(), fetch: fake });
+  assert.equal(refused.code, 2);
+  assert.match(refused.stderr, /--close-older-key must contain a letter or a digit/);
+  assert.equal(fake.requests.length, 0);
+  const blank = out();
+  assert.equal((await invoke(run, ["--out", blank, "--target-repo", `${OWNER}/${REPO}`, "--close-older-key", "  ", "--upkeep-strategy", "no-such-strategy"], { env: env(), fetch: listing(FLEET) })).code, 0, "a blank key is no key");
+  assert.equal(report(blank).closeOlderKey, null);
+});
+
+test("AC10: the record of a run with the flags is as deterministic as before: the same pull requests give the same bytes", async () => {
+  const first = out();
+  const second = out();
+  for (const directory of [first, second]) await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`, ...flags(WEEKLY)], { env: env(), fetch: listing([...FLEET].reverse()) });
+  assert.equal(fs.readFileSync(path.join(first, "open-pr-dedup.json"), "utf8"), fs.readFileSync(path.join(second, "open-pr-dedup.json"), "utf8"));
+  assert.deepEqual(report(first).matches.map((match) => match.number), [21, 22, 23, 24, 25], "ordered by pull request number, whatever the order of the list");
+});
+
+for (const key of DRIFT_KEYS) {
+  test(`AC10: the rendered deduplication step of drift-${key} names the workflow: its close-older key, which is the key that its pull requests carry, and its upkeep strategy`, () => {
+    const { frontmatter } = driftWorkflow(key);
+    const step = frontmatter["pre-agent-steps"].find((candidate) => String(candidate.run).includes("dedupe-open-prs.mjs"));
+    const handlerKey = frontmatter["safe-outputs"]["create-pull-request"]["close-older-key"];
+    assert.equal(handlerKey, `sdlc-drift-${key}`);
+    assert.match(step.run, new RegExp(` --close-older-key ${handlerKey} --upkeep-strategy ${driftPreset(key).driftAudit.upkeepStrategy}$`), "the key of the safe output, and the strategy of the manifest");
+    assert.equal(/APP_PRIVATE_KEY|ghs_|github_pat/.test(step.run), false, "and no credential on the command line");
+  });
+}
+
+test("AC10: the preset's two lab workflows are told apart by the strategy, and the strategies map to the upkeeps of the lab's own schedules", () => {
+  assert.equal(driftPreset("copilot-lab").driftAudit.upkeepStrategy, "content-and-docs-sync");
+  assert.equal(driftPreset("self-improving-agents").driftAudit.upkeepStrategy, "code-quality-and-improvement-scan");
+  assert.equal(UPKEEP_OF_STRATEGY[driftPreset("copilot-lab").driftAudit.upkeepStrategy], "weekly-audit");
+  assert.equal(UPKEEP_OF_STRATEGY[driftPreset("self-improving-agents").driftAudit.upkeepStrategy], "self-improve");
+  assert.match(readText(abs("instructions", "copilot-lab.md")), /Name the working branch `weekly-audit-YYYY-MM-DD`/, "the working branch that the lab's audit names starts with the stem that its upkeep is read from");
+  assert.match(readText(abs("instructions", "self-improving-agents.md")), /Name the working branch `self-improve-YYYY-MM-DD`/);
+});
+
+const DEDUP_RULE = /^- Read `\/tmp\/gh-aw\/agent\/open-pr-dedup\.json` before you call `create_pull_request`.*$/m;
+
+for (const key of DRIFT_KEYS) {
+  test(`AC10: the prompt of drift-${key} states the deduplication rule once, with the three decisions, and no instruction contradicts it`, () => {
+    const { body } = driftWorkflow(key);
+    const rules = body.slice(body.indexOf("## Operating rules"));
+    const rule = DEDUP_RULE.exec(rules)?.[0];
+    assert.ok(rule, "the rule is among the operating rules");
+    for (const word of ["`duplicate`", "`decision`", "`skip`", "`supersede`", "`ignore`", "`close-older-pull-requests: true`", "Never open a duplicate."]) assert.ok(rule.includes(word), `the rule says ${word}`);
+    assert.match(rule, /skip the upkeep when it lists a matching open pull request that you must not duplicate/);
+    assert.equal(body.split("\n").filter((line) => DEDUP_RULE.test(line)).length, 1, "and it is stated once");
+    assert.equal(/skip the upkeep or let your own earlier pull request be superseded/.test(body), false, "no instruction offers the choice between skipping and superseding that the rule decides");
+    assert.equal(/skip(?: the upkeep)? when it lists a matching open pull request\./.test(body), false, "nor says that any match is a reason to skip");
+    for (const line of body.split("\n").filter((candidate) => candidate.includes("open-pr-dedup.json") && !DEDUP_RULE.test(candidate))) {
+      assert.match(line, /operating rules/i, "any other mention of the file points at the rule");
+    }
+  });
+}
+
+test("AC10: the rule is the same sentence in every preset workflow, because it is written by the renderer and not by the instructions", () => {
+  const rules = DRIFT_KEYS.map((key) => DEDUP_RULE.exec(driftWorkflow(key).body.slice(driftWorkflow(key).body.indexOf("## Operating rules")))[0]);
+  assert.equal(new Set(rules).size, 1);
+  for (const file of listTree(abs("instructions"))) assert.equal(DEDUP_RULE.test(readText(abs("instructions", file))), false, `instructions/${file} does not restate the rule`);
+});

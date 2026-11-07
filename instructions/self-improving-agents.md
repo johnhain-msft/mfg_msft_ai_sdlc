@@ -29,7 +29,7 @@ Scan every agent, skill and prompt for these five signals, taken from the lab's 
 
 ## Pull request
 
-- Read `/tmp/gh-aw/agent/open-pr-dedup.json` before calling `create_pull_request`; skip when it lists a matching open pull request.
+- The pull requests that this upkeep must not duplicate are the ones that the lab's own scheduled self-improvement run opens (`automation/self-improve-*`, labelled `self-improving-agents`). The operating rules at the end say what to do with each match that `/tmp/gh-aw/agent/open-pr-dedup.json` lists: your own earlier pull request is superseded when the new one is created, and a pull request of the lab's content audit is another upkeep.
 - Name the working branch `self-improve-YYYY-MM-DD` with the current UTC date. The `sdlc/` prefix is added when the pull request is created; do not write it yourself. The pull request is a draft for a human to review.
 - Write a copy of the report to `/tmp/gh-aw/agent/self-improvement-report.md` before you call `create_pull_request`.
 - When nothing needs to change, record that outcome and do not open a pull request.

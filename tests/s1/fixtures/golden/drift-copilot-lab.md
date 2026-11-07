@@ -61,14 +61,14 @@ pre-agent-steps:
       CONFIGURED_TARGET_REPO: ms-mfg-community/day-in-the-life-copilot-lab
       APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO"
+    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --close-older-key sdlc-drift-copilot-lab --upkeep-strategy content-and-docs-sync
   - name: Snapshot watched sources and package manifests
     env:
       CONFIGURED_TARGET_REPO: ms-mfg-community/day-in-the-life-copilot-lab
     run: node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs" --out /tmp/gh-aw/agent --project copilot-lab --checkout day-in-the-life-copilot-lab
 post-steps:
-  - name: node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs"
-    run: node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs"
+  - name: ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" || { echo "src/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/drift/lib" "$GITHUB_WORKSPACE/src/drift/lib" >&2 || { echo "src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" )
+    run: ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" || { echo "src/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/drift/lib" "$GITHUB_WORKSPACE/src/drift/lib" >&2 || { echo "src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" )
     working-directory: day-in-the-life-copilot-lab
   - name: ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; XDG_DATA_HOME="$GH_DATA_DIR"; export XDG_DATA_HOME; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
     run: ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; XDG_DATA_HOME="$GH_DATA_DIR"; export XDG_DATA_HOME; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
@@ -188,7 +188,7 @@ Compare the registry and the labs with the snapshots under `/tmp/gh-aw/agent/sou
 - Never edit, recompile or delete anything under `.github/workflows/`: the lab's compiled workflow files were built with a pinned compiler and are not yours to touch.
 - Registry edits are for safe updates only: patch or minor SDK bumps, fixed redirected URLs and added in-scope MCP servers. Record major version changes and model-catalogue churn in the report only.
 - Edit lab files mechanically only (for example a moved URL or a renamed product). Never rewrite prose.
-- Read `/tmp/gh-aw/agent/open-pr-dedup.json` before calling `create_pull_request`. If it lists a matching open pull request, skip the upkeep or let your own earlier pull request be superseded; never open a duplicate.
+- The pull requests that this upkeep must not duplicate are the ones that the lab's own scheduled audit opens (`automation/weekly-audit-*`, labelled `content-audit`). The operating rules at the end say what to do with each match that `/tmp/gh-aw/agent/open-pr-dedup.json` lists: your own earlier pull request is superseded when the new one is created, and a pull request of the lab's self-improvement run is another upkeep.
 - Name the working branch `weekly-audit-YYYY-MM-DD` with the current UTC date. The `sdlc/` prefix is added when the pull request is created; do not write it yourself.
 - The report must keep its four required sections: `## Summary`, `## Checks`, `## Suggestions for Additions` and `## Metadata`.
 - Read `/tmp/gh-aw/agent/sources/manifest.json`. A watched source that it lists as failed, and a package manifest pattern that matched no file, are limitations: record each in the `## Checks` section of the report and never guess what the source said.
@@ -229,7 +229,7 @@ This project has no build commands.
 
 ## Operating rules
 
-- Read `/tmp/gh-aw/agent/open-pr-dedup.json` before you call `create_pull_request`; skip the upkeep when it lists a matching open pull request.
+- Read `/tmp/gh-aw/agent/open-pr-dedup.json` before you call `create_pull_request`; skip the upkeep when it lists a matching open pull request that you must not duplicate (`duplicate` is `true`: a match whose `decision` is `skip`). A match whose `decision` is `supersede` is an earlier pull request of this same workflow, which your new pull request replaces (`close-older-pull-requests: true`), and a match whose `decision` is `ignore` is the pull request of another upkeep: neither is a reason to skip. Never open a duplicate.
 - Corroborate every proposed change through the Microsoft Learn and Context7 servers or by fetching the cited page.
 - Commit rebuilt outputs and source edits to the working branch before you call `create_pull_request`.
 - Never run `git push`, `gh pr` or a write-method `gh api` call and never merge: the pull request is created only through the `create_pull_request` safe output.

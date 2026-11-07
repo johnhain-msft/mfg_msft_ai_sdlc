@@ -1,20 +1,22 @@
-// AC22: gh_aw_schema_version is report-only for the lab. The validator exits non-zero, so that post-steps exit 1, when the target's
-// diff against the recorded base commit changes gh_aw_schema_version or touches anything under .github/workflows/; and
+// AC22: gh_aw_schema_version is report-only for the lab. The validator exits non-zero, so that post-steps exit 1, when anything that a pull
+// request could be made of differs from the recorded base commit in gh_aw_schema_version or touches anything under .github/workflows/; and
 // exclude-lock-yml: true and protected-files with policy "blocked" stay as AC2 renders them, with no exclude entry that covers
 // .github/workflows/. The base commit is the one that prepare-run, the first step of the job, hands to the later steps through
 // GITHUB_ENV (SDLC_BASE_SHA); it is never read from run-context.json, which the agent can edit. Nor does anything else that the agent can
 // write in the checkout decide what the rule compares: a replace ref (`git replace <base> HEAD`), a graft file, and a change that is
-// committed and then put back in the working tree are tested here too. The validator's own file is not protected (SPEC-02 §4, item 6).
+// committed and then put back in the working tree are tested here too. What a pull request is made of is not HEAD: the patch and the
+// bundle that create_pull_request wrote under /tmp/gh-aw during the agent step, and the commits on any ref, are tested below ("after the agent
+// switched back"). That the validator's own files cannot be rewritten is tested in validator-integrity.test.mjs.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test, { after, before } from "node:test";
 import { run as prepare } from "../../src/drift/prepare-run.mjs";
 import { changedPaths, pinnedValueAt, run } from "../../src/validate-copilot-lab-audit.mjs";
-import { DRIFT_KEYS, driftWorkflow, tempDir } from "./helpers/fixtures.mjs";
+import { DRIFT_KEYS, driftWorkflow, forceRemove, tempDir } from "./helpers/fixtures.mjs";
 import { BASH_SKIP, createGateWorkspace } from "./helpers/gate-harness.mjs";
 import { createRepo } from "./helpers/git-fixture.mjs";
-import { labFiles } from "./helpers/lab-fixture.mjs";
+import { labFiles, withoutSection, withoutTopLevelKey } from "./helpers/lab-fixture.mjs";
 import { invoke } from "./helpers/run-script.mjs";
 import { cleanEnv } from "./helpers/stub-server.mjs";
 
@@ -355,7 +357,7 @@ test("AC22: through the rendered steps, an agent that bumps the pinned version a
   const [prepareStep] = frontmatter["pre-agent-steps"];
   const [validator] = frontmatter["post-steps"];
   assert.match(prepareStep.run, /prepare-run\.mjs/);
-  assert.equal(validator.run, 'node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs"');
+  assert.match(validator.run, /node "\$GITHUB_WORKSPACE\/src\/validate-copilot-lab-audit\.mjs" \)$/);
   const lab = labFiles();
   for (const forge of [true, false]) {
     const gate = createGateWorkspace({ checkoutName: "day-in-the-life-copilot-lab", files: lab });
@@ -439,4 +441,319 @@ test("AC22: the prompt of the lab workflow treats gh_aw_schema_version as report
   const { body } = driftWorkflow("copilot-lab");
   assert.match(body, /Treat `gh_aw_schema_version` as report-only\. Report new `github\/gh-aw` releases in `docs\/_meta\/audit-report\.md`, and never change that value\./);
   assert.match(body, /Never edit, recompile or delete anything under `\.github\/workflows\/`/);
+});
+
+// --- after the agent switched back: what a pull request is made of is not HEAD -------------------------------------------------------------
+//
+// In gh-aw v1.0.1 the create_pull_request tool writes /tmp/gh-aw/aw-<branch>.patch (git format-patch of <base>..<branch>, with an
+// X-GH-AW-Base-Commit header after its first line) and, for the bundle transport, /tmp/gh-aw/aw-<branch>.bundle while the agent is still
+// running; the agent job uploads those files and the safe_outputs job applies them whatever HEAD is by then. An agent can therefore commit a
+// forbidden change on a branch, call the tool, and `git switch` back to the base commit: HEAD, the index and the working tree are the base's again.
+
+/** The file name that gh-aw gives the patch or the bundle of a branch (sanitizeForFilename of git_patch_utils.cjs). */
+const transportName = (branch, extension) => `aw-${branch.replace(/[/\\:*?"<>|]/g, "-").replace(/-{2,}/g, "-").replace(/^-|-$/g, "").toLowerCase()}.${extension}`;
+
+/** /tmp/gh-aw and /tmp/gh-aw/agent of a job: the artifact directory is the `agent` directory below the one that holds the patches and the bundles. */
+function artifactDirectories() {
+  const root = tempDir("sdlc-s2-artifacts-");
+  const agent = path.join(root, "agent");
+  fs.mkdirSync(agent);
+  return { root, agent };
+}
+
+/** Writes what create_pull_request writes for a branch: the patch, and with `bundle` the bundle too. */
+function createPullRequest(directory, branch, { patch = true, bundle = false } = {}) {
+  if (patch) {
+    const [first, ...rest] = `${repo.git("format-patch", `${base}..${branch}`, "--stdout")}\n`.split("\n");
+    fs.writeFileSync(path.join(directory, transportName(branch, "patch")), [first, `X-GH-AW-Base-Commit: ${base}`, ...rest].join("\n"));
+  }
+  if (bundle) repo.git("bundle", "create", path.join(directory, transportName(branch, "bundle")), `${base}..${branch}`);
+}
+
+/**
+ * The agent's way of leaving: it commits `change` (a function of the checkout) on a new branch, calls create_pull_request, and switches back to the
+ * branch that it started on. `keepBranch: false` deletes the branch and its reflog as well, so that only the files that the tool wrote are left.
+ * Returns the result of the validator, run against the recorded base commit.
+ */
+async function afterTheAgentSwitchedBack({ change, branch = "sdlc/x", patch = true, bundle = false, keepBranch = true, before: prepareMore = () => {}, args = [] }) {
+  const { root, agent } = artifactDirectories();
+  const origin = repo.git("rev-parse", "--abbrev-ref", "HEAD");
+  try {
+    repo.git("switch", "-q", "-c", branch);
+    change(repo);
+    repo.commitAll(`change on ${branch}`);
+    createPullRequest(root, branch, { patch, bundle });
+    repo.git("switch", "-q", origin);
+    if (!keepBranch) {
+      repo.git("branch", "-q", "-D", branch);
+      repo.git("reflog", "expire", "--expire=now", "--all");
+    }
+    assert.equal(repo.head(), base, "HEAD is the base commit again");
+    assert.equal(repo.git("diff", "--name-only", base), "", "and so are the index and the working tree: a validator that looks at HEAD sees nothing");
+    prepareMore(root);
+    return await invoke(run, ["--checkout", repo.dir, "--out", agent, ...args], { cwd: out, env: withBase(base) });
+  } finally {
+    repo.git("switch", "-q", origin);
+    if (repo.git("branch", "--list", branch) !== "") repo.git("branch", "-q", "-D", branch);
+    restore();
+    forceRemove(root);
+  }
+}
+
+const bump = (checkout) => setVersion('"9.9.9"')(checkout);
+const recompile = (checkout) => checkout.write(".github/workflows/stand-in.lock.yml", "name: recompiled by the agent\n");
+
+test("AC22: an agent that commits a bump on a branch, calls create_pull_request and switches back does not get past the rule: the branch and the patch are read", async () => {
+  const result = await afterTheAgentSwitchedBack({ change: bump });
+  assert.equal(result.code, 1, result.stdout);
+  assert.ok(result.stderr.includes("gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only"), result.stderr);
+  assert.match(result.stderr, /commit [0-9a-f]{12} \(refs\/heads\/sdlc\/x\)/, "the commit that only a branch names is read");
+  assert.ok(result.stderr.includes("aw-sdlc-x.patch (patch 1 of 1)"), "and so is the patch that the tool wrote");
+});
+
+test("AC22: with the branch and its reflog gone, the patch that the tool wrote still carries the change, and it is the patch that is named", async () => {
+  const bumped = await afterTheAgentSwitchedBack({ change: bump, keepBranch: false });
+  assert.equal(bumped.code, 1, bumped.stdout);
+  assert.ok(bumped.stderr.includes("gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only (in aw-sdlc-x.patch (patch 1 of 1))"), bumped.stderr);
+  assert.equal(bumped.stderr.includes("refs/heads/sdlc/x"), false, "there is no branch left to name");
+  const recompiled = await afterTheAgentSwitchedBack({ change: recompile, keepBranch: false });
+  assert.equal(recompiled.code, 1, recompiled.stdout);
+  assert.ok(recompiled.stderr.includes(".github/workflows/stand-in.lock.yml differs from the base commit"), recompiled.stderr);
+  assert.ok(recompiled.stderr.includes("(in aw-sdlc-x.patch (patch 1 of 1))"), recompiled.stderr);
+  const removed = await afterTheAgentSwitchedBack({ change: (checkout) => checkout.remove(".github/workflows/stand-in.lock.yml"), keepBranch: false });
+  assert.equal(removed.code, 1, "a deleted workflow is a change too");
+  assert.ok(removed.stderr.includes(".github/workflows/stand-in.lock.yml differs from the base commit"), removed.stderr);
+});
+
+test("AC22: the same holds for the bundle of the bundle transport, with or without a patch beside it", async () => {
+  for (const patch of [true, false]) {
+    const bumped = await afterTheAgentSwitchedBack({ change: bump, patch, bundle: true, keepBranch: false });
+    assert.equal(bumped.code, 1, `patch beside it: ${patch}\n${bumped.stdout}`);
+    assert.match(bumped.stderr, /gh_aw_schema_version changed from '0\.86\.2' to '9\.9\.9'; it is report-only \(in .*aw-sdlc-x\.bundle \(commit [0-9a-f]{12}\)/);
+    const recompiled = await afterTheAgentSwitchedBack({ change: recompile, patch, bundle: true, keepBranch: false });
+    assert.equal(recompiled.code, 1, `patch beside it: ${patch}\n${recompiled.stdout}`);
+    assert.match(recompiled.stderr, /\.github\/workflows\/stand-in\.lock\.yml differs from the base commit [0-9a-f]{12}; .*\(in .*aw-sdlc-x\.bundle \(commit [0-9a-f]{12}\)/);
+  }
+});
+
+test("AC22: a patch is read message by message: a change that a later commit of the same patch puts back is still named, because the pull request carries both commits", async () => {
+  const { root, agent } = artifactDirectories();
+  const origin = repo.git("rev-parse", "--abbrev-ref", "HEAD");
+  try {
+    repo.git("switch", "-q", "-c", "sdlc/x");
+    bump(repo);
+    repo.commitAll("bump");
+    repo.git("checkout", base, "--", "docs/_meta/registry.yaml");
+    repo.commitAll("put it back");
+    createPullRequest(root, "sdlc/x");
+    repo.git("switch", "-q", origin);
+    repo.git("branch", "-q", "-D", "sdlc/x");
+    repo.git("reflog", "expire", "--expire=now", "--all");
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", agent], { cwd: out, env: withBase(base) });
+    assert.equal(result.code, 1, result.stdout);
+    assert.ok(result.stderr.includes("gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only (in aw-sdlc-x.patch (patch 1 of 2))"), result.stderr);
+    assert.equal(result.stderr.includes("patch 2 of 2"), false, "the second message leaves the base's value and is not named");
+  } finally {
+    repo.git("switch", "-q", origin);
+    restore();
+    forceRemove(root);
+  }
+});
+
+test("AC22: a patch, a bundle and a branch that change neither the version nor a workflow pass, and the run says what it inspected", async () => {
+  const mechanical = (checkout) => {
+    checkout.write("labs/lab01.md", "A mechanical fix.\n");
+    checkout.write("docs/_meta/registry.yaml", checkout.read("docs/_meta/registry.yaml").replace('copilot_cli_version_floor: "1.0.82"', 'copilot_cli_version_floor: "1.0.99"'));
+    checkout.write("docs/_meta/audit-report.md", `${checkout.read("docs/_meta/audit-report.md")}\nA note.\n`);
+  };
+  const result = await afterTheAgentSwitchedBack({ change: mechanical, bundle: true });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /unchanged since [0-9a-f]{12}; 1 commit, 1 patch file, 1 bundle file of what a pull request could be made of also inspected\)/);
+});
+
+test("AC22: a patch or a bundle that cannot be read, or that does not apply to the base commit, fails the run: a file that cannot be inspected is not a file that is fine", async () => {
+  const garbage = await afterTheAgentSwitchedBack({ change: bump, keepBranch: false, before: (root) => fs.writeFileSync(path.join(root, transportName("sdlc/x", "patch")), "this is not a patch\n") });
+  assert.equal(garbage.code, 1, garbage.stdout);
+  assert.match(garbage.stderr, /aw-sdlc-x\.patch cannot be inspected: .*corrupt mailbox/);
+  const empty = await afterTheAgentSwitchedBack({ change: bump, keepBranch: false, before: (root) => fs.writeFileSync(path.join(root, transportName("sdlc/x", "patch")), "") });
+  assert.equal(empty.code, 1, "an empty file is not a patch either");
+  assert.match(empty.stderr, /aw-sdlc-x\.patch cannot be inspected: it is empty/);
+  const moved = await afterTheAgentSwitchedBack({
+    change: bump,
+    keepBranch: false,
+    before: (root) => {
+      const file = path.join(root, transportName("sdlc/x", "patch"));
+      fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace('-gh_aw_schema_version: "0.86.2"', '-gh_aw_schema_version: "0.70.0"'));
+    },
+  });
+  assert.equal(moved.code, 1, "a patch whose lines are not the base commit's lines does not apply");
+  assert.match(moved.stderr, /aw-sdlc-x\.patch cannot be inspected: its message 1 of 1 does not apply to the base commit/);
+  const foreign = createRepo(labFiles());
+  const { root, agent } = artifactDirectories();
+  try {
+    foreign.write("labs/foreign.md", "A commit that the checkout does not have.\n");
+    const middle = foreign.commitAll("a base of its own");
+    foreign.write("labs/lab01.md", "A lab file.\n");
+    foreign.commitAll("change");
+    foreign.git("branch", "-f", "foreign-tip");
+    foreign.git("bundle", "create", path.join(root, "aw-foreign.bundle"), `${middle}..foreign-tip`);
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", agent], { cwd: out, env: withBase(base) });
+    assert.equal(result.code, 1, "a bundle that builds on commits that the checkout does not have");
+    assert.match(result.stderr, /aw-foreign\.bundle cannot be inspected: .*prerequisite/i);
+  } finally {
+    foreign.cleanup();
+    forceRemove(root);
+  }
+});
+
+test("AC22: only aw-*.patch and aw-*.bundle files next to the artifact directory are read, and a missing directory is nothing to read", async () => {
+  const { root, agent } = artifactDirectories();
+  try {
+    fs.writeFileSync(path.join(root, "notes.patch"), "not a patch\n");
+    fs.writeFileSync(path.join(root, "aw-prompts.txt"), "not a patch\n");
+    fs.writeFileSync(path.join(agent, "aw-inside.patch"), "not a patch, and not in the directory that is read\n");
+    const ignored = await invoke(run, ["--checkout", repo.dir, "--out", agent], { cwd: out, env: withBase(base) });
+    assert.equal(ignored.code, 0, ignored.stderr);
+    const missing = await invoke(run, ["--checkout", repo.dir, "--out", path.join(root, "no-such-directory", "agent")], { cwd: out, env: withBase(base) });
+    assert.equal(missing.code, 0, missing.stderr);
+    fs.writeFileSync(path.join(root, "aw-x.patch"), "not a patch\n");
+    const read = await invoke(run, ["--checkout", repo.dir, "--out", agent], { cwd: out, env: withBase(base) });
+    assert.equal(read.code, 1, "aw-*.patch is read");
+  } finally {
+    forceRemove(root);
+  }
+});
+
+test("AC22: a commit that no ref, no patch and no bundle carries is nothing that a pull request can be made of", async () => {
+  const { root, agent } = artifactDirectories();
+  try {
+    bump(repo);
+    repo.git("add", "-A");
+    const dangling = repo.git("commit-tree", repo.git("write-tree"), "-p", base, "-m", "dangling");
+    assert.equal(repo.git("cat-file", "-t", dangling), "commit");
+    repo.git("reset", "-q", "--hard", base);
+    assert.equal(repo.git("branch", "--contains", dangling), "", "no branch has it");
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", agent], { cwd: out, env: withBase(base) });
+    assert.equal(result.code, 0, result.stderr);
+  } finally {
+    restore();
+    forceRemove(root);
+  }
+});
+
+test("AC23: the registry and the audit report are read at the tip of the branch and in the patch as well as in the working tree: a good file in the tree does not hide a bad one in the commit", async () => {
+  const broken = (checkout) => {
+    checkout.write("docs/_meta/registry.yaml", withoutTopLevelKey(checkout.read("docs/_meta/registry.yaml"), "labs"));
+    checkout.write("docs/_meta/audit-report.md", withoutSection(checkout.read("docs/_meta/audit-report.md"), "Summary"));
+  };
+  const onBranch = await afterTheAgentSwitchedBack({ change: broken });
+  assert.equal(onBranch.code, 1, onBranch.stdout);
+  assert.match(onBranch.stderr, /docs\/_meta\/registry\.yaml is missing the top-level key 'labs' \(in commit [0-9a-f]{12} \(refs\/heads\/sdlc\/x\)\)/);
+  assert.match(onBranch.stderr, /docs\/_meta\/audit-report\.md is missing the section '## Summary' \(in commit [0-9a-f]{12} \(refs\/heads\/sdlc\/x\)\)/);
+  assert.match(onBranch.stderr, /docs\/_meta\/registry\.yaml is missing the top-level key 'labs' \(in aw-sdlc-x\.patch \(patch 1 of 1\)\)/, "and in the patch of the same commit");
+  const inBundle = await afterTheAgentSwitchedBack({ change: broken, patch: false, bundle: true, keepBranch: false });
+  assert.equal(inBundle.code, 1, inBundle.stdout);
+  assert.match(inBundle.stderr, /docs\/_meta\/registry\.yaml is missing the top-level key 'labs' \(in aw-sdlc-x\.bundle \(commit [0-9a-f]{12}\)\)/);
+  const untracked = await afterTheAgentSwitchedBack({ change: broken, keepBranch: false });
+  assert.equal(untracked.code, 1, "the working tree has the base's valid files, and that is not what the patch carries");
+  const spoofed = await afterTheAgentSwitchedBack({
+    change: broken,
+    keepBranch: false,
+    before: () => repo.write("docs/_meta/audit-report.md", `${repo.read("docs/_meta/audit-report.md")}\nA spoof in the working tree.\n`),
+  });
+  assert.equal(spoofed.code, 1, "nor does a good file left in the working tree");
+  assert.match(spoofed.stderr, /\(in aw-sdlc-x\.patch \(patch 1 of 1\)\)/);
+});
+
+test("AC23: a self-improvement report with a missing section in the commit is named, whatever the working tree holds", async () => {
+  const result = await afterTheAgentSwitchedBack({
+    change: (checkout) => checkout.write("docs/_meta/self-improvement-report.md", "## Summary\n\n## Findings\n"),
+    keepBranch: false,
+    args: ["--self-improve"],
+  });
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(result.stderr, /docs\/_meta\/self-improvement-report\.md is missing the section '## Consolidation Candidates' \(in aw-sdlc-x\.patch \(patch 1 of 1\)\)/);
+  assert.equal(result.stderr.includes("is missing the section '## Consolidation Candidates' (in commit"), false, "the branch is gone, so only the patch names it");
+});
+
+test("AC22: reading the patches and the bundles writes nothing in the checkout and leaves no scratch repository behind", async () => {
+  const listing = () => {
+    const found = [];
+    const stack = [path.join(repo.dir, ".git")];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      for (const name of fs.readdirSync(current)) {
+        const entry = path.join(current, name);
+        const stat = fs.lstatSync(entry);
+        if (stat.isDirectory()) stack.push(entry);
+        else found.push(`${path.relative(repo.dir, entry)}:${stat.size}:${stat.mtimeMs}`);
+      }
+    }
+    return found.sort().join("\n");
+  };
+  const { root, agent } = artifactDirectories();
+  // the scratch repository goes where os.tmpdir() says; a directory of this test makes it visible, and the other tests of the process unaffected
+  const scratchRoot = tempDir("sdlc-s2-scratch-root-");
+  const saved = Object.fromEntries(["TMPDIR", "TMP", "TEMP"].map((name) => [name, process.env[name]]));
+  const origin = repo.git("rev-parse", "--abbrev-ref", "HEAD");
+  try {
+    repo.git("switch", "-q", "-c", "sdlc/x");
+    bump(repo);
+    repo.commitAll("bump");
+    createPullRequest(root, "sdlc/x", { bundle: true });
+    repo.git("switch", "-q", origin);
+    const untouched = listing();
+    for (const name of Object.keys(saved)) process.env[name] = scratchRoot;
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", agent], { cwd: out, env: withBase(base) });
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /aw-sdlc-x\.bundle \(commit [0-9a-f]{12}\)/, "the run did read the bundle, so the scratch repository existed");
+    assert.equal(listing(), untouched, "nothing in .git changed: not an object, not the index, not a ref");
+    assert.equal(repo.status(), "");
+    assert.deepEqual(fs.readdirSync(scratchRoot), [], "the scratch repository in the temporary directory is removed");
+  } finally {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    repo.git("switch", "-q", origin);
+    repo.git("branch", "-q", "-D", "sdlc/x");
+    restore();
+    forceRemove(root);
+  }
+});
+
+test("AC22: through the rendered steps, an agent that commits a bump, calls create_pull_request (the patch) and switches back still fails the lab's post-step", { skip: BASH_SKIP }, async () => {
+  const { frontmatter } = driftWorkflow("copilot-lab");
+  const [prepareStep] = frontmatter["pre-agent-steps"];
+  const [validator] = frontmatter["post-steps"];
+  const lab = labFiles();
+  const bumped = lab["docs/_meta/registry.yaml"].replace('gh_aw_schema_version: "0.86.2"', 'gh_aw_schema_version: "9.9.9"');
+  for (const keepBranch of [true, false]) {
+    const gate = createGateWorkspace({ checkoutName: "day-in-the-life-copilot-lab", files: lab });
+    try {
+      gate.exported = {};
+      assert.equal((await gate.runSteps([prepareStep])).code, 0);
+      const origin = gate.git("rev-parse", "--abbrev-ref", "HEAD");
+      // the agent: commit on a branch, call create_pull_request (the tool writes the patch under /tmp/gh-aw, which is gate.artifacts here), go back
+      gate.git("switch", "-q", "-c", "sdlc/x");
+      gate.write("docs/_meta/registry.yaml", bumped);
+      gate.git("add", "-A");
+      gate.git("commit", "-q", "-m", "bump the pinned version");
+      const [first, ...rest] = `${gate.git("format-patch", `${gate.baseSha}..sdlc/x`, "--stdout")}\n`.split("\n");
+      fs.writeFileSync(path.join(gate.artifacts, "aw-sdlc-x.patch"), [first, `X-GH-AW-Base-Commit: ${gate.baseSha}`, ...rest].join("\n"));
+      gate.git("switch", "-q", origin);
+      if (!keepBranch) {
+        gate.git("branch", "-q", "-D", "sdlc/x");
+        gate.git("reflog", "expire", "--expire=now", "--all");
+      }
+      assert.equal(gate.git("rev-parse", "HEAD"), gate.baseSha, "HEAD is the base commit");
+      const finished = await gate.runSteps([validator]);
+      assert.equal(finished.code, 1, `branch kept: ${keepBranch}\n${finished.log}`);
+      assert.ok(finished.log.includes("gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only"), finished.log);
+      assert.ok(finished.log.includes("aw-sdlc-x.patch (patch 1 of 1)"), finished.log);
+    } finally {
+      gate.cleanup();
+    }
+  }
 });

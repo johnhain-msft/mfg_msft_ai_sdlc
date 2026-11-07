@@ -10,26 +10,36 @@
 //  3. for a self-improve run (--self-improve): self-improvement-report.md has its four required sections, in order. That run does not
 //     check the audit report: the weekly audit generates it in its own pull request, so the default branch of the lab holds only the
 //     template, and a self-improve run neither writes nor needs it;
-//  4. the checkout differs from the base commit neither in `gh_aw_schema_version` nor in any file under .github/workflows/ (the
-//     version and the compiled workflows are report-only), whether the difference is in the HEAD commit or in the index and the
-//     working tree. The base commit is --base-sha, else SDLC_BASE_SHA, which prepare-run appended to GITHUB_ENV in the first step of
-//     the job, so that the runner and not a file that the agent can edit supplies it.
-// Anything else exits 1 and names each missing key or section, or the changed value or path, on stderr.
-// The script only reads the checkout; it writes nothing.
+//  4. nothing that a pull request could be made of differs from the base commit in `gh_aw_schema_version` or in any file under
+//     .github/workflows/ (the version and the compiled workflows are report-only). "Anything that a pull request could be made of" is the
+//     HEAD commit, the index and the working tree, every other commit that is not reachable from the base commit but is reachable from a
+//     ref, and every patch (aw-*.patch) and bundle (aw-*.bundle) file next to the artifact directory, which are what `create_pull_request`
+//     wrote during the agent step and what the safe_outputs job applies later (see drift/lib/git-artifacts.mjs). The base commit is
+//     --base-sha, else SDLC_BASE_SHA, which prepare-run appended to GITHUB_ENV in the first step of the job, so that the runner and not a
+//     file that the agent can edit supplies it.
+// Rules 1 to 3 are checked on the working tree and on the tip of everything that a pull request could be made of (HEAD when it is ahead of the
+// base commit, every other local branch that is ahead of it, the last message of each patch, every tip of each bundle), so that the agent
+// cannot commit a registry or a report that is wrong, call `create_pull_request` and leave a working tree that is right.
+// Anything else exits 1 and names each missing key or section, or the changed value or path, and where it is, on stderr. A patch or a bundle
+// that cannot be read, or that does not apply to the base commit, exits 1 as well: a file that cannot be inspected is not a file that is fine.
+// The script only reads the checkout. It writes nothing there: the patch and bundle files are read in a scratch repository in a temporary
+// directory that is removed afterwards.
 //
 // The agent has just worked in that checkout and can write all of it, its .git directory included (its `git` tool takes any arguments),
-// so rule 4 asks git for what the objects say and for nothing else that the agent can bend. Every git call runs with --no-replace-objects:
+// so the checks ask git for what the objects say and for nothing else that the agent can bend. Every git call runs with --no-replace-objects:
 // `git replace <base> HEAD` would otherwise make git return the agent's own commit wherever it reads the base. A checkout that carries a
-// replace ref or a graft file is refused, because the runner's checkout has neither and that option does not switch grafts off. The
-// committed difference is taken from the two commit objects (`git diff-tree <base> HEAD`) and not from the index and the working tree,
-// which the agent can put back after it has committed, and `gh_aw_schema_version` is read from the HEAD commit as well as the working tree.
-// What the script cannot do is protect its own file: it runs from the orchestrator checkout, the working directory of the agent step, so an
-// agent that can write there and rewrites the script passes (SPEC-02 §4, item 6, says what that leaves open).
+// replace ref or a graft file is refused, because the runner's checkout has neither and that option does not switch grafts off. What a
+// commit changes is taken from the commit objects (`git diff-tree <base> <commit>`) and not from the index and the working tree, which the
+// agent can put back after it has committed, and `gh_aw_schema_version` is read from every revision as well as from the working tree.
+// The script does not protect its own file: it runs from the orchestrator checkout, the working directory of the agent step, and the agent can
+// write there. The workflow protects it: prepare-run stages a copy of this file and of drift/lib/ under ${RUNNER_TEMP}/gh-aw/sdlc-validator/
+// before the agent starts (the compiled agent step mounts ${RUNNER_TEMP}/gh-aw read-only), and the verifyCommands entry that runs this script
+// first compares the two and fails when they differ (SPEC-02 AC22 and §4, item 6, say what that closes and what it leaves open).
 
 import path from "node:path";
-import { execFileSync } from "node:child_process";
 import { parseFlags, UsageError } from "./drift/lib/args.mjs";
 import { BASE_SHA_VARIABLE, outDirectory, resolveIo, runAsMain } from "./drift/lib/cli.mjs";
+import { branchTips, bundleCommits, COMMIT_LIMIT, commitsAhead, git, gitMessage, openScratch, patchTrees, refsByCommit, transportFiles } from "./drift/lib/git-artifacts.mjs";
 
 const OPTIONS = {
   out: { type: "string" },
@@ -136,16 +146,25 @@ export function sectionProblems(label, markdown, required, templateHeadings = []
   return problems;
 }
 
-/**
- * git, as every check of this script uses it. The checkout is the agent's workspace and the agent can write its .git directory, so no call
- * trusts a replace ref: --no-replace-objects (and GIT_NO_REPLACE_OBJECTS, for a git that git itself starts) makes a read of an object return
- * that object, where `git replace <base> HEAD` would make a read of the base commit return the agent's own commit.
- */
-function git(args, { cwd, env }) {
-  return execFileSync("git", ["--no-replace-objects", ...args], { cwd, env: { ...env, GIT_NO_REPLACE_OBJECTS: "1", GIT_OPTIONAL_LOCKS: "0" }, encoding: "utf8", maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+/** What a path under .github/workflows/ (any case, the directory itself included) is: a path that the report-only rule protects. */
+const isProtectedPath = (entry) => {
+  const lower = entry.toLowerCase();
+  return lower === ".github/workflows" || lower.startsWith(PROTECTED_DIRECTORY);
+};
+
+/** Every path that a commit or a tree differs from the base commit in, read from the objects alone (`diff-tree`). */
+function committedPaths(options, baseSha, revision) {
+  return git(["diff-tree", "-r", "--name-only", "-z", "--no-renames", baseSha, revision], options)
+    .split("\0")
+    .filter((entry) => entry !== "");
 }
 
-const gitMessage = (error) => String(error?.stderr ?? error?.message ?? error).trim().split("\n")[0];
+/** Every path that the index, the working tree or an untracked file differs from the base commit in. */
+function workingTreePaths(options, baseSha) {
+  const tracked = git(["diff", "--name-only", "-z", "--no-renames", baseSha], options);
+  const untracked = git(["ls-files", "--others", "--exclude-standard", "-z"], options);
+  return [...new Set([tracked, untracked].flatMap((output) => output.split("\0")).filter((entry) => entry !== ""))];
+}
 
 /**
  * Every path that differs from the base commit. What the commits change comes first and is read from the two commit objects alone
@@ -154,10 +173,7 @@ const gitMessage = (error) => String(error?.stderr ?? error?.message ?? error).t
  */
 export function changedPaths(checkout, baseSha, env, headSha = "HEAD") {
   const options = { cwd: checkout, env };
-  const committed = git(["diff-tree", "-r", "--name-only", "-z", "--no-renames", baseSha, headSha], options);
-  const tracked = git(["diff", "--name-only", "-z", "--no-renames", baseSha], options);
-  const untracked = git(["ls-files", "--others", "--exclude-standard", "-z"], options);
-  return [...new Set([committed, tracked, untracked].flatMap((output) => output.split("\0")).filter((entry) => entry !== ""))].sort();
+  return [...new Set([...committedPaths(options, baseSha, headSha), ...workingTreePaths(options, baseSha)])].sort();
 }
 
 /** The value of the pinned key in the text of a registry: null when the registry has no such key. */
@@ -166,13 +182,40 @@ function pinnedValueOf(registry) {
   return entry === undefined ? null : scalarOf(entry.rest);
 }
 
-/** The pinned value as the registry of a commit holds it: null when the commit has no registry, or its registry has no such key. */
-export function pinnedValueAt(checkout, revision, env) {
+/** The pinned value as the registry of a revision (a commit or a tree) holds it, read through `options`: null when it has no registry, or no such key. */
+function pinnedValueIn(options, revision) {
   try {
-    return pinnedValueOf(git(["cat-file", "blob", `${revision}:${REGISTRY_FILE}`], { cwd: checkout, env }));
+    return pinnedValueOf(git(["cat-file", "blob", `${revision}:${REGISTRY_FILE}`], options));
   } catch {
     return null;
   }
+}
+
+/** The pinned value as the registry of a commit holds it: null when the commit has no registry, or its registry has no such key. */
+export function pinnedValueAt(checkout, revision, env) {
+  return pinnedValueIn({ cwd: checkout, env }, revision);
+}
+
+/** A reader of the files of a revision: (relative path) => the text of the file, or null when the revision has none. */
+const blobReader = (options, revision) => (relative) => {
+  try {
+    return git(["cat-file", "blob", `${revision}:${relative}`], options);
+  } catch {
+    return null;
+  }
+};
+
+/** The files that rules 1 to 3 read. */
+const LAB_FILES = [REGISTRY_FILE, AUDIT_REPORT_FILE, AUDIT_TEMPLATE_FILE, ...SELF_IMPROVEMENT_CANDIDATES];
+
+/**
+ * The lab files of a revision, read now: the scratch repository that holds the trees of a patch and the commits of a bundle is removed
+ * before the files are checked, so a reader that went back to it later would find nothing and report every file missing.
+ */
+function labFilesOf(options, revision) {
+  const read = blobReader(options, revision);
+  const texts = new Map(LAB_FILES.map((relative) => [relative, read(relative)]));
+  return (relative) => texts.get(relative) ?? null;
 }
 
 /**
@@ -232,40 +275,167 @@ function runContextProblems(out, base, io) {
   return [`${file} records the base commit ${recorded.slice(0, 12)}, but the first step of the job handed over ${base.sha.slice(0, 12)} (${base.source}); the run context was changed after prepare-run wrote it, and the commit that the runner handed over is the one used`];
 }
 
-function reportOnlyProblems({ checkout, baseSha, headRegistry, io }) {
+/** Places for a message: "a", "a and b", "a, b and c". */
+const joinPlaces = (places) => (places.length < 3 ? places.join(" and ") : `${places.slice(0, -1).join(", ")} and ${places.at(-1)}`);
+
+/** A commit for a message: the HEAD commit, or its abbreviated id and (up to three of) the refs that name it. */
+function describeCommit(commit, headSha, refs) {
+  if (commit === headSha) return "the HEAD commit";
+  const names = refs.get(commit) ?? [];
+  return `commit ${commit.slice(0, 12)}${names.length === 0 ? "" : ` (${names.slice(0, 3).join(", ")}${names.length > 3 ? ", ..." : ""})`}`;
+}
+
+/**
+ * Rule 4 on everything that a pull request could be made of (see the header and drift/lib/git-artifacts.mjs): the HEAD commit, every other
+ * commit that is not reachable from the base commit but is reachable from a ref, the index and the working tree, and each message of every
+ * aw-*.patch file and each commit of every aw-*.bundle file in `artifactDirectory`. For each of them the changed paths and the value of the pinned
+ * key are read from git objects; a path under .github/workflows/ that differs from the base commit, and a pinned value that differs from the
+ * base commit's, are problems, and so is a file that cannot be read.
+ * @returns {{ problems: string[], subjects: { place: string, read: (relative: string) => string | null }[], counts: { commits: number, patches: number, bundles: number } }}
+ *   `subjects` are the tips, whose files rules 1 to 3 are applied to as well.
+ */
+function reportOnlyScan({ checkout, baseSha, headRegistry, io, artifactDirectory }) {
   const problems = tamperProblems(checkout, io);
+  const subjects = [];
+  const counts = { commits: 0, patches: 0, bundles: 0 };
   const options = { cwd: checkout, env: io.env };
+  const short = baseSha.slice(0, 12);
   let headSha;
   try {
     git(["rev-parse", "--verify", `${baseSha}^{commit}`], options);
   } catch (error) {
-    return [...problems, `the base commit ${baseSha} is not in the target checkout: ${gitMessage(error)}`];
+    return { problems: [...problems, `the base commit ${baseSha} is not in the target checkout: ${gitMessage(error)}`], subjects, counts };
   }
   try {
     headSha = git(["rev-parse", "--verify", "HEAD^{commit}"], options).trim();
   } catch (error) {
-    return [...problems, `HEAD of the target checkout is not a commit: ${gitMessage(error)}`];
+    return { problems: [...problems, `HEAD of the target checkout is not a commit: ${gitMessage(error)}`], subjects, counts };
   }
+
+  const protectedPaths = new Map();
+  const observed = [];
+  const flag = (entry, place) => protectedPaths.set(entry, [...new Set([...(protectedPaths.get(entry) ?? []), place])]);
+  // What a revision (a commit, or the tree that a patch produces) changes against the base commit is read from the objects alone, and so is
+  // the pinned value that its registry holds, in the repository that the revision is in (the checkout, or the scratch repository).
+  const examine = (context, revision, place) => {
+    try {
+      for (const entry of committedPaths(context, baseSha, revision)) if (isProtectedPath(entry)) flag(entry, place);
+    } catch (error) {
+      problems.push(`what ${place} changes against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
+    }
+    observed.push([place, pinnedValueIn(context, revision)]);
+  };
+
+  examine(options, headSha, "the HEAD commit");
   try {
-    for (const entry of changedPaths(checkout, baseSha, io.env, headSha)) {
-      const lower = entry.toLowerCase();
-      if (lower === ".github/workflows" || lower.startsWith(PROTECTED_DIRECTORY)) {
-        problems.push(`${entry} differs from the base commit ${baseSha.slice(0, 12)}; nothing under .github/workflows/ may be edited, recompiled or deleted`);
+    const refs = refsByCommit(options);
+    const ahead = commitsAhead(options, baseSha);
+    if (ahead.length > COMMIT_LIMIT) {
+      problems.push(`${ahead.length} commits of the target checkout are not reachable from the base commit ${short}; more than ${COMMIT_LIMIT} are not read one by one, so they cannot be inspected`);
+    } else {
+      const branches = new Set(branchTips(options).values());
+      for (const commit of ahead) {
+        counts.commits += 1;
+        const place = describeCommit(commit, headSha, refs);
+        if (commit !== headSha) examine(options, commit, place);
+        if (commit === headSha || branches.has(commit)) subjects.push({ place, read: labFilesOf(options, commit) });
       }
     }
   } catch (error) {
-    problems.push(`the changes against the base commit ${baseSha.slice(0, 12)} cannot be listed: ${gitMessage(error)}`);
+    problems.push(`the commits of the target checkout that are not reachable from the base commit ${short} cannot be listed: ${gitMessage(error)}`);
   }
-  // The pinned value is read where the pull request gets it, the HEAD commit, and where the validator already looks at everything else, the
-  // working tree. A registry that is missing from the working tree is reported by the caller, so only the commit is read then.
-  const baseValue = pinnedValueAt(checkout, baseSha, io.env);
-  const observed = [["the HEAD commit", pinnedValueAt(checkout, headSha, io.env)]];
+  try {
+    for (const entry of workingTreePaths(options, baseSha)) if (isProtectedPath(entry)) flag(entry, "the working tree");
+  } catch (error) {
+    problems.push(`the changes of the working tree against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
+  }
+  // The pinned value is read where the pull request gets it, in the commits, and where the validator already looks at everything else, the
+  // working tree. A registry that is missing from the working tree is reported by the caller, so only the commits are read then.
   if (headRegistry !== null) observed.push(["the working tree", pinnedValueOf(headRegistry)]);
+
+  let files = [];
+  try {
+    files = transportFiles(artifactDirectory, io.fs);
+  } catch (error) {
+    problems.push(`${artifactDirectory} cannot be read for the patch and bundle files of create_pull_request: ${gitMessage(error)}`);
+  }
+  if (files.length > 0) {
+    let scratch = null;
+    try {
+      scratch = openScratch({ checkout, env: io.env, fs: io.fs });
+    } catch (error) {
+      problems.push(`the patch and bundle files (${files.map((entry) => entry.name).join(", ")}) cannot be inspected: ${gitMessage(error)}`);
+    }
+    if (scratch !== null) {
+      try {
+        for (const entry of files) {
+          try {
+            if (entry.kind === "patch") {
+              counts.patches += 1;
+              for (const { position, count, tree } of patchTrees(scratch, { file: entry.file, baseSha, fs: io.fs })) {
+                const place = `${entry.name} (patch ${position} of ${count})`;
+                examine(scratch.options, tree, place);
+                if (position === count) subjects.push({ place, read: labFilesOf(scratch.options, tree) });
+              }
+            } else {
+              counts.bundles += 1;
+              const { tips, commits } = bundleCommits(scratch, { file: entry.file, baseSha, fs: io.fs });
+              if (commits.length > COMMIT_LIMIT) throw new Error(`it carries ${commits.length} commits beyond the base commit; more than ${COMMIT_LIMIT} are not read one by one`);
+              for (const commit of commits) {
+                const place = `${entry.name} (commit ${commit.slice(0, 12)})`;
+                examine(scratch.options, commit, place);
+                if (tips.includes(commit)) subjects.push({ place, read: labFilesOf(scratch.options, commit) });
+              }
+            }
+          } catch (error) {
+            problems.push(`${entry.name} cannot be inspected: ${gitMessage(error)}`);
+          }
+        }
+      } finally {
+        scratch.dispose();
+      }
+    }
+  }
+
+  for (const entry of [...protectedPaths.keys()].sort()) {
+    problems.push(`${entry} differs from the base commit ${short}; nothing under .github/workflows/ may be edited, recompiled or deleted (in ${joinPlaces(protectedPaths.get(entry))})`);
+  }
+  const baseValue = pinnedValueIn(options, baseSha);
   const changedTo = new Map();
-  for (const [where, value] of observed) if (value !== baseValue) changedTo.set(value, [...(changedTo.get(value) ?? []), where]);
+  for (const [place, value] of observed) if (value !== baseValue) changedTo.set(value, [...new Set([...(changedTo.get(value) ?? []), place])]);
   const shown = (value) => (value === null ? "(absent)" : `'${value}'`);
-  for (const [value, where] of changedTo) problems.push(`${PINNED_KEY} changed from ${shown(baseValue)} to ${shown(value)}; it is report-only (in ${where.join(" and ")})`);
-  return problems;
+  for (const [value, places] of changedTo) problems.push(`${PINNED_KEY} changed from ${shown(baseValue)} to ${shown(value)}; it is report-only (in ${joinPlaces(places)})`);
+  return { problems, subjects, counts };
+}
+
+/**
+ * Rules 1 to 3 on the files of one place: the working tree, or the tip of something that a pull request could be made of. `read` returns
+ * the text of a file of that place, or null; `outReport` is the self-improvement report under --out, which a self-improve run accepts too.
+ * @returns {{ problems: string[], registry: string | null }}
+ */
+function labProblems({ read, selfImprove, outReport }) {
+  const problems = [];
+  const registry = read(REGISTRY_FILE);
+  if (registry === null) problems.push(`${REGISTRY_FILE} is missing`);
+  else {
+    const present = new Set(scanTopLevelKeys(registry).map((entry) => entry.key));
+    for (const key of REGISTRY_KEYS) if (!present.has(key)) problems.push(`${REGISTRY_FILE} is missing the top-level key '${key}'`);
+  }
+  if (selfImprove) {
+    // A self-improve run produces the self-improvement report and nothing else of the lab's reports: the audit report is generated by the
+    // weekly audit inside its own pull request, so the default branch holds only its template, and this run never writes it.
+    const candidates = [...SELF_IMPROVEMENT_CANDIDATES.map((relative) => ({ label: relative, text: read(relative) })), { label: "self-improvement-report.md (in --out)", text: outReport }];
+    const found = candidates.find((candidate) => candidate.text !== null);
+    if (found === undefined) problems.push(`self-improvement-report.md is missing (looked for ${SELF_IMPROVEMENT_CANDIDATES.join(", ")})`);
+    else problems.push(...sectionProblems(found.label, found.text, SELF_IMPROVEMENT_SECTIONS));
+  } else {
+    const template = read(AUDIT_TEMPLATE_FILE);
+    if (template === null) problems.push(`${AUDIT_TEMPLATE_FILE} is missing; the audit report is generated from it`);
+    const report = read(AUDIT_REPORT_FILE);
+    if (report === null) problems.push(`${AUDIT_REPORT_FILE} is missing`);
+    else problems.push(...sectionProblems(AUDIT_REPORT_FILE, report, AUDIT_SECTIONS, template === null ? [] : secondLevelHeadings(template)));
+  }
+  return { problems, registry };
 }
 
 /** @returns {Promise<number>} the exit code */
@@ -278,37 +448,31 @@ export async function run(argv, ioInput = {}) {
     const out = path.resolve(io.cwd, outDirectory(flags.out, io.env));
     const problems = [];
     const read = (relative) => (io.fs.existsSync(path.join(checkout, relative)) ? io.fs.readFileSync(path.join(checkout, relative), "utf8") : null);
+    const outReport = io.fs.existsSync(path.join(out, "self-improvement-report.md")) ? io.fs.readFileSync(path.join(out, "self-improvement-report.md"), "utf8") : null;
 
-    const registry = read(REGISTRY_FILE);
-    if (registry === null) problems.push(`${REGISTRY_FILE} is missing`);
-    else {
-      const present = new Set(scanTopLevelKeys(registry).map((entry) => entry.key));
-      for (const key of REGISTRY_KEYS) if (!present.has(key)) problems.push(`${REGISTRY_FILE} is missing the top-level key '${key}'`);
-    }
+    const workingTree = labProblems({ read, selfImprove, outReport });
+    problems.push(...workingTree.problems);
 
-    if (selfImprove) {
-      // A self-improve run produces the self-improvement report and nothing else of the lab's reports: the audit report is generated by the
-      // weekly audit inside its own pull request, so the default branch holds only its template, and this run never writes it.
-      const candidates = [...SELF_IMPROVEMENT_CANDIDATES.map((relative) => ({ label: relative, text: read(relative) })), { label: "self-improvement-report.md (in --out)", text: io.fs.existsSync(path.join(out, "self-improvement-report.md")) ? io.fs.readFileSync(path.join(out, "self-improvement-report.md"), "utf8") : null }];
-      const found = candidates.find((candidate) => candidate.text !== null);
-      if (found === undefined) problems.push(`self-improvement-report.md is missing (looked for ${SELF_IMPROVEMENT_CANDIDATES.join(", ")})`);
-      else problems.push(...sectionProblems(found.label, found.text, SELF_IMPROVEMENT_SECTIONS));
-    } else {
-      const template = read(AUDIT_TEMPLATE_FILE);
-      if (template === null) problems.push(`${AUDIT_TEMPLATE_FILE} is missing; the audit report is generated from it`);
-      const report = read(AUDIT_REPORT_FILE);
-      if (report === null) problems.push(`${AUDIT_REPORT_FILE} is missing`);
-      else problems.push(...sectionProblems(AUDIT_REPORT_FILE, report, AUDIT_SECTIONS, template === null ? [] : secondLevelHeadings(template)));
-    }
-
+    let inspected = "";
     const base = baseCommitOf(flags["base-sha"], io.env);
     if (base === null) {
       problems.push(`the base commit is unknown: ${BASE_SHA_VARIABLE} is not set and --base-sha was not given, so the report-only rule cannot be checked (the run context under ${out} is not a source for it: the agent can edit that directory)`);
     } else if (!COMMIT.test(base.sha)) {
       problems.push(`the base commit '${base.sha.slice(0, 80)}' (${base.source}) is not a full commit id`);
     } else {
-      problems.push(...reportOnlyProblems({ checkout, baseSha: base.sha, headRegistry: registry, io }));
+      // The patch and bundle files that create_pull_request wrote are in the directory that holds the artifact directory (/tmp/gh-aw for /tmp/gh-aw/agent).
+      const scan = reportOnlyScan({ checkout, baseSha: base.sha, headRegistry: workingTree.registry, io, artifactDirectory: path.dirname(out) });
+      problems.push(...scan.problems);
+      for (const subject of scan.subjects) {
+        problems.push(...labProblems({ read: subject.read, selfImprove, outReport }).problems.map((problem) => `${problem} (in ${subject.place})`));
+      }
       if (base.source === BASE_SHA_VARIABLE) problems.push(...runContextProblems(out, base, io));
+      const parts = [
+        [scan.counts.commits, "commit"],
+        [scan.counts.patches, "patch file"],
+        [scan.counts.bundles, "bundle file"],
+      ].filter(([count]) => count > 0);
+      if (parts.length > 0) inspected = `; ${parts.map(([count, noun]) => `${count} ${noun}${count === 1 ? "" : "s"}`).join(", ")} of what a pull request could be made of also inspected`;
     }
 
     if (problems.length > 0) {
@@ -316,7 +480,7 @@ export async function run(argv, ioInput = {}) {
       return 1;
     }
     io.stdout(
-      `validate-copilot-lab-audit: ok (${REGISTRY_KEYS.length} registry keys, the ${selfImprove ? "self-improvement" : "audit"} report complete, ${PINNED_KEY} and .github/workflows/ unchanged since ${base.sha.slice(0, 12)})\n`,
+      `validate-copilot-lab-audit: ok (${REGISTRY_KEYS.length} registry keys, the ${selfImprove ? "self-improvement" : "audit"} report complete, ${PINNED_KEY} and .github/workflows/ unchanged since ${base.sha.slice(0, 12)}${inspected})\n`,
     );
     return 0;
   } catch (error) {

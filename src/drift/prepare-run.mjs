@@ -13,13 +13,19 @@
 // edit anything under <out>: when the runner provides GITHUB_ENV, this step also appends SDLC_BASE_SHA=<base commit> to it, and
 // the runner hands that variable to every later step (the validator of the lab audit compares the checkout against it). For a
 // dry run it also leaves <out>/dry-run-proposal.json, the file in which the agent records the pull request it would have proposed.
-// The script only reads the checkout and writes under --out (and appends the one line to GITHUB_ENV).
+// The same holds for the code that the verification steps run: when the runner provides RUNNER_TEMP, this step copies the validator of the
+// lab audit (src/validate-*.mjs) and the modules that it imports (src/drift/lib/) to ${RUNNER_TEMP}/gh-aw/sdlc-validator/, read-only. The
+// compiled agent step mounts ${RUNNER_TEMP}/gh-aw read-only and the workspace, where those files also are, read-write, so an agent that
+// rewrites the workspace copy cannot rewrite this one, and the verification step that runs the validator compares the two first (SPEC-02 AC22).
+// The script only reads the checkout and writes under --out (and appends the one line to GITHUB_ENV, and stages the validator under RUNNER_TEMP).
 
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { parseBoolean, parseFlags, repoName, requireSlug, UsageError } from "./lib/args.mjs";
 import { writeFilesAtomically } from "./lib/atomic.mjs";
-import { BASE_SHA_VARIABLE, outDirectory, resolveIo, runAsMain, stableJson, workspaceOf } from "./lib/cli.mjs";
+import { BASE_SHA_VARIABLE, outDirectory, resolveIo, runAsMain, stableJson, VALIDATOR_STAGE_DIRECTORY, workspaceOf } from "./lib/cli.mjs";
+import { CORRELATION_ID, runCorrelationId } from "./lib/correlation.mjs";
 
 const OPTIONS = {
   out: { type: "string" },
@@ -31,24 +37,19 @@ const OPTIONS = {
   "dry-run": { type: "string" },
 };
 
-const CORRELATION_ID = /^[A-Za-z0-9][A-Za-z0-9._:/+=-]{0,127}$/;
 const MAX_EXTRA_INSTRUCTIONS = 64 * 1024;
 const COMMIT = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/;
 
 class RunFailure extends Error {}
 
-/** The correlation id: the given one, else one derived from the run, else "local". */
+/** The correlation id: the given one, else one derived from the run (`run-<run id>-<attempt>`, shared with the failure escalation), else "local". */
 function resolveCorrelationId(given, env) {
   const text = String(given ?? "").trim();
   if (text !== "") {
     if (!CORRELATION_ID.test(text)) throw new RunFailure("correlation_id must be 1 to 128 characters of letters, digits and . _ : / + = -, starting with a letter or digit");
     return text;
   }
-  const runId = String(env.GITHUB_RUN_ID ?? "").trim();
-  if (runId === "") return "local";
-  const attempt = String(env.GITHUB_RUN_ATTEMPT ?? "").trim() || "1";
-  const derived = `run-${runId}-${attempt}`;
-  return CORRELATION_ID.test(derived) ? derived : "local";
+  return runCorrelationId(env) ?? "local";
 }
 
 function baseCommitOf(checkout, env) {
@@ -83,6 +84,74 @@ function exportBaseCommit(baseSha, io) {
   return true;
 }
 
+/**
+ * The files that the post-step validator runs from, as POSIX paths relative to src/: the validate-*.mjs scripts of src/ and every file below
+ * drift/lib/ (the modules that those scripts import). Anything that is neither a file nor a directory (a link) cannot be copied as it is and is refused.
+ */
+function validatorFiles(sourceRoot, fs) {
+  const found = fs
+    .readdirSync(sourceRoot, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /^validate-.*\.mjs$/.test(entry.name))
+    .map((entry) => entry.name);
+  const walk = (relative) => {
+    for (const entry of fs.readdirSync(path.join(sourceRoot, ...relative.split("/")), { withFileTypes: true })) {
+      const child = path.posix.join(relative, entry.name);
+      if (entry.isDirectory()) walk(child);
+      else if (entry.isFile()) found.push(child);
+      else throw new Error(`${child} is neither a file nor a directory`);
+    }
+  };
+  walk(path.posix.join("drift", "lib"));
+  return found.sort();
+}
+
+/** Makes a staged tree writable again, so that a second run in the same RUNNER_TEMP can replace it; a missing entry is nothing to do. */
+function makeWritable(target, fs) {
+  let entries;
+  try {
+    entries = fs.readdirSync(target, { withFileTypes: true });
+    fs.chmodSync(target, 0o755);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const child = path.join(target, entry.name);
+    if (entry.isDirectory()) makeWritable(child, fs);
+    else fs.chmodSync(child, 0o644);
+  }
+}
+
+/**
+ * Stages the files that the post-step validator runs from under ${RUNNER_TEMP}/gh-aw/sdlc-validator/, keeping their paths relative to src/, and
+ * makes them read-only (files 0444, directories 0555). The agent step that follows can write the workspace, where the same files are, but not
+ * ${RUNNER_TEMP}/gh-aw, which the compiled `awf` command mounts read-only; the verification step that runs the validator compares the workspace copy
+ * with this one first. Outside Actions (no RUNNER_TEMP) there is nothing to stage the copy for. The source is this script's own src/ directory
+ * (a test passes another one).
+ * @returns {{ directory: string, files: number } | null}
+ */
+export function stageValidator(io, sourceRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)))) {
+  const runnerTemp = String(io.env.RUNNER_TEMP ?? "").trim();
+  if (runnerTemp === "") return null;
+  const target = path.resolve(runnerTemp, "gh-aw", VALIDATOR_STAGE_DIRECTORY);
+  try {
+    const files = validatorFiles(sourceRoot, io.fs);
+    makeWritable(target, io.fs);
+    io.fs.rmSync(target, { recursive: true, force: true });
+    for (const relative of files) {
+      const destination = path.join(target, ...relative.split("/"));
+      io.fs.mkdirSync(path.dirname(destination), { recursive: true });
+      io.fs.copyFileSync(path.join(sourceRoot, ...relative.split("/")), destination);
+    }
+    for (const relative of files) io.fs.chmodSync(path.join(target, ...relative.split("/")), 0o444);
+    const directories = new Set([""]);
+    for (const relative of files) for (let parent = path.posix.dirname(relative); parent !== "."; parent = path.posix.dirname(parent)) directories.add(parent);
+    for (const directory of [...directories].sort((a, b) => b.length - a.length)) io.fs.chmodSync(path.join(target, ...directory.split("/")), 0o555);
+    return { directory: target, files: files.length };
+  } catch (error) {
+    throw new RunFailure(`the validator cannot be staged under ${target}: ${String(error.message ?? error).split("\n")[0]}`);
+  }
+}
+
 /** @returns {Promise<number>} the exit code */
 export async function run(argv, ioInput = {}) {
   const io = resolveIo(ioInput);
@@ -103,6 +172,7 @@ export async function run(argv, ioInput = {}) {
     const checkout = path.resolve(workspaceOf(io), checkoutName);
     const baseSha = baseCommitOf(checkout, io.env);
     const exported = exportBaseCommit(baseSha, io);
+    const staged = stageValidator(io);
 
     const out = path.resolve(io.cwd, outDirectory(flags.out, io.env));
     const files = [
@@ -132,7 +202,7 @@ export async function run(argv, ioInput = {}) {
       });
     }
     writeFilesAtomically(files, { fs: io.fs });
-    io.stdout(`prepare-run: run context for ${configured} written to ${path.join(out, "run-context.json")} (base ${baseSha.slice(0, 12)}${exported ? `, exported as ${BASE_SHA_VARIABLE}` : ""}, dry run: ${dryRun ? "yes" : "no"}, correlation id ${correlationId})\n`);
+    io.stdout(`prepare-run: run context for ${configured} written to ${path.join(out, "run-context.json")} (base ${baseSha.slice(0, 12)}${exported ? `, exported as ${BASE_SHA_VARIABLE}` : ""}${staged === null ? "" : `, ${staged.files} validator files staged read-only under ${staged.directory}`}, dry run: ${dryRun ? "yes" : "no"}, correlation id ${correlationId})\n`);
     return 0;
   } catch (error) {
     if (error instanceof UsageError) {

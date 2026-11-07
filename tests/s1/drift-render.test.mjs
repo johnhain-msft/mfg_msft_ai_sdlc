@@ -230,6 +230,40 @@ test("AC25: pre-agent-steps holds exactly the three S2 scripts in order, with on
   assert.equal(steps.filter((step) => String(step.run).includes("snapshot-watch-sources.mjs")).length, 1);
 });
 
+test("AC25: the deduplication step names its workflow: the close-older key that its pull requests carry and its upkeepStrategy (SPEC-02 AC10)", () => {
+  const { frontmatter } = fixtureRender();
+  const [, dedupe] = frontmatter["pre-agent-steps"];
+  assert.match(dedupe.run, / --target-repo "\$CONFIGURED_TARGET_REPO" --close-older-key sdlc-drift-alpha-service --upkeep-strategy code-quality-and-improvement-scan$/);
+  assert.equal(frontmatter["safe-outputs"]["create-pull-request"]["close-older-key"], "sdlc-drift-alpha-service", "the key is the one of the safe output, which gh-aw writes into the body of each pull request");
+  for (const key of DRIFT_KEYS) {
+    const step = generated(key).frontmatter["pre-agent-steps"][1];
+    assert.ok(step.run.endsWith(` --close-older-key sdlc-drift-${key} --upkeep-strategy ${projectOf(preset, key).driftAudit.upkeepStrategy}`), `${key}: ${step.run}`);
+  }
+});
+
+test("AC25: the strategy guidance of the prompt body is the text of prompts/drift/strategy-<value>.md of the repository that is rendered, and a repository without the file gets the built-in text, which says the same (SPEC-02 AC14)", () => {
+  const manifest = mutate(minimalManifest(), (copy) => {
+    projectOf(copy, "alpha-service").driftAudit.upkeepStrategy = "content-and-docs-sync";
+  });
+  const edited = "## Upkeep strategy: content-and-docs-sync\n\nGUIDANCE-FROM-THE-FILE-OF-THE-REPOSITORY\n";
+  const withFile = createWorkspace({ manifestText: toYaml(manifest), files: { "prompts/drift/strategy-content-and-docs-sync.md": edited } });
+  const without = createWorkspace({ manifestText: toYaml(manifest) });
+  const broken = createWorkspace({ manifestText: toYaml(manifest), files: { "prompts/drift/strategy-content-and-docs-sync.md": "no heading\n" } });
+  try {
+    const bodyOf = (workspace) => parseWorkflow(renderFleet(request, { cwd: workspace.dir }).files.get(`${W}/drift-alpha-service.md`)).body;
+    assert.ok(bodyOf(withFile).includes(edited.trim()), "the file of the repository");
+    assert.equal(bodyOf(withFile).includes("Compare the watched-source snapshots with the target's documentation"), false, "and not the built-in text beside it");
+    assert.ok(bodyOf(without).includes(readText(abs("prompts", "drift", "strategy-content-and-docs-sync.md")).trim()), "without the file, the built-in text is the committed fragment, to the letter");
+    const refused = renderFleet(request, { cwd: broken.dir });
+    assert.equal(refused.ok, false);
+    assert.match(JSON.stringify(refused.result), /drift-strategy-fragment/, "a file that is there and unusable is refused and not replaced");
+  } finally {
+    withFile.cleanup();
+    without.cleanup();
+    broken.cleanup();
+  }
+});
+
 test("AC25: post-steps equals verifyCommands in order, each named by its command, with no continue-on-error or if", () => {
   const steps = fixtureRender().frontmatter["post-steps"];
   assert.deepEqual(steps.map((step) => step.run), ["npm ci", "npm test", "node scripts/check.mjs --strict"]);

@@ -16,9 +16,15 @@
 // job of the run (post-steps are named by their command); that lookup needs the actions: read permission, which the
 // escalate_failure job is given (a private repository refuses the read without it). A refusal or a run that cannot be found
 // leaves the command "not determined" and the run URL stays the pointer; a rate limit that outlasts the retries fails the step.
+//
+// The correlation id is --correlation-id when given. A scheduled run has no dispatch input, so the argument is empty, and the id is then the one
+// that prepare-run derived for the same run, `run-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>` (the attempt is 1 when the variable is not set; the
+// run id comes from --run-url when GITHUB_RUN_ID is not set), so that the issue and run-context.json name the same id. It is "none" only when
+// neither an argument nor a run gives one.
 
 import { parseFlags, requireSlug, UsageError } from "./lib/args.mjs";
 import { resolveIo, runAsMain } from "./lib/cli.mjs";
+import { runCorrelationId } from "./lib/correlation.mjs";
 import { assertInstallationToken, createGitHubClient, GitHubApiError, resolveApiBase } from "./lib/github-client.mjs";
 
 const OPTIONS = {
@@ -123,7 +129,8 @@ export async function run(argv, ioInput = {}) {
     const label = String(flags.label ?? DEFAULT_LABEL).trim() || DEFAULT_LABEL;
     const runUrlInput = String(flags["run-url"] ?? "").trim();
     const runUrl = /^https?:\/\/[^\s<>()]+$/.test(runUrlInput) ? runUrlInput : "";
-    const correlationId = String(flags["correlation-id"] ?? "").trim();
+    const correlationInput = String(flags["correlation-id"] ?? "").trim();
+    const correlationId = correlationInput !== "" ? correlationInput : (runCorrelationId(io.env, runUrl) ?? "");
 
     const client = createGitHubClient({
       baseUrl: resolveApiBase({ GITHUB_API_URL: flags["api-url"] ?? io.env.GITHUB_API_URL }),

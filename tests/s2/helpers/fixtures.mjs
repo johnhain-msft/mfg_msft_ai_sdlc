@@ -72,12 +72,42 @@ export function readTree(root) {
 
 const scratch = new Set();
 
+/**
+ * Removes a directory tree, one that a test staged read-only (files 0444, directories 0555, as prepare-run stages the validator) as well as an
+ * ordinary one: it makes the tree writable first, because a directory without write permission cannot have its entries removed. It never follows
+ * a link: a junction or a link is unlinked, so the tree that it points to is left alone.
+ */
+export function forceRemove(directory) {
+  const makeWritable = (target) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(target);
+      fs.chmodSync(target, 0o755);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      const child = path.join(target, name);
+      try {
+        const stat = fs.lstatSync(child);
+        if (stat.isSymbolicLink()) continue;
+        if (stat.isDirectory()) makeWritable(child);
+        else fs.chmodSync(child, 0o644);
+      } catch {
+        // an entry that is gone, or one that cannot be changed: rmSync below decides
+      }
+    }
+  };
+  makeWritable(directory);
+  fs.rmSync(directory, { recursive: true, force: true });
+}
+
 // A test that does not remove its scratch directory would leave it in the temporary directory for good (a full run leaves about a hundred and
 // forty), so whatever is still there when the test process exits is removed here. rmSync unlinks a junction or a link and never follows it.
 process.once("exit", () => {
   for (const directory of scratch) {
     try {
-      fs.rmSync(directory, { recursive: true, force: true });
+      forceRemove(directory);
     } catch {
       // best effort: a scratch directory is only litter
     }

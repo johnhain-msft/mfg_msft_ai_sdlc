@@ -7,7 +7,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import YAML from "yaml";
-import { abs, DRIFT_KEYS, driftWorkflow, fixture, parseWorkflow, readText, renderIn, tempDir } from "./helpers/fixtures.mjs";
+import { abs, copyFixture, DRIFT_KEYS, driftWorkflow, fixture, parseWorkflow, readText, renderIn, tempDir } from "./helpers/fixtures.mjs";
 
 const STRATEGIES = ["content-and-docs-sync", "dependency-and-pattern-modernization", "code-quality-and-improvement-scan"];
 const FRAGMENT = (value) => readText(abs("prompts", "drift", `strategy-${value}.md`));
@@ -114,6 +114,73 @@ test("AC15: a project with neither instructions nor instructionsFile is rejected
     manifest.projects[0].driftAudit.instructions = "";
     fs.writeFileSync(path.join(directory, "sdlc.yaml"), YAML.stringify(manifest));
     await assert.rejects(renderIn(directory), /drift-instructions-missing/);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("AC14: prompts/drift/strategy-<value>.md is the source of the guidance: the renderer reads it from the repository that it renders, and uses its built-in copy only where the file is absent", async () => {
+  for (const value of STRATEGIES) {
+    const directory = copyFixture(`strategy-${value}`);
+    try {
+      assert.equal(fs.existsSync(path.join(directory, "prompts")), false, "the fixture workspace carries no prompts/drift/");
+      const builtIn = await bodyOf(directory);
+      assert.ok(builtIn.includes(FRAGMENT(value).trim()), `${value}: without the file the built-in text is what the committed fragment says, to the letter`);
+      const edited = `## Upkeep strategy: ${value}\n\nEDITED-GUIDANCE-OF-${value.toUpperCase()}: this sentence is in the file and in no source of the renderer.\n`;
+      fs.mkdirSync(path.join(directory, "prompts", "drift"), { recursive: true });
+      fs.writeFileSync(path.join(directory, "prompts", "drift", `strategy-${value}.md`), edited);
+      const body = await bodyOf(directory);
+      assert.ok(body.includes(edited.trim()), `${value}: the text of the file is what the prompt carries`);
+      assert.equal(GUIDANCE[value].test(body), false, `${value}: the built-in guidance is not mixed in when the file exists`);
+      assert.equal(body.split("## Upkeep strategy: ").length - 1, 1, `${value}: still exactly one strategy heading`);
+      assert.ok(body.indexOf(MARKERS[value][1]) < body.indexOf(edited.trim()), "the registration instructions still come first");
+      fs.writeFileSync(path.join(directory, "prompts", "drift", `strategy-${value}.md`), `${edited.trimEnd()}\r\n\r\n\r\n`);
+      assert.ok((await bodyOf(directory)).includes(edited.trim()), `${value}: the line endings and the trailing blank lines of the file do not reach the prompt`);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("AC14: a fragment that is in the repository but unusable is refused with the rule drift-strategy-fragment and is not replaced by the built-in text", async () => {
+  const value = "content-and-docs-sync";
+  const cases = [
+    ["no heading", "Guidance without its heading.\n", /must begin with the heading '## Upkeep strategy: content-and-docs-sync'/],
+    ["the heading of another strategy", "## Upkeep strategy: code-quality-and-improvement-scan\n\nGuidance.\n", /must begin with the heading/],
+    ["an empty file", "", /must begin with the heading/],
+    ["an expression opener", `## Upkeep strategy: ${value}\n\nUse \${{ secrets.TOKEN }} here.\n`, /expression opener/],
+  ];
+  for (const [name, text, message] of cases) {
+    const directory = copyFixture(`strategy-${value}`);
+    try {
+      fs.mkdirSync(path.join(directory, "prompts", "drift"), { recursive: true });
+      fs.writeFileSync(path.join(directory, "prompts", "drift", `strategy-${value}.md`), text);
+      await assert.rejects(renderIn(directory), (error) => /drift-strategy-fragment/.test(error.message) && message.test(error.message) && /prompts\/drift\/strategy-content-and-docs-sync\.md/.test(error.message), name);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  }
+  const directory = copyFixture(`strategy-${value}`);
+  try {
+    fs.mkdirSync(path.join(directory, "prompts", "drift", `strategy-${value}.md`), { recursive: true });
+    await assert.rejects(renderIn(directory), /drift-strategy-fragment.*is not a file/, "a directory where the file should be");
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("AC14: only a project that uses a built-in strategy needs its fragment, and a disabled project needs none", async () => {
+  const directory = copyFixture("strategy-custom");
+  try {
+    fs.mkdirSync(path.join(directory, "prompts", "drift"), { recursive: true });
+    for (const value of STRATEGIES) fs.writeFileSync(path.join(directory, "prompts", "drift", `strategy-${value}.md`), "a file that would be refused if it were read\n");
+    assert.ok((await bodyOf(directory)).includes("CUSTOM-INSTRUCTIONS-FILE-START"), "a custom project reads no strategy fragment");
+    const manifest = YAML.parse(readText(path.join(directory, "sdlc.yaml")));
+    manifest.projects[0].driftAudit.upkeepStrategy = "content-and-docs-sync";
+    manifest.projects[0].driftAudit.enabled = false;
+    fs.writeFileSync(path.join(directory, "sdlc.yaml"), YAML.stringify(manifest));
+    const rendered = await renderIn(directory);
+    assert.equal([...rendered.files.keys()].some((file) => /\/drift-[^/]+\.md$/.test(file)), false, "and a disabled project renders no workflow, so its fragment is not read either");
   } finally {
     fs.rmSync(directory, { recursive: true, force: true });
   }
