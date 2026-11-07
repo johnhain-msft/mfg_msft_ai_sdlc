@@ -27,6 +27,10 @@
 // file of the checkout as data (GIT_INDEX_FILE), and the checkout directory as its working tree (GIT_WORK_TREE), so that the checkout's `.git/config`
 // and `.git/info/attributes` are never consulted. What the scratch repository takes from the checkout is bytes: objects, refs, an index file and the
 // files of the working tree. (The checkout's configuration file is read as data too, by `git config --file`, to name what it sets: commandConfiguration.)
+// One git process would still start in the checkout's repository without a setting of the scratch repository: while `git bundle unbundle` checks what a
+// bundle builds on, git itself runs `git --git-dir=<alternate> for-each-ref` for every alternate, and the alternate is the checkout. It only lists refs,
+// but the rule is that no git process runs there, so the configuration of the scratch repository replaces that command (core.alternateRefsCommand, set
+// in openScratch) with one that lists nothing; the scratch repository holds copies of the same refs, which `--all` reads.
 //
 // Every git call also runs with --no-replace-objects, so that a replace ref (which the agent can create) never changes what an object is, and with
 // core.fsmonitor and core.hooksPath switched off, so that a call that does read an index starts neither the fsmonitor program nor a hook.
@@ -209,6 +213,11 @@ export function openScratch({ checkout, env, fs }) {
     const configuration = readConfiguration(directories, { cwd: directory, env: isolated }, fs);
     if (!/^(?:sha1|sha256)$/.test(configuration.objectFormat)) throw new Error(`the object format '${configuration.objectFormat}' of the target checkout is not read here`);
     git(["init", "--bare", "--quiet", "--template=", ...(configuration.objectFormat === "sha1" ? [] : [`--object-format=${configuration.objectFormat}`]), gitDir], { cwd: directory, env: isolated });
+    // The alternate of this repository is the checkout, and git itself runs `git --git-dir=<alternate> for-each-ref` for it while `git bundle unbundle`
+    // checks what a bundle builds on (`rev-list --alternate-refs`): a git process in the checkout's repository, under its configuration. This repository
+    // holds copies of the same refs, which `--all` reads, so its own configuration replaces that command with one that lists nothing (the `#` ends the
+    // command before the path that git appends to it).
+    git(["config", "--file", path.join(gitDir, "config"), "core.alternateRefsCommand", ": #"], { cwd: directory, env: isolated });
     fs.writeFileSync(path.join(gitDir, "objects", "info", "alternates"), `${path.join(commonDir, "objects")}\n`);
     for (const relative of ["refs", "packed-refs", "shallow"]) {
       if (fs.existsSync(path.join(commonDir, relative))) fs.cpSync(path.join(commonDir, relative), path.join(gitDir, relative), { recursive: true, force: true });
@@ -296,10 +305,11 @@ function readConfiguration(directories, options, fs) {
 }
 
 /**
- * The aw-*.patch and aw-*.bundle files of a directory, copied into the scratch directory before anything else is read: { name, file, kind, error? }.
- * `file` is the copy, which is what the inspection reads, so that what the validator inspects is what the directory held when it looked, whatever
- * happens to the directory afterwards. A file that is not a regular file (a pipe would block the read for good) or is too large is listed with `error`
- * and no copy; so is one that cannot be copied.
+ * The aw-*.patch and aw-*.bundle files of a directory, copied into the scratch directory before their contents are read: { name, file, kind, error? }.
+ * What comes before the copy is the caller's: the validator sets the scratch repository up and checks its refs, the configuration of the checkout and
+ * the commit ids first, and none of that reads these files. `file` is the copy, which is what the inspection reads, so that what the validator inspects
+ * is what the directory held when it looked, whatever happens to the directory afterwards. A file that is not a regular file (a pipe would block the read
+ * for good) or is too large is listed with `error` and no copy; so is one that cannot be copied.
  */
 export function snapshotTransportFiles(directory, scratch, fs) {
   const copies = path.join(scratch.directory, "transport");

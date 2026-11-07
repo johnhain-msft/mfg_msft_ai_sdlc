@@ -37,9 +37,12 @@
 // when it reads the index or the working tree or misses an object, and such a program could move the patch away before this script has read it and put
 // it back afterwards. So no git process of this script runs in the checkout's repository: every one runs in the scratch repository of
 // drift/lib/git-artifacts.mjs, which has a configuration of its own and takes from the checkout only files: its objects (an alternates file), a copy of
-// its refs, HEAD and shallow file, its index file (as data) and its directory as the working tree. The patch and bundle files are copied into the
-// scratch directory before anything else is read. A checkout whose own configuration sets one of those programs is refused too, as the mark of an
-// agent that did it.
+// its refs, HEAD and shallow file, its index file (as data) and its directory as the working tree. The order of the reads is this: run() reads the lab files
+// of the working tree (rules 1 to 3) first; then the scratch repository is set up (the checkout's configuration files are read as data, its refs, HEAD and
+// shallow file are copied), its refs are listed, its configuration, replace refs and graft file are checked and the base commit and HEAD are resolved;
+// then the patch and bundle files are copied into the scratch directory (nothing before the copy reads them); and only after the copy are their contents,
+// the commits, the index and the comparison of the working tree with the base commit read. A checkout whose own configuration sets one of those programs
+// is refused too, as the mark of an agent that did it.
 // The script does not protect its own file: it runs from the orchestrator checkout, the working directory of the agent step, and the agent can
 // write there. The workflow protects it: prepare-run stages a copy of this file and of drift/lib/ under ${RUNNER_TEMP}/gh-aw/sdlc-validator/
 // before the agent starts (the compiled agent step mounts ${RUNNER_TEMP}/gh-aw read-only), and the verifyCommands entry that runs this script
@@ -363,8 +366,9 @@ function reportOnlyScan({ checkout, baseSha, headRegistry, io, artifactDirectory
       return { problems: [...problems, `the base commit ${baseSha} and HEAD of the target checkout cannot be resolved together`], subjects, counts };
     }
 
-    // The patch and bundle files come first and are copied away before anything else is read, so that what is inspected is what the directory
-    // held when the validator looked, whatever happens to the directory (or to the checkout) while the rest is read.
+    // What came above (the scratch repository, the refs, the configuration of the checkout, the commit ids) reads none of the patch and bundle files. They are
+    // copied away here, before their contents, the commits, the index and the comparison of the working tree with the base commit are read, so that what is
+    // inspected is what the directory held when the validator looked, whatever happens to the directory while the rest is read.
     let files = [];
     try {
       files = snapshotTransportFiles(artifactDirectory, scratch, io.fs);

@@ -1089,7 +1089,7 @@ test("AC22: the checkout is only read: a stat-dirty index is neither refreshed n
   }
 });
 
-test("AC22: the patch and bundle files are copied before anything else is read, so that what is inspected is what the directory held: a file that is gone by the time git reads is still named", async () => {
+test("AC22: the patch and bundle files are copied before their contents are read, so that what is inspected is what the directory held: a file that is gone by the time git reads is still named", async () => {
   const { root, agent } = artifactDirectories();
   const origin = repo.git("rev-parse", "--abbrev-ref", "HEAD");
   const removed = [];
@@ -1129,6 +1129,73 @@ test("AC22: the patch and bundle files are copied before anything else is read, 
   }
 });
 
+test("AC22: the order of the reads is the one that the validator's header, AC22 and §4 item 6 state: the working tree's registry, the scratch repository (configuration, refs, commit ids), the copy of the patch and bundle files, and only then the commits, the index, the working tree and the files' contents", async () => {
+  const { root, agent } = artifactDirectories();
+  const origin = repo.git("rev-parse", "--abbrev-ref", "HEAD");
+  const trace = path.join(root, "git-trace2.jsonl");
+  fs.writeFileSync(trace, "");
+  // the validator's own reads and copies are written to the file that git writes its trace to, so that the file holds one sequence (every git call is synchronous)
+  const recording = new Proxy(fs, {
+    get(target, property) {
+      const value = target[property];
+      if (typeof value !== "function") return value;
+      if (property === "readFileSync" || property === "copyFileSync") {
+        return (...args) => {
+          fs.appendFileSync(trace, `${JSON.stringify({ event: "fs", operation: property, target: String(args[0]) })}\n`);
+          return value.apply(target, args);
+        };
+      }
+      return value.bind(target);
+    },
+  });
+  try {
+    repo.git("switch", "-q", "-c", "sdlc/x");
+    bump(repo);
+    repo.commitAll("bump");
+    createPullRequest(root, "sdlc/x", { bundle: true });
+    repo.git("switch", "-q", origin);
+    repo.git("branch", "-q", "-D", "sdlc/x");
+    repo.git("reflog", "expire", "--expire=now", "--all");
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", agent], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base, GIT_TRACE2_EVENT: trace }), fs: recording });
+    assert.equal(result.code, 1, result.stdout);
+    const events = fs
+      .readFileSync(trace, "utf8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => JSON.parse(line))
+      .filter((event) => event.event === "fs" || event.event === "start");
+    const gitCall = (...words) => events.findIndex((event) => event.event === "start" && words.every((word) => event.argv.includes(word)));
+    const fsCall = (operation, pattern) => events.findIndex((event) => event.event === "fs" && event.operation === operation && pattern.test(event.target));
+    const copied = fsCall("copyFileSync", /[\\/]aw-sdlc-x\.(?:patch|bundle)$/);
+    assert.ok(copied >= 0, "the trace holds the copy of a patch or bundle file");
+    const beforeTheCopy = [
+      ["the registry of the working tree (rules 1 to 3)", fsCall("readFileSync", /[\\/]docs[\\/]_meta[\\/]registry\.yaml$/)],
+      ["the configuration of the checkout, read as data", gitCall("config", "--file")],
+      ["the scratch repository", gitCall("init", "--bare")],
+      ["the refs", gitCall("for-each-ref")],
+      ["the base commit and HEAD", gitCall("rev-parse")],
+    ];
+    const afterTheCopy = [
+      ["the commits (diff-tree)", gitCall("diff-tree")],
+      ["the commits ahead of the base commit", gitCall("rev-list", "--all")],
+      ["the index", gitCall("diff-index")],
+      ["the working tree", gitCall("ls-files")],
+      ["the contents of the bundle", gitCall("bundle", "unbundle")],
+      ["the contents of the patch", gitCall("mailsplit")],
+    ];
+    for (const [name, index] of [...beforeTheCopy, ...afterTheCopy]) assert.ok(index >= 0, `${name} is in the trace`);
+    beforeTheCopy.forEach(([name, index], at) => {
+      assert.ok(index < copied, `${name} (${index}) comes before the copy of the patch and bundle files (${copied})`);
+      if (at > 0) assert.ok(beforeTheCopy[at - 1][1] < index, `${beforeTheCopy[at - 1][0]} (${beforeTheCopy[at - 1][1]}) comes before ${name} (${index})`);
+    });
+    for (const [name, index] of afterTheCopy) assert.ok(index > copied, `${name} (${index}) comes after the copy (${copied}): nothing that reads the contents, the commits, the index or the working tree comes first`);
+  } finally {
+    repo.git("switch", "-q", origin);
+    restore();
+    forceRemove(root);
+  }
+});
+
 // --- no git process of the validator runs in the checkout's repository -------------------------------------------------------------------------
 //
 // Everything that the validator asks git runs in a scratch repository that borrows the objects of the checkout and takes copies of its refs, HEAD and
@@ -1158,6 +1225,76 @@ test("AC22: a configuration that no git can read in the checkout does not stop t
   assert.equal(result.code, 1, `${result.stdout}${result.stderr}`);
   assert.ok(result.stderr.includes(PATCH_NAMED), result.stderr);
   assert.doesNotMatch(result.stderr, /unknown repository format|not a git repository|fatal:/i);
+});
+
+test("AC22: while it reads a bundle no git process runs in the checkout's repository: git starts `for-each-ref` there for the alternate of the scratch repository, and the scratch repository's own configuration replaces that command", async () => {
+  const traceFile = (root) => path.join(root, "git-trace2.jsonl");
+  const result = await afterTheAgentSwitchedBack({
+    change: bump,
+    patch: false,
+    bundle: true,
+    keepBranch: false,
+    env: (root) => ({ GIT_TRACE2_EVENT: traceFile(root) }),
+    observe: (root) =>
+      fs
+        .readFileSync(traceFile(root), "utf8")
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => JSON.parse(line))
+        .filter((event) => event.event === "start")
+        .map((event) => event.argv),
+  });
+  assert.equal(result.code, 1, `${result.stdout}${result.stderr}`);
+  assert.match(result.stderr, /gh_aw_schema_version changed from '0\.86\.2' to '9\.9\.9'; it is report-only \(in aw-sdlc-x\.bundle \(commit [0-9a-f]{12}\)\)/, "the bundle is read");
+  const starts = result.observed;
+  assert.ok(starts.some((argv) => argv.includes("unbundle")), "the trace holds the unbundling of the bundle, so that the next check is about something");
+  assert.ok(starts.some((argv) => argv.includes("--alternate-refs")), "and the connectivity check that asks the alternates (here the checkout) for their refs");
+  // git names the alternate that it asks on the command line (`git --git-dir=<alternate> for-each-ref`); the validator's own calls choose their repository by GIT_DIR
+  const naming = starts.filter((argv) => argv.some((argument) => /^--git-dir(?:=|$)/.test(argument)) || argv.includes("-C"));
+  assert.deepEqual(naming.map((argv) => argv.join(" ")), [], "no git process starts in a repository that its command line names: the checkout's");
+});
+
+test("AC22: while it reads a bundle, nothing that the agent configured for git to run around a read of refs runs either: a pager, an alias, an ssh command, hooks and a partial clone's uploadpack program", async () => {
+  const putBack = saveGitDirectory();
+  const hookNames = ["reference-transaction", "post-checkout", "post-merge", "post-commit", "pre-auto-gc", "post-index-change"];
+  let control = null;
+  const result = await afterTheAgentSwitchedBack({
+    change: bump,
+    bundle: true,
+    keepBranch: false,
+    before: (root) => {
+      const { hook } = writePrograms(root);
+      repo.git("config", "core.pager", hook);
+      repo.git("config", "pager.for-each-ref", hook);
+      repo.git("config", "pager.bundle", hook);
+      repo.git("config", "alias.for-each-ref", `!${hook}`);
+      repo.git("config", "core.sshCommand", hook);
+      repo.git("config", "core.repositoryformatversion", "1");
+      repo.git("config", "extensions.partialClone", "evil");
+      repo.git("config", "remote.evil.url", slash(tempDir("sdlc-s2-promisor-")));
+      repo.git("config", "remote.evil.promisor", "true");
+      repo.git("config", "remote.evil.uploadpack", hook);
+      fs.mkdirSync(gitDirectoryFile("hooks"), { recursive: true });
+      for (const name of hookNames) fs.writeFileSync(gitDirectoryFile("hooks", name), `#!/bin/sh\n${hook}\n`, { mode: 0o755 });
+    },
+    observe: (root) => {
+      const seen = whatTheProgramsDid(root);
+      // the control: the configuration is live, because a git command in the checkout that misses an object starts the program of the promisor remote
+      fs.rmSync(programPaths(root).trace, { force: true });
+      assert.throws(() => repo.git("cat-file", "-e", "0123456789012345678901234567890123456789"), "the object is missing");
+      control = fs.existsSync(programPaths(root).trace);
+      return seen;
+    },
+    finish: () => {
+      putBack();
+      for (const name of hookNames) fs.rmSync(gitDirectoryFile("hooks", name), { force: true });
+    },
+    env: WITHOUT_ENV_CONFIG,
+  });
+  assert.equal(result.code, 1, `${result.stdout}${result.stderr}`);
+  assert.match(result.stderr, /gh_aw_schema_version changed from '0\.86\.2' to '9\.9\.9'; it is report-only \(in aw-sdlc-x\.bundle \(commit [0-9a-f]{12}\) and aw-sdlc-x\.patch \(patch 1 of 1\)\)/, "the bundle and the patch are read");
+  assert.deepEqual(result.observed, NOTHING_RAN, "no program of the agent ran while the validator read the bundle, and the patch is where the tool wrote it");
+  assert.equal(control, true, "the same configuration does start the program when a git command in the checkout misses an object, so that the check above is about something");
 });
 
 test("AC22: a linked working tree, whose .git is a file, is read through the directories that the file names: its HEAD, its index and the refs and objects of the main repository", async () => {
