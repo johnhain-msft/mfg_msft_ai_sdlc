@@ -6,16 +6,21 @@
 // write in the checkout decide what the rule compares: a replace ref (`git replace <base> HEAD`), a graft file, and a change that is
 // committed and then put back in the working tree are tested here too. What a pull request is made of is not HEAD: the patch and the
 // bundle that create_pull_request wrote under /tmp/gh-aw during the agent step, and the commits on any ref, are tested below ("after the agent
-// switched back"). That the validator's own files cannot be rewritten is tested in validator-integrity.test.mjs.
+// switched back"). The agent can also configure the checkout so that git starts a program of its choosing while the validator reads it (a clean
+// filter, core.fsmonitor, a post-index-change hook), which could move the patch out of the way before it is read: that no program of the checkout
+// runs inside the validator, and that no git process of the validator runs in the checkout's repository, is tested at the end of this file.
+// That the validator's own files cannot be rewritten is tested in validator-integrity.test.mjs.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test, { after, before } from "node:test";
+import { pathToFileURL } from "node:url";
 import { run as prepare } from "../../src/drift/prepare-run.mjs";
+import { openScratch } from "../../src/drift/lib/git-artifacts.mjs";
 import { changedPaths, pinnedValueAt, run } from "../../src/validate-copilot-lab-audit.mjs";
-import { DRIFT_KEYS, driftWorkflow, forceRemove, tempDir } from "./helpers/fixtures.mjs";
+import { DRIFT_KEYS, driftWorkflow, forceRemove, tempDir, writeTree } from "./helpers/fixtures.mjs";
 import { BASH_SKIP, createGateWorkspace } from "./helpers/gate-harness.mjs";
-import { createRepo } from "./helpers/git-fixture.mjs";
+import { createRepo, git as gitIn, writeGitFixtureConfig } from "./helpers/git-fixture.mjs";
 import { labFiles, withoutSection, withoutTopLevelKey } from "./helpers/lab-fixture.mjs";
 import { invoke } from "./helpers/run-script.mjs";
 import { cleanEnv } from "./helpers/stub-server.mjs";
@@ -311,7 +316,7 @@ test("AC22: commits that change neither the pinned version nor a workflow pass, 
   }
 });
 
-test("AC22: every git call of the validator is made with --no-replace-objects", async () => {
+test("AC22: every git call of the validator is made with --no-replace-objects, and with the fsmonitor program and the hooks of the checkout switched off", async () => {
   const trace = path.join(out, "git-trace2.jsonl");
   try {
     const result = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base, GIT_TRACE2_EVENT: trace }) });
@@ -323,7 +328,12 @@ test("AC22: every git call of the validator is made with --no-replace-objects", 
       .map((line) => JSON.parse(line))
       .filter((event) => event.event === "start");
     assert.ok(starts.length > 0, "the trace holds the git calls of the run");
-    for (const { argv } of starts) assert.equal(argv[1], "--no-replace-objects", argv.join(" "));
+    for (const { argv } of starts) {
+      assert.equal(argv[1], "--no-replace-objects", argv.join(" "));
+      const settings = argv.flatMap((argument, at) => (argv[at - 1] === "-c" ? [argument] : []));
+      assert.deepEqual(settings, ["core.fsmonitor=false", "core.hooksPath=/dev/null"], `${argv.join(" ")}: no fsmonitor program, no hooks directory`);
+      assert.ok(argv.includes("--no-pager"), argv.join(" "));
+    }
   } finally {
     fs.rmSync(trace, { force: true });
   }
@@ -473,9 +483,12 @@ function createPullRequest(directory, branch, { patch = true, bundle = false } =
 /**
  * The agent's way of leaving: it commits `change` (a function of the checkout) on a new branch, calls create_pull_request, and switches back to the
  * branch that it started on. `keepBranch: false` deletes the branch and its reflog as well, so that only the files that the tool wrote are left.
- * Returns the result of the validator, run against the recorded base commit.
+ * Returns the result of the validator, run against the recorded base commit, with `observed`: what `observe(root)` saw right after the run (before
+ * anything else touches the checkout, so that a program that the agent configured there has not had a second chance). `before(root)` is what the agent
+ * does last, `finish(root)` undoes it before the checkout is put back, and `env` (an object, or a function of the artifact directory) is added to the
+ * environment of the validator.
  */
-async function afterTheAgentSwitchedBack({ change, branch = "sdlc/x", patch = true, bundle = false, keepBranch = true, before: prepareMore = () => {}, args = [] }) {
+async function afterTheAgentSwitchedBack({ change, branch = "sdlc/x", patch = true, bundle = false, keepBranch = true, before: prepareMore = () => {}, observe = () => undefined, finish = () => {}, env = {}, args = [] }) {
   const { root, agent } = artifactDirectories();
   const origin = repo.git("rev-parse", "--abbrev-ref", "HEAD");
   try {
@@ -491,8 +504,10 @@ async function afterTheAgentSwitchedBack({ change, branch = "sdlc/x", patch = tr
     assert.equal(repo.head(), base, "HEAD is the base commit again");
     assert.equal(repo.git("diff", "--name-only", base), "", "and so are the index and the working tree: a validator that looks at HEAD sees nothing");
     prepareMore(root);
-    return await invoke(run, ["--checkout", repo.dir, "--out", agent, ...args], { cwd: out, env: withBase(base) });
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", agent, ...args], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base, ...(typeof env === "function" ? env(root) : env) }) });
+    return { ...result, observed: observe(root) };
   } finally {
+    finish(root);
     repo.git("switch", "-q", origin);
     if (repo.git("branch", "--list", branch) !== "") repo.git("branch", "-q", "-D", branch);
     restore();
@@ -677,21 +692,24 @@ test("AC23: a self-improvement report with a missing section in the commit is na
   assert.equal(result.stderr.includes("is missing the section '## Consolidation Candidates' (in commit"), false, "the branch is gone, so only the patch names it");
 });
 
-test("AC22: reading the patches and the bundles writes nothing in the checkout and leaves no scratch repository behind", async () => {
-  const listing = () => {
-    const found = [];
-    const stack = [path.join(repo.dir, ".git")];
-    while (stack.length > 0) {
-      const current = stack.pop();
-      for (const name of fs.readdirSync(current)) {
-        const entry = path.join(current, name);
-        const stat = fs.lstatSync(entry);
-        if (stat.isDirectory()) stack.push(entry);
-        else found.push(`${path.relative(repo.dir, entry)}:${stat.size}:${stat.mtimeMs}`);
-      }
+/** Every file of the .git directory of the shared checkout with its size and modification time: what a read of the checkout must leave as it was. */
+function gitDirectoryListing() {
+  const found = [];
+  const stack = [path.join(repo.dir, ".git")];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const name of fs.readdirSync(current)) {
+      const entry = path.join(current, name);
+      const stat = fs.lstatSync(entry);
+      if (stat.isDirectory()) stack.push(entry);
+      else found.push(`${path.relative(repo.dir, entry)}:${stat.size}:${stat.mtimeMs}`);
     }
-    return found.sort().join("\n");
-  };
+  }
+  return found.sort().join("\n");
+}
+
+test("AC22: reading the patches and the bundles writes nothing in the checkout and leaves no scratch repository behind", async () => {
+  const listing = gitDirectoryListing;
   const { root, agent } = artifactDirectories();
   // the scratch repository goes where os.tmpdir() says; a directory of this test makes it visible, and the other tests of the process unaffected
   const scratchRoot = tempDir("sdlc-s2-scratch-root-");
@@ -756,4 +774,488 @@ test("AC22: through the rendered steps, an agent that commits a bump, calls crea
       gate.cleanup();
     }
   }
+});
+
+// --- what the agent configured in the checkout does not run inside the validator ---------------------------------------------------------------
+//
+// The agent has `git` with any arguments, so it can write .git/config, .git/info/attributes and .git/hooks of the checkout, and the validator then
+// runs git there, on the host. A `core.fsmonitor` program, a `filter.<name>.clean` command that an attribute selects and a post-index-change hook are
+// programs that git starts by itself while it reads the index or the working tree. One that runs inside the validator can move the patch that
+// create_pull_request wrote out of the way before the validator lists the directory and put it back afterwards, so that the check passes and the pull
+// request still carries the change. The programs of these tests do the first part: each leaves a line in a trace file and renames the patch. They must
+// not run, and the validator must read the patch and name the change. (Each test below fails against the validator before this change: it ran them.)
+
+const slash = (file) => file.replace(/\\/g, "/");
+const gitDirectoryFile = (...parts) => path.join(repo.dir, ".git", ...parts);
+/** The tracked file of the lab fixture that the filters and the touched index entries are about. */
+const TRACKED = "package.json";
+const WORKFLOW = ".github/workflows/stand-in.lock.yml";
+const PATCH_NAMED = "gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only (in aw-sdlc-x.patch (patch 1 of 1))";
+/** What the programs left: nothing ran, and the patch is where the tool wrote it. */
+const NOTHING_RAN = { ran: "", patchInPlace: true, hidden: false };
+/** The environment of a job's step does not switch fsmonitor off for every git call, as the runner of this suite does (GIT_CONFIG_COUNT in its environment). */
+const WITHOUT_ENV_CONFIG = { GIT_CONFIG_COUNT: "0" };
+
+/** Remembers .git/config and .git/info/attributes; the function that it returns puts them back and removes the hook that a test wrote. */
+function saveGitDirectory() {
+  const files = ["config", "info/attributes"].map((name) => {
+    const file = gitDirectoryFile(...name.split("/"));
+    return [file, fs.existsSync(file) ? fs.readFileSync(file) : null];
+  });
+  return () => {
+    for (const [file, content] of files) {
+      if (content === null) fs.rmSync(file, { force: true });
+      else fs.writeFileSync(file, content);
+    }
+    fs.rmSync(gitDirectoryFile("hooks", "post-index-change"), { force: true });
+  };
+}
+
+/** Where the programs of a test leave their trace, and where the patch that they would move is. */
+const programPaths = (root) => ({ trace: path.join(root, "agent-programs-ran.txt"), patch: path.join(root, transportName("sdlc/x", "patch")) });
+
+/** Writes the two programs, a clean filter (which copies its input) and a hook (which says nothing), and returns the command that starts each. */
+function writePrograms(root) {
+  const { trace, patch } = programPaths(root);
+  const program = (name, passThrough) => {
+    const file = path.join(root, name);
+    const source = ['import fs from "node:fs";', "const [trace, patch] = process.argv.slice(2);", 'fs.appendFileSync(trace, "ran\\n");', 'if (fs.existsSync(patch)) fs.renameSync(patch, patch + ".hidden");'];
+    if (passThrough) source.push("process.stdin.pipe(process.stdout);");
+    fs.writeFileSync(file, `${source.join("\n")}\n`);
+    return `node ${slash(file)} ${slash(trace)} ${slash(patch)}`;
+  };
+  return { filter: program("filter-program.mjs", true), hook: program("hook-program.mjs", false) };
+}
+
+/** What the programs did, read right after the validator ran: what they traced, and whether the patch is where the tool wrote it. */
+function whatTheProgramsDid(root) {
+  const { trace, patch } = programPaths(root);
+  return { ran: fs.existsSync(trace) ? fs.readFileSync(trace, "utf8") : "", patchInPlace: fs.existsSync(patch), hidden: fs.existsSync(`${patch}.hidden`) };
+}
+
+/** Makes the entry of a tracked file in the index differ from the file's stat, so that a `git diff` refreshes the index and writes it. */
+function touch(relative) {
+  const later = new Date(Date.now() + 10_000);
+  fs.utimesSync(path.join(repo.dir, ...relative.split("/")), later, later);
+}
+
+test("AC22: a clean filter that the agent configured in the checkout, and selected in .git/info/attributes or in a .gitattributes of the working tree, does not run inside the validator: the patch that it would have moved is read", async () => {
+  const forms = {
+    ".git/info/attributes": () => {
+      fs.mkdirSync(gitDirectoryFile("info"), { recursive: true });
+      fs.appendFileSync(gitDirectoryFile("info", "attributes"), `${TRACKED} filter=x\n`);
+    },
+    ".gitattributes of the working tree": () => repo.write(".gitattributes", `${TRACKED} filter=x\n`),
+  };
+  for (const [name, select] of Object.entries(forms)) {
+    const putBack = saveGitDirectory();
+    const result = await afterTheAgentSwitchedBack({
+      change: bump,
+      keepBranch: false,
+      before: (root) => {
+        repo.git("config", "filter.x.clean", writePrograms(root).filter);
+        select();
+        repo.write(TRACKED, `${repo.read(TRACKED)}\n`); // a modified file: git has to hash it, and a clean filter runs then
+      },
+      observe: whatTheProgramsDid,
+      finish: putBack,
+    });
+    assert.equal(result.code, 1, `${name}\n${result.stdout}${result.stderr}`);
+    assert.ok(result.stderr.includes(PATCH_NAMED), `${name}: ${result.stderr}`);
+    assert.match(result.stderr, /sets 'filter\.x\.clean'/, `${name}: the configuration that names the program is named as well`);
+    assert.deepEqual(result.observed, NOTHING_RAN, `${name}: no program of the agent ran, and the patch is where the tool wrote it`);
+  }
+});
+
+test("AC22: an fsmonitor program that the agent configured in the checkout does not run inside the validator, whichever git command reads the index", async () => {
+  const putBack = saveGitDirectory();
+  const result = await afterTheAgentSwitchedBack({
+    change: bump,
+    keepBranch: false,
+    before: (root) => repo.git("config", "core.fsmonitor", writePrograms(root).hook),
+    observe: whatTheProgramsDid,
+    finish: putBack,
+    env: WITHOUT_ENV_CONFIG,
+  });
+  assert.equal(result.code, 1, `${result.stdout}${result.stderr}`);
+  assert.ok(result.stderr.includes(PATCH_NAMED), result.stderr);
+  assert.match(result.stderr, /sets 'core\.fsmonitor'/);
+  assert.deepEqual(result.observed, NOTHING_RAN);
+});
+
+test("AC22: a post-index-change hook that the agent wrote in the checkout, in .git/hooks or in a directory that core.hooksPath names, does not run inside the validator", async () => {
+  const writeHook = (directory, command) => {
+    fs.mkdirSync(directory, { recursive: true });
+    fs.writeFileSync(path.join(directory, "post-index-change"), `#!/bin/sh\n${command}\n`, { mode: 0o755 });
+  };
+  const forms = {
+    ".git/hooks": (root, command) => writeHook(gitDirectoryFile("hooks"), command),
+    "core.hooksPath": (root, command) => {
+      writeHook(path.join(root, "agent-hooks"), command);
+      repo.git("config", "core.hooksPath", path.join(root, "agent-hooks"));
+    },
+  };
+  for (const [name, install] of Object.entries(forms)) {
+    const putBack = saveGitDirectory();
+    const result = await afterTheAgentSwitchedBack({
+      change: bump,
+      keepBranch: false,
+      before: (root) => {
+        install(root, writePrograms(root).hook);
+        touch(TRACKED); // the entry of the index no longer matches the file's stat: a `git diff` there writes the index, and git then runs the hook
+      },
+      observe: whatTheProgramsDid,
+      finish: putBack,
+    });
+    assert.equal(result.code, 1, `${name}\n${result.stdout}${result.stderr}`);
+    assert.ok(result.stderr.includes(PATCH_NAMED), `${name}: ${result.stderr}`);
+    assert.deepEqual(result.observed, NOTHING_RAN, `${name}: the hook did not run, and the patch is where the tool wrote it`);
+  }
+});
+
+test("AC22: nor does a program of the global configuration or of the global attributes, which the agent could write if the agent step can write the home directory of the runner", async () => {
+  const home = tempDir("sdlc-s2-agent-home-");
+  const result = await afterTheAgentSwitchedBack({
+    change: bump,
+    keepBranch: false,
+    before: (root) => {
+      const programs = writePrograms(root);
+      fs.mkdirSync(path.join(home, "xdg", "git"), { recursive: true });
+      fs.writeFileSync(path.join(home, "gitconfig"), `[filter "g"]\n\tclean = ${programs.filter}\n[core]\n\tfsmonitor = ${programs.hook}\n`);
+      fs.writeFileSync(path.join(home, "xdg", "git", "attributes"), `${TRACKED} filter=g\n`);
+      repo.write(TRACKED, `${repo.read(TRACKED)}\n`);
+    },
+    env: () => ({ ...WITHOUT_ENV_CONFIG, GIT_CONFIG_GLOBAL: path.join(home, "gitconfig"), XDG_CONFIG_HOME: path.join(home, "xdg") }),
+    observe: whatTheProgramsDid,
+  });
+  assert.equal(result.code, 1, `${result.stdout}${result.stderr}`);
+  assert.ok(result.stderr.includes(PATCH_NAMED), result.stderr);
+  assert.deepEqual(result.observed, NOTHING_RAN, "the global filter and the global fsmonitor program did not run");
+  assert.doesNotMatch(result.stderr, /sets '/, "the global configuration is the runner's, not the checkout's: the refusal is about the checkout's own");
+});
+
+test("AC22: which keys of the checkout's own configuration are a program for git to run: fsmonitor, a clean, smudge or process filter, an external diff and a textconv; not a false value, not another key, not the configuration of the runner", () => {
+  const checkout = createRepo({ "README.md": "target\n" });
+  const elsewhere = tempDir("sdlc-s2-config-scopes-");
+  const globalFile = path.join(elsewhere, "gitconfig");
+  fs.writeFileSync(globalFile, '[filter "lfs"]\n\tclean = git-lfs clean -- %f\n[core]\n\tfsmonitor = node global-hook.mjs\n[diff]\n\texternal = global-diff\n');
+  const environment = (extra = {}) => cleanEnv({ GIT_CONFIG_COUNT: "0", GIT_CONFIG_GLOBAL: globalFile, ...extra });
+  const listed = (extra) => {
+    const scratch = openScratch({ checkout: checkout.dir, env: environment(extra), fs });
+    try {
+      return scratch.configuration.commandKeys;
+    } finally {
+      scratch.dispose();
+    }
+  };
+  try {
+    assert.deepEqual(listed(), [], "the global configuration (and the system one, which a runner image fills with filter.lfs) is not the checkout's");
+    assert.deepEqual(
+      listed({ GIT_CONFIG_COUNT: "2", GIT_CONFIG_KEY_0: "core.fsmonitor", GIT_CONFIG_VALUE_0: "node from-the-environment.mjs", GIT_CONFIG_KEY_1: "filter.e.clean", GIT_CONFIG_VALUE_1: "cat" }),
+      [],
+      "nor is the environment of the step",
+    );
+    for (const [key, value] of [
+      ["core.fsmonitor", "node hook.mjs"],
+      ["core.fsmonitor", "true"],
+      ["filter.x.clean", "cat"],
+      ["filter.X.y.smudge", "cat"],
+      ["filter.x.process", "git-lfs filter-process"],
+      ["diff.external", "difftool"],
+      ["diff.x.command", "difftool"],
+      ["diff.x.textconv", "cat"],
+    ]) {
+      checkout.git("config", key, value);
+      assert.deepEqual(listed(), [{ scope: "local", key }], `${key} = ${value}`);
+      checkout.git("config", "--unset", key);
+    }
+    fs.appendFileSync(path.join(checkout.dir, ".git", "config"), "[core]\n\tfsmonitor\n");
+    assert.deepEqual(listed(), [{ scope: "local", key: "core.fsmonitor" }], "a key without a value is true, which starts the built-in daemon");
+    checkout.git("config", "--unset", "core.fsmonitor");
+    for (const value of ["false", "no", "off", "0", ""]) {
+      checkout.git("config", "core.fsmonitor", value);
+      assert.deepEqual(listed(), [], `core.fsmonitor = '${value}' switches the program off`);
+    }
+    checkout.git("config", "--unset", "core.fsmonitor");
+    for (const [key, value] of [
+      ["filter.x.required", "true"],
+      ["diff.x.binary", "true"],
+      ["core.hooksPath", "hooks"],
+      ["core.worktree", "."],
+      ["remote.origin.url", "https://example.invalid/target.git"],
+      ["http.https://example.invalid/.extraheader", "AUTHORIZATION: basic fixture"],
+      ["user.name", "Fixture"],
+    ]) {
+      checkout.git("config", key, value);
+      assert.deepEqual(listed(), [], `${key} names no program`);
+      checkout.git("config", "--unset", key);
+    }
+    fs.writeFileSync(path.join(checkout.dir, ".git", "included.cfg"), '[filter "y"]\n\tsmudge = cat\n');
+    checkout.git("config", "include.path", "included.cfg");
+    assert.deepEqual(listed(), [{ scope: "local", key: "filter.y.smudge" }], "a program that the checkout's configuration includes is the checkout's own");
+  } finally {
+    checkout.cleanup();
+    fs.rmSync(elsewhere, { recursive: true, force: true });
+  }
+});
+
+test("AC22: a checkout whose own configuration names such a program is refused, as one with a replace ref or a graft file is, and the refusal says which key", async () => {
+  for (const [key, value] of [
+    ["core.fsmonitor", "node -e 0"],
+    ["filter.x.clean", "cat"],
+    ["diff.x.textconv", "cat"],
+  ]) {
+    repo.git("config", key, value);
+    try {
+      const result = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base, ...WITHOUT_ENV_CONFIG }) });
+      assert.equal(result.code, 1, `${key}\n${result.stdout}`);
+      assert.match(result.stderr, new RegExp(`the configuration of the target checkout \\(local\\) sets '${key.replace(/\./g, "\\.")}', a program that git would run while it reads the index or the working tree`), key);
+    } finally {
+      repo.git("config", "--unset", key);
+    }
+  }
+  repo.git("config", "core.fsmonitor", "false");
+  try {
+    const switchedOff = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base, ...WITHOUT_ENV_CONFIG }) });
+    assert.equal(switchedOff.code, 0, `a program that is switched off is nothing: ${switchedOff.stderr}`);
+  } finally {
+    repo.git("config", "--unset", "core.fsmonitor");
+  }
+});
+
+test("AC22: what the checkout's index and settings say decides nothing about what the working tree is compared with: assume-unchanged, skip-worktree and a core.worktree that names a pristine copy do not hide a rewritten workflow", async () => {
+  const forms = {
+    "assume-unchanged": { set: () => repo.git("update-index", "--assume-unchanged", WORKFLOW), unset: () => repo.git("update-index", "--no-assume-unchanged", WORKFLOW) },
+    "skip-worktree": { set: () => repo.git("update-index", "--skip-worktree", WORKFLOW), unset: () => repo.git("update-index", "--no-skip-worktree", WORKFLOW) },
+    "a core.worktree that names a pristine copy": {
+      set: () => {
+        const decoy = tempDir("sdlc-s2-decoy-worktree-");
+        writeTree(decoy, labFiles());
+        repo.git("config", "core.worktree", decoy);
+      },
+      unset: () => repo.git("config", "--unset", "core.worktree"),
+    },
+  };
+  for (const [name, form] of Object.entries(forms)) {
+    form.set();
+    repo.write(WORKFLOW, "name: rewritten by the agent\n");
+    try {
+      const result = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: cleanEnv({ SDLC_BASE_SHA: base }) });
+      assert.equal(result.code, 1, `${name}\n${result.stdout}`);
+      assert.match(result.stderr, /\.github\/workflows\/stand-in\.lock\.yml differs from the base commit [0-9a-f]{12}; .*\(in the working tree\)/, name);
+    } finally {
+      form.unset();
+      restore();
+    }
+  }
+});
+
+test("AC22: a change that is staged and then put back in the working tree is still reported, through the index", async () => {
+  repo.write(WORKFLOW, "name: staged by the agent\n");
+  repo.git("add", WORKFLOW);
+  repo.write(WORKFLOW, labFiles()[WORKFLOW]); // the working tree is the base's again; the index is not
+  try {
+    assert.equal(repo.git("diff", "--name-only", base), "", "a comparison of the working tree sees nothing");
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: withBase(base) });
+    assert.equal(result.code, 1, result.stdout);
+    assert.match(result.stderr, /\.github\/workflows\/stand-in\.lock\.yml differs from the base commit [0-9a-f]{12}; .*\(in the index\)/);
+  } finally {
+    restore();
+  }
+});
+
+test("AC22: the checkout is only read: a stat-dirty index is neither refreshed nor rewritten, nothing else in .git changes, and the scratch repository of every run is removed, whether the run passes or fails", async () => {
+  const scratchRoot = tempDir("sdlc-s2-scratch-root-");
+  const saved = Object.fromEntries(["TMPDIR", "TMP", "TEMP"].map((name) => [name, process.env[name]]));
+  touch(TRACKED);
+  try {
+    const untouched = gitDirectoryListing();
+    for (const name of Object.keys(saved)) process.env[name] = scratchRoot;
+    const passes = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: withBase(base) });
+    assert.equal(passes.code, 0, passes.stderr);
+    assert.equal(gitDirectoryListing(), untouched, "a run that passes changes nothing in .git: the index is not refreshed, and no hook runs");
+    assert.deepEqual(fs.readdirSync(scratchRoot), [], "the scratch repository of a run that passes is removed");
+    repo.write(".github/workflows/x.lock.yml", "name: x\n");
+    const fails = await invoke(run, ["--checkout", repo.dir, "--out", out], { cwd: out, env: withBase(base) });
+    assert.equal(fails.code, 1);
+    assert.equal(gitDirectoryListing(), untouched, "nor does a run that fails");
+    assert.deepEqual(fs.readdirSync(scratchRoot), [], "and its scratch repository is removed too");
+  } finally {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+    restore();
+  }
+});
+
+test("AC22: the patch and bundle files are copied before anything else is read, so that what is inspected is what the directory held: a file that is gone by the time git reads is still named", async () => {
+  const { root, agent } = artifactDirectories();
+  const origin = repo.git("rev-parse", "--abbrev-ref", "HEAD");
+  const removed = [];
+  // a file system whose copy of a transport file is followed by the removal of the original, as an agent's program could make it happen
+  const vanishing = new Proxy(fs, {
+    get(target, property) {
+      const value = target[property];
+      if (property === "copyFileSync") {
+        return (from, to) => {
+          value.call(target, from, to);
+          if (!/^aw-/.test(path.basename(String(from)))) return; // the validator copies other files too (the HEAD of the checkout, for one)
+          target.rmSync(from);
+          removed.push(path.basename(String(from)));
+        };
+      }
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  try {
+    repo.git("switch", "-q", "-c", "sdlc/x");
+    bump(repo);
+    repo.commitAll("bump");
+    createPullRequest(root, "sdlc/x", { bundle: true });
+    repo.git("switch", "-q", origin);
+    repo.git("branch", "-q", "-D", "sdlc/x");
+    repo.git("reflog", "expire", "--expire=now", "--all");
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", agent], { cwd: out, env: withBase(base), fs: vanishing });
+    assert.deepEqual(removed.sort(), ["aw-sdlc-x.bundle", "aw-sdlc-x.patch"], "the validator copied both files, and the originals are gone");
+    assert.equal(fs.readdirSync(root).some((name) => name.startsWith("aw-")), false);
+    assert.equal(result.code, 1, result.stdout);
+    assert.match(result.stderr, /gh_aw_schema_version changed from '0\.86\.2' to '9\.9\.9'; it is report-only \(in aw-sdlc-x\.bundle \(commit [0-9a-f]{12}\) and aw-sdlc-x\.patch \(patch 1 of 1\)\)/, "both files are named, in the order of their names");
+    assert.doesNotMatch(result.stderr, /cannot be inspected/);
+  } finally {
+    repo.git("switch", "-q", origin);
+    restore();
+    forceRemove(root);
+  }
+});
+
+// --- no git process of the validator runs in the checkout's repository -------------------------------------------------------------------------
+//
+// Everything that the validator asks git runs in a scratch repository that borrows the objects of the checkout and takes copies of its refs, HEAD and
+// shallow file (drift/lib/git-artifacts.mjs). The tests above show that no program of the checkout's configuration runs; these show the other side: that
+// nothing about the checkout's repository decides what the validator reads except what is in it, for each shape that a checkout can have.
+
+test("AC22: an aw-*.patch entry that is not a regular file (a directory here, a pipe in the worst case, which would block a read for good) fails the run without being read", async () => {
+  const { root, agent } = artifactDirectories();
+  try {
+    fs.mkdirSync(path.join(root, "aw-sdlc-x.patch"));
+    const result = await invoke(run, ["--checkout", repo.dir, "--out", agent], { cwd: out, env: withBase(base) });
+    assert.equal(result.code, 1, result.stdout);
+    assert.match(result.stderr, /aw-sdlc-x\.patch cannot be inspected: it is not a regular file/);
+  } finally {
+    forceRemove(root);
+  }
+});
+
+test("AC22: a configuration that no git can read in the checkout does not stop the validator from reading the patch: no git process of the validator runs under it", async () => {
+  const putBack = saveGitDirectory();
+  const result = await afterTheAgentSwitchedBack({
+    change: bump,
+    keepBranch: false,
+    before: () => fs.appendFileSync(gitDirectoryFile("config"), "[core]\n\trepositoryformatversion = 99\n"), // every git that starts in the checkout dies on this
+    finish: putBack,
+  });
+  assert.equal(result.code, 1, `${result.stdout}${result.stderr}`);
+  assert.ok(result.stderr.includes(PATCH_NAMED), result.stderr);
+  assert.doesNotMatch(result.stderr, /unknown repository format|not a git repository|fatal:/i);
+});
+
+test("AC22: a linked working tree, whose .git is a file, is read through the directories that the file names: its HEAD, its index and the refs and objects of the main repository", async () => {
+  const linked = path.join(tempDir("sdlc-s2-linked-"), "lab");
+  repo.git("worktree", "add", "-q", "--detach", linked, base);
+  try {
+    assert.ok(fs.statSync(path.join(linked, ".git")).isFile(), ".git of a linked working tree is a file");
+    const clean = await invoke(run, ["--checkout", linked, "--out", out], { cwd: out, env: withBase(base) });
+    assert.equal(clean.code, 0, clean.stderr);
+    fs.writeFileSync(path.join(linked, ...WORKFLOW.split("/")), "name: rewritten by the agent\n");
+    const dirty = await invoke(run, ["--checkout", linked, "--out", out], { cwd: out, env: withBase(base) });
+    assert.equal(dirty.code, 1, dirty.stdout);
+    assert.match(dirty.stderr, /\.github\/workflows\/stand-in\.lock\.yml differs from the base commit [0-9a-f]{12}; .*\(in the working tree\)/);
+    gitIn(linked, ["add", "-A"]);
+    gitIn(linked, ["commit", "-q", "-m", "recompile"]);
+    const committed = await invoke(run, ["--checkout", linked, "--out", out], { cwd: out, env: withBase(base) });
+    assert.equal(committed.code, 1, committed.stdout);
+    assert.match(committed.stderr, /\(in the HEAD commit, the index and the working tree\)/, "the HEAD, the index and the working tree of the linked working tree, which are not those of the main one (that stays at the base commit)");
+  } finally {
+    repo.git("worktree", "remove", "--force", linked);
+    repo.git("worktree", "prune");
+  }
+});
+
+test("AC22: a shallow checkout, which is what actions/checkout makes by default (fetch-depth 1), is read: the parents of the base commit are missing, and a commit on top of it is found", async () => {
+  const origin = createRepo(labFiles());
+  origin.write("labs/lab01.md", "A second commit, so that the base commit has a parent.\n");
+  origin.commitAll("second");
+  const parent = tempDir("sdlc-s2-shallow-");
+  const clone = path.join(parent, "lab");
+  try {
+    gitIn(parent, ["clone", "-q", "--depth", "1", pathToFileURL(origin.dir).href, clone]);
+    writeGitFixtureConfig(clone);
+    assert.ok(fs.existsSync(path.join(clone, ".git", "shallow")), "the clone is shallow");
+    const shallowBase = gitIn(clone, ["rev-parse", "HEAD"]);
+    assert.equal(gitIn(clone, ["rev-list", "--count", "HEAD"]), "1");
+    const clean = await invoke(run, ["--checkout", clone, "--out", out], { cwd: out, env: withBase(shallowBase) });
+    assert.equal(clean.code, 0, clean.stderr);
+    const branchBefore = gitIn(clone, ["rev-parse", "--abbrev-ref", "HEAD"]);
+    gitIn(clone, ["switch", "-q", "-c", "sdlc/x"]);
+    fs.writeFileSync(path.join(clone, "docs", "_meta", "registry.yaml"), fs.readFileSync(path.join(clone, "docs", "_meta", "registry.yaml"), "utf8").replace('gh_aw_schema_version: "0.86.2"', 'gh_aw_schema_version: "9.9.9"'));
+    gitIn(clone, ["add", "-A"]);
+    gitIn(clone, ["commit", "-q", "-m", "bump"]);
+    const { root, agent } = artifactDirectories();
+    try {
+      const [first, ...rest] = `${gitIn(clone, ["format-patch", `${shallowBase}..sdlc/x`, "--stdout"])}\n`.split("\n");
+      fs.writeFileSync(path.join(root, "aw-sdlc-x.patch"), [first, `X-GH-AW-Base-Commit: ${shallowBase}`, ...rest].join("\n"));
+      gitIn(clone, ["switch", "-q", branchBefore]);
+      const kept = await invoke(run, ["--checkout", clone, "--out", agent], { cwd: out, env: withBase(shallowBase) });
+      assert.equal(kept.code, 1, kept.stdout);
+      assert.match(kept.stderr, /commit [0-9a-f]{12} \(refs\/heads\/sdlc\/x\)/, "the commit that only a branch of the shallow clone names");
+      assert.ok(kept.stderr.includes("aw-sdlc-x.patch (patch 1 of 1)"), "and the patch");
+      gitIn(clone, ["branch", "-q", "-D", "sdlc/x"]);
+      const patchOnly = await invoke(run, ["--checkout", clone, "--out", agent], { cwd: out, env: withBase(shallowBase) });
+      assert.equal(patchOnly.code, 1, patchOnly.stdout);
+      assert.ok(patchOnly.stderr.includes("gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only (in aw-sdlc-x.patch (patch 1 of 1))"), patchOnly.stderr);
+    } finally {
+      forceRemove(root);
+    }
+  } finally {
+    origin.cleanup();
+    forceRemove(parent);
+  }
+});
+
+test("AC22: a checkout that keeps its refs in the reftable format is refused: its refs cannot be copied and read here, and a checkout that cannot be read is not one that is fine", async (t) => {
+  const dir = tempDir("sdlc-s2-reftable-");
+  try {
+    gitIn(dir, ["init", "-q", "--ref-format=reftable"]);
+  } catch {
+    t.skip("this git cannot make a repository with the reftable ref format");
+    return;
+  }
+  const result = await invoke(run, ["--checkout", dir, "--out", out], { cwd: out, env: withBase("0".repeat(40)) });
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(result.stderr, /the target checkout cannot be inspected: the refs of the target checkout are stored in the reftable format/);
+});
+
+test("AC22: a sha256 checkout is read in a scratch repository of the same object format", async (t) => {
+  const dir = tempDir("sdlc-s2-sha256-");
+  try {
+    gitIn(dir, ["init", "-q", "--object-format=sha256"]);
+  } catch {
+    t.skip("this git cannot make a sha256 repository");
+    return;
+  }
+  writeGitFixtureConfig(dir);
+  writeTree(dir, labFiles());
+  gitIn(dir, ["add", "-A"]);
+  gitIn(dir, ["commit", "-q", "-m", "base"]);
+  const sha = gitIn(dir, ["rev-parse", "HEAD"]);
+  assert.equal(sha.length, 64, "a sha256 commit id");
+  const clean = await invoke(run, ["--checkout", dir, "--out", out], { cwd: out, env: withBase(sha) });
+  assert.equal(clean.code, 0, clean.stderr);
+  writeTree(dir, { "docs/_meta/registry.yaml": labFiles()["docs/_meta/registry.yaml"].replace('gh_aw_schema_version: "0.86.2"', 'gh_aw_schema_version: "9.9.9"') });
+  gitIn(dir, ["add", "-A"]);
+  gitIn(dir, ["commit", "-q", "-m", "bump"]);
+  const bumped = await invoke(run, ["--checkout", dir, "--out", out], { cwd: out, env: withBase(sha) });
+  assert.equal(bumped.code, 1, bumped.stdout);
+  assert.ok(bumped.stderr.includes("gh_aw_schema_version changed from '0.86.2' to '9.9.9'; it is report-only (in the HEAD commit and the working tree)"), bumped.stderr);
 });

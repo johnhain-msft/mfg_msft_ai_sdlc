@@ -4,6 +4,7 @@
 // as they were; the reconciler writes nothing under /tmp/gh-aw/agent. The rendered steps invoke the S2 scripts.
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { run as dedupe } from "../../src/drift/dedupe-open-prs.mjs";
@@ -138,8 +139,9 @@ test("AC5: where the runner provides GITHUB_ENV, prepare-run adds one line to th
   }
 });
 
-test("AC5: the scripts that produce no artifact (escalation, response check, audit validator) write no file at all", async () => {
+test("AC5: the scripts that produce no artifact (escalation, response check, audit validator) write no file in the target checkout or under --out; the escalation and the response check write none at all, and the validator only its own scratch directory, which it removes", async () => {
   const recorder = recordingFs();
+  const validatorRecorder = recordingFs();
   const lab = createRepo(labFiles());
   const out = tempDir("sdlc-s2-validate-out-");
   try {
@@ -148,9 +150,23 @@ test("AC5: the scripts that produce no artifact (escalation, response check, aud
     assert.equal(escalation.code, 0, escalation.stderr);
     const response = await invoke(checkResponse, [fixture("pr-response", "valid.json"), "--workflow", abs(WORKFLOWS, "drift-copilot-lab.md")], { fs: recorder.fs });
     assert.equal(response.code, 0, response.stderr);
-    const validation = await invoke(validate, ["--checkout", lab.dir, "--out", out, "--base-sha", lab.head()], { fs: recorder.fs, cwd: out });
+    const validation = await invoke(validate, ["--checkout", lab.dir, "--out", out, "--base-sha", lab.head()], { fs: validatorRecorder.fs, cwd: out });
     assert.equal(validation.code, 0, validation.stderr);
     assert.deepEqual(recorder.writes, [], "no write-class file system call");
+    // The validator reads the checkout in a scratch repository (SPEC-02 AC22). It makes that directory, writes in it and removes it; the recorder also
+    // lists the source of a copy beside its destination, so the refs, HEAD and shallow file that it copies out of the checkout's .git directory show up too.
+    const isScratch = (written) => isUnder(written, os.tmpdir()) && /[\\/]sdlc-inspect-[^\\/]*([\\/]|$)/.test(written);
+    const checkoutGitDirectory = path.join(lab.dir, ".git");
+    assert.deepEqual(
+      validatorRecorder.writes.filter((written) => !isScratch(written) && !isUnder(written, checkoutGitDirectory)),
+      [],
+      "every path of a write-class call is in the scratch directory or is a source of a copy",
+    );
+    const sources = new Set(validatorRecorder.writes.filter((written) => isUnder(written, checkoutGitDirectory)).map((written) => path.relative(checkoutGitDirectory, written)));
+    for (const source of sources) assert.ok(["HEAD", "refs", "packed-refs", "shallow"].includes(source), `${source} is only read out of the checkout's .git`);
+    const scratchDirectories = new Set(validatorRecorder.writes.map((written) => /^(.*[\\/]sdlc-inspect-[^\\/]+)/.exec(written)?.[1]).filter(Boolean));
+    assert.equal(scratchDirectories.size, 1, "one scratch directory");
+    for (const directory of scratchDirectories) assert.equal(fs.existsSync(directory), false, `${directory} is removed`);
     assert.deepEqual(listTree(out), [], "nothing under its --out either");
     assert.equal(lab.status(), "", "and the lab checkout is clean");
   } finally {

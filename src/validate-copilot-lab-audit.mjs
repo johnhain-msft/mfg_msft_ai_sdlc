@@ -22,24 +22,49 @@
 // cannot commit a registry or a report that is wrong, call `create_pull_request` and leave a working tree that is right.
 // Anything else exits 1 and names each missing key or section, or the changed value or path, and where it is, on stderr. A patch or a bundle
 // that cannot be read, or that does not apply to the base commit, exits 1 as well: a file that cannot be inspected is not a file that is fine.
-// The script only reads the checkout. It writes nothing there: the patch and bundle files are read in a scratch repository in a temporary
-// directory that is removed afterwards.
+// The script only reads the checkout. It writes nothing there: everything that it asks git is asked in a scratch repository in a temporary
+// directory that it removes afterwards.
 //
 // The agent has just worked in that checkout and can write all of it, its .git directory included (its `git` tool takes any arguments),
 // so the checks ask git for what the objects say and for nothing else that the agent can bend. Every git call runs with --no-replace-objects:
 // `git replace <base> HEAD` would otherwise make git return the agent's own commit wherever it reads the base. A checkout that carries a
-// replace ref or a graft file is refused, because the runner's checkout has neither and that option does not switch grafts off. What a
+// replace ref or a graft file is refused: the runner's checkout has neither, and each is the mark of an agent that made it (the scratch
+// repository below reads no graft file and ignores replace refs, so neither can change an answer here). What a
 // commit changes is taken from the commit objects (`git diff-tree <base> <commit>`) and not from the index and the working tree, which the
 // agent can put back after it has committed, and `gh_aw_schema_version` is read from every revision as well as from the working tree.
+// Nor does the checkout's configuration get to run anything here. `.git/config` (`core.fsmonitor`, `filter.<name>.clean` with an attribute from
+// `.git/info/attributes` or `.gitattributes`, a partial clone's remote), `.git/hooks` and the index make git start a program of the agent's choosing
+// when it reads the index or the working tree or misses an object, and such a program could move the patch away before this script has read it and put
+// it back afterwards. So no git process of this script runs in the checkout's repository: every one runs in the scratch repository of
+// drift/lib/git-artifacts.mjs, which has a configuration of its own and takes from the checkout only files: its objects (an alternates file), a copy of
+// its refs, HEAD and shallow file, its index file (as data) and its directory as the working tree. The patch and bundle files are copied into the
+// scratch directory before anything else is read. A checkout whose own configuration sets one of those programs is refused too, as the mark of an
+// agent that did it.
 // The script does not protect its own file: it runs from the orchestrator checkout, the working directory of the agent step, and the agent can
 // write there. The workflow protects it: prepare-run stages a copy of this file and of drift/lib/ under ${RUNNER_TEMP}/gh-aw/sdlc-validator/
 // before the agent starts (the compiled agent step mounts ${RUNNER_TEMP}/gh-aw read-only), and the verifyCommands entry that runs this script
 // first compares the two and fails when they differ (SPEC-02 AC22 and §4, item 6, say what that closes and what it leaves open).
 
+import nodeFs from "node:fs";
 import path from "node:path";
 import { parseFlags, UsageError } from "./drift/lib/args.mjs";
 import { BASE_SHA_VARIABLE, outDirectory, resolveIo, runAsMain } from "./drift/lib/cli.mjs";
-import { branchTips, bundleCommits, COMMIT_LIMIT, commitsAhead, git, gitMessage, openScratch, patchTrees, refsByCommit, transportFiles } from "./drift/lib/git-artifacts.mjs";
+import {
+  branchTips,
+  bundleCommits,
+  COMMIT_LIMIT,
+  commitsAhead,
+  git,
+  gitMessage,
+  indexPaths,
+  listRefs,
+  openScratch,
+  patchTrees,
+  refsByCommit,
+  replaceRefs,
+  snapshotTransportFiles,
+  workTreePaths,
+} from "./drift/lib/git-artifacts.mjs";
 
 const OPTIONS = {
   out: { type: "string" },
@@ -152,28 +177,27 @@ const isProtectedPath = (entry) => {
   return lower === ".github/workflows" || lower.startsWith(PROTECTED_DIRECTORY);
 };
 
-/** Every path that a commit or a tree differs from the base commit in, read from the objects alone (`diff-tree`). */
+/** Every path that a commit or a tree differs from the base commit in, read from the objects alone (`diff-tree`), through `options` (the scratch repository). */
 function committedPaths(options, baseSha, revision) {
-  return git(["diff-tree", "-r", "--name-only", "-z", "--no-renames", baseSha, revision], options)
+  return git(["diff-tree", "-r", "--name-only", "-z", "--no-renames", baseSha, revision, "--"], options)
     .split("\0")
     .filter((entry) => entry !== "");
 }
 
-/** Every path that the index, the working tree or an untracked file differs from the base commit in. */
-function workingTreePaths(options, baseSha) {
-  const tracked = git(["diff", "--name-only", "-z", "--no-renames", baseSha], options);
-  const untracked = git(["ls-files", "--others", "--exclude-standard", "-z"], options);
-  return [...new Set([tracked, untracked].flatMap((output) => output.split("\0")).filter((entry) => entry !== ""))];
-}
-
 /**
  * Every path that differs from the base commit. What the commits change comes first and is read from the two commit objects alone
- * (`diff-tree`): an agent that commits a change and then puts the file back in its working tree leaves nothing for `git diff <base>` to
- * see, and the pull request carries the commit. The index and the working tree add what is staged, modified, deleted or untracked.
+ * (`diff-tree`): an agent that commits a change and then puts the file back in its working tree leaves nothing for a comparison of the working
+ * tree to see, and the pull request carries the commit. The index and the working tree add what is staged, modified, deleted or untracked. All of it
+ * is read in a scratch repository (see drift/lib/git-artifacts.mjs), under no configuration of the checkout; `headSha` is a commit id, or HEAD.
  */
-export function changedPaths(checkout, baseSha, env, headSha = "HEAD") {
-  const options = { cwd: checkout, env };
-  return [...new Set([...committedPaths(options, baseSha, headSha), ...workingTreePaths(options, baseSha)])].sort();
+export function changedPaths(checkout, baseSha, env, headSha = "HEAD", fs = nodeFs) {
+  const scratch = openScratch({ checkout, env, fs });
+  try {
+    const head = headSha === "HEAD" ? git(["rev-parse", "--verify", "HEAD^{commit}"], scratch.options).trim() : headSha;
+    return [...new Set([...committedPaths(scratch.options, baseSha, head), ...indexPaths(scratch, baseSha, fs), ...workTreePaths(scratch, baseSha)])].sort();
+  } finally {
+    scratch.dispose();
+  }
 }
 
 /** The value of the pinned key in the text of a registry: null when the registry has no such key. */
@@ -191,9 +215,14 @@ function pinnedValueIn(options, revision) {
   }
 }
 
-/** The pinned value as the registry of a commit holds it: null when the commit has no registry, or its registry has no such key. */
-export function pinnedValueAt(checkout, revision, env) {
-  return pinnedValueIn({ cwd: checkout, env }, revision);
+/** The pinned value as the registry of a commit holds it (`revision` is a commit id): null when the commit has no registry, or its registry has no such key. */
+export function pinnedValueAt(checkout, revision, env, fs = nodeFs) {
+  const scratch = openScratch({ checkout, env, fs });
+  try {
+    return pinnedValueIn(scratch.options, revision);
+  } finally {
+    scratch.dispose();
+  }
 }
 
 /** A reader of the files of a revision: (relative path) => the text of the file, or null when the revision has none. */
@@ -219,31 +248,30 @@ function labFilesOf(options, revision) {
 }
 
 /**
- * Evidence that git has been told to answer differently from what the objects say. --no-replace-objects already makes the checks ignore a
- * replace ref, but the runner's checkout has none, so one is refused as the mark of an agent that made it. A graft file is not switched off
- * by that option (git still reads it), so a checkout that has one is refused as well. `--git-path` names the file that git would read,
- * GIT_GRAFT_FILE included.
+ * Evidence that the checkout was set up to answer differently from what its objects say, or to run something while git reads it. Every git process of
+ * this script runs in the scratch repository, which borrows the objects, takes copies of the refs and has no grafts, no replace-ref handling (--no-replace-objects)
+ * and no configuration of the checkout's, so none of these can change an answer here; but the runner's checkout has none of them either, so each is
+ * refused as the mark of an agent that made it: a replace ref (any ref under refs/replace/), a graft file (`info/grafts` of the common directory, or the file
+ * that GIT_GRAFT_FILE names), and a configuration file of the checkout that names a program for git to run on the index or the files of the working tree
+ * (core.fsmonitor, a clean, smudge or process filter, an external diff or a textconv: see readConfiguration in drift/lib/git-artifacts.mjs).
  */
-function tamperProblems(checkout, io) {
+function tamperProblems(scratch, refs, checkout, io) {
   const problems = [];
-  const options = { cwd: checkout, env: io.env };
-  try {
-    const graftFile = path.resolve(checkout, git(["rev-parse", "--git-path", path.posix.join("info", "grafts")], options).trim());
-    if (io.fs.existsSync(graftFile)) {
-      problems.push(`the target checkout has a graft file (${graftFile}); git still reads it, --no-replace-objects does not switch it off, and a checkout that the runner made has none`);
-    }
-  } catch {
-    // not a repository: the check of the base commit says so
+  const given = String(io.env.GIT_GRAFT_FILE ?? "").trim();
+  const graftFile = given === "" ? path.join(scratch.directories.commonDir, "info", "grafts") : path.resolve(checkout, given);
+  if (io.fs.existsSync(graftFile)) {
+    problems.push(`the target checkout has a graft file (${graftFile}); the checks do not read it, but a checkout that the runner made has none`);
   }
-  try {
-    const refs = git(["for-each-ref", "--format=%(refname)", "refs/replace/"], options).split(/\r?\n/).filter((ref) => ref !== "");
-    if (refs.length > 0) {
-      const shown = `${refs.slice(0, 3).join(", ")}${refs.length > 3 ? ", ..." : ""}`;
-      problems.push(`the target checkout has ${refs.length === 1 ? "a replace ref" : `${refs.length} replace refs`} (${shown}); the checks ignore ${refs.length === 1 ? "it" : "them"}, but a checkout that the runner made has none`);
-    }
-  } catch {
-    // not a repository: the check of the base commit says so
+  const replaced = replaceRefs(refs);
+  if (replaced.length > 0) {
+    const shown = `${replaced.slice(0, 3).join(", ")}${replaced.length > 3 ? ", ..." : ""}`;
+    problems.push(`the target checkout has ${replaced.length === 1 ? "a replace ref" : `${replaced.length} replace refs`} (${shown}); the checks ignore ${replaced.length === 1 ? "it" : "them"}, but a checkout that the runner made has none`);
   }
+  const { commandKeys, error } = scratch.configuration;
+  for (const { scope, key } of commandKeys) {
+    problems.push(`the configuration of the target checkout (${scope}) sets '${key}', a program that git would run while it reads the index or the working tree; nothing here runs it (no git process runs in that repository), but a checkout that the runner made sets none`);
+  }
+  if (error !== null) problems.push(`the configuration of the target checkout cannot be read: ${gitMessage(error)}`);
   return problems;
 }
 
@@ -295,117 +323,138 @@ function describeCommit(commit, headSha, refs) {
  *   `subjects` are the tips, whose files rules 1 to 3 are applied to as well.
  */
 function reportOnlyScan({ checkout, baseSha, headRegistry, io, artifactDirectory }) {
-  const problems = tamperProblems(checkout, io);
   const subjects = [];
   const counts = { commits: 0, patches: 0, bundles: 0 };
-  const options = { cwd: checkout, env: io.env };
   const short = baseSha.slice(0, 12);
-  let headSha;
+  // Every git process of this script runs in the scratch repository (see the header): it takes the objects, the refs, the index file and the files
+  // of the working tree from the checkout as data, and nothing of the checkout's configuration.
+  let scratch;
   try {
-    git(["rev-parse", "--verify", `${baseSha}^{commit}`], options);
+    scratch = openScratch({ checkout, env: io.env, fs: io.fs });
   } catch (error) {
-    return { problems: [...problems, `the base commit ${baseSha} is not in the target checkout: ${gitMessage(error)}`], subjects, counts };
+    return { problems: [`the target checkout cannot be inspected: ${gitMessage(error)}`], subjects, counts };
   }
   try {
-    headSha = git(["rev-parse", "--verify", "HEAD^{commit}"], options).trim();
-  } catch (error) {
-    return { problems: [...problems, `HEAD of the target checkout is not a commit: ${gitMessage(error)}`], subjects, counts };
-  }
-
-  const protectedPaths = new Map();
-  const observed = [];
-  const flag = (entry, place) => protectedPaths.set(entry, [...new Set([...(protectedPaths.get(entry) ?? []), place])]);
-  // What a revision (a commit, or the tree that a patch produces) changes against the base commit is read from the objects alone, and so is
-  // the pinned value that its registry holds, in the repository that the revision is in (the checkout, or the scratch repository).
-  const examine = (context, revision, place) => {
+    const objects = scratch.options;
+    // the refs come from one listing; the base commit and HEAD are checked in one call, and one at a time (for the message) only when that fails
+    let refs = [];
+    let refsProblem = null;
     try {
-      for (const entry of committedPaths(context, baseSha, revision)) if (isProtectedPath(entry)) flag(entry, place);
+      refs = listRefs(objects);
     } catch (error) {
-      problems.push(`what ${place} changes against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
+      refsProblem = `the refs of the target checkout cannot be listed: ${gitMessage(error)}`;
     }
-    observed.push([place, pinnedValueIn(context, revision)]);
-  };
-
-  examine(options, headSha, "the HEAD commit");
-  try {
-    const refs = refsByCommit(options);
-    const ahead = commitsAhead(options, baseSha);
-    if (ahead.length > COMMIT_LIMIT) {
-      problems.push(`${ahead.length} commits of the target checkout are not reachable from the base commit ${short}; more than ${COMMIT_LIMIT} are not read one by one, so they cannot be inspected`);
-    } else {
-      const branches = new Set(branchTips(options).values());
-      for (const commit of ahead) {
-        counts.commits += 1;
-        const place = describeCommit(commit, headSha, refs);
-        if (commit !== headSha) examine(options, commit, place);
-        if (commit === headSha || branches.has(commit)) subjects.push({ place, read: labFilesOf(options, commit) });
-      }
-    }
-  } catch (error) {
-    problems.push(`the commits of the target checkout that are not reachable from the base commit ${short} cannot be listed: ${gitMessage(error)}`);
-  }
-  try {
-    for (const entry of workingTreePaths(options, baseSha)) if (isProtectedPath(entry)) flag(entry, "the working tree");
-  } catch (error) {
-    problems.push(`the changes of the working tree against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
-  }
-  // The pinned value is read where the pull request gets it, in the commits, and where the validator already looks at everything else, the
-  // working tree. A registry that is missing from the working tree is reported by the caller, so only the commits are read then.
-  if (headRegistry !== null) observed.push(["the working tree", pinnedValueOf(headRegistry)]);
-
-  let files = [];
-  try {
-    files = transportFiles(artifactDirectory, io.fs);
-  } catch (error) {
-    problems.push(`${artifactDirectory} cannot be read for the patch and bundle files of create_pull_request: ${gitMessage(error)}`);
-  }
-  if (files.length > 0) {
-    let scratch = null;
+    const problems = [...(refsProblem === null ? [] : [refsProblem]), ...tamperProblems(scratch, refs, checkout, io)];
+    let headSha;
     try {
-      scratch = openScratch({ checkout, env: io.env, fs: io.fs });
-    } catch (error) {
-      problems.push(`the patch and bundle files (${files.map((entry) => entry.name).join(", ")}) cannot be inspected: ${gitMessage(error)}`);
-    }
-    if (scratch !== null) {
+      [, headSha] = git(["rev-parse", `${baseSha}^{commit}`, "HEAD^{commit}"], objects).trim().split(/\r?\n/);
+      if (!COMMIT.test(headSha ?? "")) throw new Error("git did not report the HEAD commit");
+    } catch {
       try {
-        for (const entry of files) {
-          try {
-            if (entry.kind === "patch") {
-              counts.patches += 1;
-              for (const { position, count, tree } of patchTrees(scratch, { file: entry.file, baseSha, fs: io.fs })) {
-                const place = `${entry.name} (patch ${position} of ${count})`;
-                examine(scratch.options, tree, place);
-                if (position === count) subjects.push({ place, read: labFilesOf(scratch.options, tree) });
-              }
-            } else {
-              counts.bundles += 1;
-              const { tips, commits } = bundleCommits(scratch, { file: entry.file, baseSha, fs: io.fs });
-              if (commits.length > COMMIT_LIMIT) throw new Error(`it carries ${commits.length} commits beyond the base commit; more than ${COMMIT_LIMIT} are not read one by one`);
-              for (const commit of commits) {
-                const place = `${entry.name} (commit ${commit.slice(0, 12)})`;
-                examine(scratch.options, commit, place);
-                if (tips.includes(commit)) subjects.push({ place, read: labFilesOf(scratch.options, commit) });
-              }
-            }
-          } catch (error) {
-            problems.push(`${entry.name} cannot be inspected: ${gitMessage(error)}`);
+        git(["rev-parse", "--verify", `${baseSha}^{commit}`], objects);
+      } catch (error) {
+        return { problems: [...problems, `the base commit ${baseSha} is not in the target checkout: ${gitMessage(error)}`], subjects, counts };
+      }
+      try {
+        git(["rev-parse", "--verify", "HEAD^{commit}"], objects);
+      } catch (error) {
+        return { problems: [...problems, `HEAD of the target checkout is not a commit: ${gitMessage(error)}`], subjects, counts };
+      }
+      return { problems: [...problems, `the base commit ${baseSha} and HEAD of the target checkout cannot be resolved together`], subjects, counts };
+    }
+
+    // The patch and bundle files come first and are copied away before anything else is read, so that what is inspected is what the directory
+    // held when the validator looked, whatever happens to the directory (or to the checkout) while the rest is read.
+    let files = [];
+    try {
+      files = snapshotTransportFiles(artifactDirectory, scratch, io.fs);
+    } catch (error) {
+      problems.push(`${artifactDirectory} cannot be read for the patch and bundle files of create_pull_request: ${gitMessage(error)}`);
+    }
+
+    const protectedPaths = new Map();
+    const observed = [];
+    const flag = (entry, place) => protectedPaths.set(entry, [...new Set([...(protectedPaths.get(entry) ?? []), place])]);
+    // What a revision (a commit, or the tree that a patch produces) changes against the base commit is read from the objects alone, and so is
+    // the pinned value that its registry holds, in the scratch repository, which reads the objects of the checkout and of the files.
+    const examine = (revision, place) => {
+      try {
+        for (const entry of committedPaths(objects, baseSha, revision)) if (isProtectedPath(entry)) flag(entry, place);
+      } catch (error) {
+        problems.push(`what ${place} changes against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
+      }
+      observed.push([place, pinnedValueIn(objects, revision)]);
+    };
+
+    examine(headSha, "the HEAD commit");
+    try {
+      const names = refsByCommit(refs);
+      const ahead = commitsAhead(objects, baseSha);
+      if (ahead.length > COMMIT_LIMIT) {
+        problems.push(`${ahead.length} commits of the target checkout are not reachable from the base commit ${short}; more than ${COMMIT_LIMIT} are not read one by one, so they cannot be inspected`);
+      } else {
+        const branches = new Set(branchTips(refs).values());
+        for (const commit of ahead) {
+          counts.commits += 1;
+          const place = describeCommit(commit, headSha, names);
+          if (commit !== headSha) examine(commit, place);
+          if (commit === headSha || branches.has(commit)) subjects.push({ place, read: labFilesOf(objects, commit) });
+        }
+      }
+    } catch (error) {
+      problems.push(`the commits of the target checkout that are not reachable from the base commit ${short} cannot be listed: ${gitMessage(error)}`);
+    }
+    try {
+      for (const entry of indexPaths(scratch, baseSha, io.fs)) if (isProtectedPath(entry)) flag(entry, "the index");
+    } catch (error) {
+      problems.push(`the changes of the index against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
+    }
+    try {
+      for (const entry of workTreePaths(scratch, baseSha)) if (isProtectedPath(entry)) flag(entry, "the working tree");
+    } catch (error) {
+      problems.push(`the changes of the working tree against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
+    }
+    // The pinned value is read where the pull request gets it, in the commits, and where the validator already looks at everything else, the
+    // working tree. A registry that is missing from the working tree is reported by the caller, so only the commits are read then.
+    if (headRegistry !== null) observed.push(["the working tree", pinnedValueOf(headRegistry)]);
+
+    for (const entry of files) {
+      try {
+        if (entry.error !== undefined) throw entry.error;
+        if (entry.kind === "patch") {
+          counts.patches += 1;
+          for (const { position, count, tree } of patchTrees(scratch, { file: entry.file, baseSha, fs: io.fs })) {
+            const place = `${entry.name} (patch ${position} of ${count})`;
+            examine(tree, place);
+            if (position === count) subjects.push({ place, read: labFilesOf(objects, tree) });
+          }
+        } else {
+          counts.bundles += 1;
+          const { tips, commits } = bundleCommits(scratch, { file: entry.file, baseSha, fs: io.fs });
+          if (commits.length > COMMIT_LIMIT) throw new Error(`it carries ${commits.length} commits beyond the base commit; more than ${COMMIT_LIMIT} are not read one by one`);
+          for (const commit of commits) {
+            const place = `${entry.name} (commit ${commit.slice(0, 12)})`;
+            examine(commit, place);
+            if (tips.includes(commit)) subjects.push({ place, read: labFilesOf(objects, commit) });
           }
         }
-      } finally {
-        scratch.dispose();
+      } catch (error) {
+        problems.push(`${entry.name} cannot be inspected: ${gitMessage(error)}`);
       }
     }
-  }
 
-  for (const entry of [...protectedPaths.keys()].sort()) {
-    problems.push(`${entry} differs from the base commit ${short}; nothing under .github/workflows/ may be edited, recompiled or deleted (in ${joinPlaces(protectedPaths.get(entry))})`);
+    for (const entry of [...protectedPaths.keys()].sort()) {
+      problems.push(`${entry} differs from the base commit ${short}; nothing under .github/workflows/ may be edited, recompiled or deleted (in ${joinPlaces(protectedPaths.get(entry))})`);
+    }
+    const baseValue = pinnedValueIn(objects, baseSha);
+    const changedTo = new Map();
+    for (const [place, value] of observed) if (value !== baseValue) changedTo.set(value, [...new Set([...(changedTo.get(value) ?? []), place])]);
+    const shown = (value) => (value === null ? "(absent)" : `'${value}'`);
+    for (const [value, places] of changedTo) problems.push(`${PINNED_KEY} changed from ${shown(baseValue)} to ${shown(value)}; it is report-only (in ${joinPlaces(places)})`);
+    return { problems, subjects, counts };
+  } finally {
+    scratch.dispose();
   }
-  const baseValue = pinnedValueIn(options, baseSha);
-  const changedTo = new Map();
-  for (const [place, value] of observed) if (value !== baseValue) changedTo.set(value, [...new Set([...(changedTo.get(value) ?? []), place])]);
-  const shown = (value) => (value === null ? "(absent)" : `'${value}'`);
-  for (const [value, places] of changedTo) problems.push(`${PINNED_KEY} changed from ${shown(baseValue)} to ${shown(value)}; it is report-only (in ${joinPlaces(places)})`);
-  return { problems, subjects, counts };
 }
 
 /**
