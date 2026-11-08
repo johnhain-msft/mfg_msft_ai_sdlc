@@ -336,6 +336,7 @@ jobs:
           repositories: ${{ github.event.repository.name }},portfolio
           permission-contents: read
           permission-pull-requests: read
+          permission-variables: write
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.app_token.outputs.token }}
@@ -387,6 +388,7 @@ jobs:
           repositories: ${{ github.event.repository.name }},portfolio
           permission-contents: read
           permission-pull-requests: read
+          permission-variables: write
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.app_token.outputs.token }}

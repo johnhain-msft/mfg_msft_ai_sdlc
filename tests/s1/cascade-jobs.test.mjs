@@ -46,6 +46,7 @@ test("AC35: in both jobs the first step mints the App token, the second checks o
         repositories: "${{ github.event.repository.name }},portfolio",
         "permission-contents": "read",
         "permission-pull-requests": "read",
+        "permission-variables": "write",
       });
       assert.equal(checkout.uses, "actions/checkout@v4");
       assert.deepEqual(checkout.with, { token: TOKEN, "sparse-checkout": "src\nschemas", "persist-credentials": false });

@@ -176,7 +176,7 @@ function cascadeWithoutRouter() {
   return withFrontmatter(files, CASCADE, (fm) => delete fm["safe-outputs"]["github-app"]);
 }
 
-test("AC16: the app_token step of the cascade jobs needs variables: write, contents: read and pull-requests: read", () => {
+test("AC16: the app_token step of the cascade jobs requests variables: write, contents: read and pull-requests: read, and the grant must cover them", () => {
   const files = cascadeWithoutRouter();
   const frontmatter = parseWorkflow(files.get(CASCADE)).frontmatter;
   for (const job of ["finalize_poll_state", "escalate_failure"]) {
@@ -184,6 +184,8 @@ test("AC16: the app_token step of the cascade jobs needs variables: write, conte
     assert.equal(step.uses, "actions/create-github-app-token@v2");
     assert.equal(step.with["permission-contents"], "read");
     assert.equal(step.with["permission-pull-requests"], "read");
+    // an explicit permission-* input disables the inheritance of the installation's permissions, so the token holds variables: write only because the step asks for it
+    assert.equal(step.with["permission-variables"], "write", `${job}: the Variables write permission is requested explicitly`);
   }
   const granted = (permissions) => withRequest({ securityBaseline: { ...request.securityBaseline, grantedAppPermissions: permissions } });
   const messages = (permissions) =>
