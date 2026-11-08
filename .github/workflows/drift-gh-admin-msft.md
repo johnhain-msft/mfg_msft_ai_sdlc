@@ -37,6 +37,8 @@ checkout:
     github-app:
       client-id: ${{ vars.APP_CLIENT_ID }}
       private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      repositories:
+        - gh-admin-msft
 mcp-servers:
   context7:
     args:
@@ -91,6 +93,9 @@ safe-outputs:
   github-app:
     client-id: ${{ vars.APP_CLIENT_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
+    repositories:
+      - ${{ github.event.repository.name }}
+      - gh-admin-msft
   threat-detection:
     continue-on-error: false
   create-pull-request:
