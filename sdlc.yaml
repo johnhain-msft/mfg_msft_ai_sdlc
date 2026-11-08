@@ -30,8 +30,23 @@ projects:
           - url: https://github.blog/changelog/
             label: GitHub changelog
             kind: changelog
+          - url: https://github.blog/changelog/label/enterprise/
+            label: GitHub Enterprise changelog
+            kind: changelog
           - url: https://docs.github.com/en/enterprise-cloud@latest/admin
             label: GitHub Enterprise Cloud administration documentation
+            kind: docs
+          - url: https://docs.github.com/en/enterprise-cloud@latest/billing
+            label: GitHub Enterprise Cloud billing and licensing documentation
+            kind: docs
+          - url: https://docs.github.com/en/enterprise-cloud@latest/copilot
+            label: GitHub Copilot Enterprise documentation
+            kind: docs
+          - url: https://docs.github.com/en/enterprise-cloud@latest/code-security
+            label: GitHub Secret Protection and Code Security documentation
+            kind: docs
+          - url: https://docs.github.com/en/enterprise-cloud@latest/actions
+            label: GitHub Actions Enterprise documentation
             kind: docs
         packageManifests:
           - package.json
