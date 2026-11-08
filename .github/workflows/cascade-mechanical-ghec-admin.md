@@ -195,6 +195,7 @@ safe-outputs:
       policy: blocked
       exclude: []
     max: 1
+    max-patch-size: 10240
 tools:
   bash:
     - cat
