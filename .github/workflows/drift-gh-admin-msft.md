@@ -67,6 +67,9 @@ pre-agent-steps:
     env:
       CONFIGURED_TARGET_REPO: johnhain-msft/gh-admin-msft
     run: node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs" --out /tmp/gh-aw/agent --project gh-admin-msft --checkout gh-admin-msft
+  - name: Install target checkout dependencies for in-sandbox validation
+    working-directory: gh-admin-msft
+    run: npm ci --ignore-scripts
 post-steps:
   - name: npm ci
     run: npm ci
