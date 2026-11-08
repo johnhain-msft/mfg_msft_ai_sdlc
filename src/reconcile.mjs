@@ -1341,6 +1341,9 @@ function pollStateEnv(edge, kind) {
   return env;
 }
 
+// An actions/create-github-app-token step that sets any permission-* input requests exactly those permissions and inherits nothing from the
+// installation (getPermissionsFromInputs returns undefined, which means "inherit", only when no such input is set), so the token that S3's
+// script reads from GH_TOKEN carries variables: write (the SDLC_SYNC_STATE_<SLUG> read and write, SPEC-03 AC12) only because the step names it.
 function appTokenStep(ctx, edge) {
   return {
     id: "app_token",
@@ -1352,6 +1355,7 @@ function appTokenStep(ctx, edge) {
       repositories: expr("github.event.repository.name") + "," + downstreamName(edge),
       "permission-contents": "read",
       "permission-pull-requests": "read",
+      "permission-variables": "write",
     },
   };
 }
@@ -1372,9 +1376,6 @@ function cascadeJobs(ctx, edge) {
   const mechanical = edge.mode === "mechanical";
   const slugArgs = mechanical
     ? `--slug ${shArg(edge.upstreamSlug)} --branch ${shArg(edge.branchName)} --provenance-file ${shArg(edge.provenanceFile)}`
-// An actions/create-github-app-token step that sets any permission-* input requests exactly those permissions and inherits nothing from the
-// installation (getPermissionsFromInputs returns undefined, which means "inherit", only when no such input is set), so the token that S3's
-// script reads from GH_TOKEN carries variables: write (the SDLC_SYNC_STATE_<SLUG> read and write, SPEC-03 AC12) only because the step names it.
     : '--slug "$REPO_SLUG" --branch "$BRANCH_NAME" --provenance-file "$PROVENANCE_FILE"';
   const finalize = {
     needs: ["agent", "detection", "safe_outputs"],
@@ -1386,7 +1387,6 @@ function cascadeJobs(ctx, edge) {
         uses: "actions/download-artifact@v4",
         with: { name: "sdlc-cascade-shas-" + expr("github.run_id"), path: "/tmp/gh-aw" },
       },
-      "permission-variables": "write",
       {
         name: "Export the base and head revisions",
         run: [
@@ -1824,6 +1824,36 @@ function requestedAppPermissions(file, kind, fm, parsed) {
   return needs;
 }
 
+/**
+ * An actions/create-github-app-token step that sets any permission-* input requests exactly those permissions and inherits nothing from the
+ * installation. A job that runs the poll-state script therefore has to name what the script needs, because the token cannot hold more than
+ * the step asks for: variables: write for the SDLC_SYNC_STATE_<SLUG> variable (SPEC-03 AC12), and contents: read and pull-requests: read for the
+ * downstream reads of AC48. A step that names no permission inherits all of the installation's, which securityBaseline already caps.
+ * @returns {string[]} one message per permission that a token step of such a job leaves out
+ */
+function appTokenShapeProblems(fm) {
+  const messages = [];
+  if (!isObj(fm.jobs)) return messages;
+  for (const [name, job] of Object.entries(fm.jobs)) {
+    if (!isObj(job) || !Array.isArray(job.steps)) continue;
+    if (!job.steps.some((step) => isObj(step) && typeof step.run === "string" && step.run.includes("update-poll-state.mjs"))) continue;
+    for (const step of job.steps) {
+      if (!isObj(step) || typeof step.uses !== "string" || !step.uses.startsWith("actions/create-github-app-token")) continue;
+      const explicit = new Map();
+      for (const [key, level] of Object.entries(isObj(step.with) ? step.with : {})) {
+        if (key.startsWith("permission-") && permissionRank[level] !== undefined) explicit.set(permissionKey(key.slice("permission-".length)), level);
+      }
+      if (explicit.size === 0) continue;
+      for (const [key, level] of [["variables", "write"], ["contents", "read"], ["pull_requests", "read"]]) {
+        if ((permissionRank[explicit.get(key)] ?? 0) < permissionRank[level]) {
+          messages.push(`job '${name}' runs update-poll-state.mjs, but its app token step names explicit permissions without '${key.replace(/_/g, "-")}: ${level}', so the token it mints cannot hold it`);
+        }
+      }
+    }
+  }
+  return messages;
+}
+
 function importsOf(fm) {
   if (!Array.isArray(fm.imports)) return [];
   return fm.imports.map((item) => (typeof item === "string" ? item : isObj(item) ? item.uses ?? item.path : null)).filter((item) => typeof item === "string");
@@ -1856,36 +1886,6 @@ export function checkRendered(files, request, manifest) {
     for (const phrase of STATE_WRITE_PHRASES) {
       if (text.includes(phrase) && file.startsWith(`${WORKFLOWS_DIR}/`) && !file.endsWith(".lock.yml")) {
         add(file, "variable-write-forbidden", `${file} contains '${phrase}'; only the poll-state script may touch the state variables`);
-/**
- * An actions/create-github-app-token step that sets any permission-* input requests exactly those permissions and inherits nothing from the
- * installation. A job that runs the poll-state script therefore has to name what the script needs, because the token cannot hold more than
- * the step asks for: variables: write for the SDLC_SYNC_STATE_<SLUG> variable (SPEC-03 AC12), and contents: read and pull-requests: read for the
- * downstream reads of AC48. A step that names no permission inherits all of the installation's, which securityBaseline already caps.
- * @returns {string[]} one message per permission that a token step of such a job leaves out
- */
-function appTokenShapeProblems(fm) {
-  const messages = [];
-  if (!isObj(fm.jobs)) return messages;
-  for (const [name, job] of Object.entries(fm.jobs)) {
-    if (!isObj(job) || !Array.isArray(job.steps)) continue;
-    if (!job.steps.some((step) => isObj(step) && typeof step.run === "string" && step.run.includes("update-poll-state.mjs"))) continue;
-    for (const step of job.steps) {
-      if (!isObj(step) || typeof step.uses !== "string" || !step.uses.startsWith("actions/create-github-app-token")) continue;
-      const explicit = new Map();
-      for (const [key, level] of Object.entries(isObj(step.with) ? step.with : {})) {
-        if (key.startsWith("permission-") && permissionRank[level] !== undefined) explicit.set(permissionKey(key.slice("permission-".length)), level);
-      }
-      if (explicit.size === 0) continue;
-      for (const [key, level] of [["variables", "write"], ["contents", "read"], ["pull_requests", "read"]]) {
-        if ((permissionRank[explicit.get(key)] ?? 0) < permissionRank[level]) {
-          messages.push(`job '${name}' runs update-poll-state.mjs, but its app token step names explicit permissions without '${key.replace(/_/g, "-")}: ${level}', so the token it mints cannot hold it`);
-        }
-      }
-    }
-  }
-  return messages;
-}
-
       }
     }
     if (base === "aw.json" && file.startsWith(`${WORKFLOWS_DIR}/`)) {
@@ -2015,6 +2015,7 @@ function appTokenShapeProblems(fm) {
       if (!entries.has(target)) add(file, "import-unresolved", `${file} imports '${item}', which is not a rendered file`);
     }
     needs.push(...requestedAppPermissions(file, "workflow", fm, null));
+    for (const message of appTokenShapeProblems(fm)) add(file, "app-token-permission-missing", `${file} ${message}`);
   }
 
   if (isObj(manifest) && Array.isArray(manifest.dependencyEdges)) {
@@ -2047,7 +2048,6 @@ function appTokenShapeProblems(fm) {
 // ---------------------------------------------------------------------------------------
 // Fleet preparation: validate, render, check
 // ---------------------------------------------------------------------------------------
-    for (const message of appTokenShapeProblems(fm)) add(file, "app-token-permission-missing", `${file} ${message}`);
 
 function failureResult(validationResults) {
   return { status: "error", generatedWorkflows: [], repoConfigPath: REPO_CONFIG_PATH, validationResults };
