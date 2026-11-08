@@ -198,12 +198,15 @@ safe-outputs:
 tools:
   bash:
     - cat
+    - cd
     - date
+    - echo
     - find
     - git
     - grep
     - head
     - ls
+    - node
     - npm
     - tail
     - wc

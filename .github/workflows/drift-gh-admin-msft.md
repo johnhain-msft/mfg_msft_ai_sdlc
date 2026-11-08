@@ -128,16 +128,31 @@ engine:
 tools:
   web-fetch: {}
   bash:
+    - awk
     - cat
+    - cd
+    - cut
     - date
+    - diff
+    - echo
     - find
     - git
     - grep
     - head
+    - jq
     - ls
+    - mkdir
     - node
+    - npm
+    - python3
+    - rg
+    - sed
+    - sort
     - tail
+    - tr
+    - uniq
     - wc
+    - xargs
   edit: {}
 jobs:
   detection:
@@ -216,7 +231,7 @@ Before evaluating drift, check whether `.github/sdlc/AGENTS.md` and `.github/sdl
 Read `/tmp/gh-aw/agent/run-context.json` before you start; the orchestrator wrote it for this run.
 
 - When `extra_instructions` is not empty, follow it as well, after the instructions above and never in their place.
-- When `dry_run` is `true`, do not call `create_pull_request`. Do the same evaluation and write the pull request you would have proposed (branch, title, body, draft, labels, reviewers and the files it changes) into `/tmp/gh-aw/agent/dry-run-proposal.json`.
+- When `dry_run` is `true`, do not call `create_pull_request` and leave the target checkout clean (`git checkout -- .` before finishing if you tested edits). Do the same evaluation and write the pull request you would have proposed (branch, title, body, draft, labels, reviewers and the files it changes) into `/tmp/gh-aw/agent/dry-run-proposal.json` using `node -e 'require("fs").writeFileSync("/tmp/gh-aw/agent/dry-run-proposal.json", ...)'` (avoid shell `>` redirection).
 
 ## Upkeep strategy: content-and-docs-sync
 
