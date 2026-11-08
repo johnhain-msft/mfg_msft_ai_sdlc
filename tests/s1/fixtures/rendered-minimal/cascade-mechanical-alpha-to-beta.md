@@ -230,6 +230,7 @@ jobs:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           ISSUES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+          CORRELATION_ID: ${{ inputs.correlation_id }}
           UPSTREAM_ETAG: ${{ inputs.upstream_etag }}
         run: node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --slug ALPHA_SERVICE --branch sdlc/cascade-alpha-to-beta --provenance-file docs/source.json --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG"
   escalate_failure:
@@ -266,6 +267,7 @@ jobs:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           ISSUES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+          CORRELATION_ID: ${{ inputs.correlation_id }}
         run: node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --record-failure --slug ALPHA_SERVICE --target-sha "$UPSTREAM_SHA" --workflow-id cascade-mechanical-alpha-to-beta
 ---
 

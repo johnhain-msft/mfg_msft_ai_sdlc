@@ -8,7 +8,8 @@
 // set` nor the PATCH-then-POST of gh-aw is adopted. A value above the 48 KB limit is refused before any request, and a write is made only when it
 // changes a field other than updatedAt.
 //
-// As a command it runs in the custom jobs of a cascade workflow, after safe_outputs, with the App installation token of the job in GH_TOKEN.
+// As a command it runs in the custom jobs of a cascade workflow, after safe_outputs, with the App installation token of the job in GH_TOKEN. The step also hands
+// it the correlation id of the routed event, the `correlation_id` input of the dispatch, in CORRELATION_ID, and the failure issue names that id (AC52).
 //
 //   success path (finalize_poll_state): all seven flags are required
 //     node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --slug S --branch B --provenance-file F --base-sha X --head-sha Y --target-sha T --etag E
@@ -28,7 +29,7 @@
 
 import { parseFlags, UsageError } from "./drift/lib/args.mjs";
 import { resolveIo, runAsMain, workspaceOf } from "./drift/lib/cli.mjs";
-import { runCorrelationId } from "./drift/lib/correlation.mjs";
+import { CORRELATION_ID as CORRELATION_ID_SHAPE, runCorrelationId } from "./drift/lib/correlation.mjs";
 import { cascadeWorkflowId, findEdgeBySlug, resolveJsonPointer, splitSlug } from "./routing/edges.mjs";
 import { composeFailureBody, composeFailureComment, failureTitle, upsertFailureIssue } from "./routing/failure-issue.mjs";
 import { createRedactor, secretsOfEnvironment } from "./routing/redact.mjs";
@@ -200,6 +201,21 @@ const runUrlOf = (io) => {
   return `${server.replace(/\/+$/, "")}/${repo}/actions/runs/${run}`;
 };
 
+/**
+ * The correlation id that the failure issue names (SPEC-03 AC52): the one that the router generated for the event, which reaches this script as the
+ * `correlation_id` input of the dispatch that the step binds to CORRELATION_ID. This is another run than the router's, so the id that its own run implies
+ * (`run-<run id>-<attempt>`) is only the fallback, for a dispatch that carried none (a manual one) and for one that carried an id that cannot be one: what a
+ * person typed into the input never reaches the table of an issue, the failure is still recorded, and the log says that the value was not used (not what it was).
+ */
+function correlationIdOf(io, log) {
+  const given = String(io.env.CORRELATION_ID ?? "").trim();
+  if (given !== "") {
+    if (CORRELATION_ID_SHAPE.test(given)) return given;
+    log("CORRELATION_ID is not a correlation id (1 to 128 characters of letters, digits and . _ : / + = -, starting with a letter or a digit), so the id of this run is used instead");
+  }
+  return runCorrelationId(io.env) ?? "";
+}
+
 /** Opens or updates the deduplicated issue; returns an error message, or null when it was written. */
 async function reportFailureIssue({ io, central, edge, workflowId, targetSha, reason, log }) {
   const token = String(io.env.ISSUES_TOKEN ?? "").trim();
@@ -218,7 +234,7 @@ async function reportFailureIssue({ io, central, edge, workflowId, targetSha, re
     const input = {
       workflowId,
       subject: edge.downstreamRepo,
-      correlationId: runCorrelationId(io.env) ?? "",
+      correlationId: correlationIdOf(io, log),
       targetSha,
       reason,
       runUrl: runUrlOf(io),

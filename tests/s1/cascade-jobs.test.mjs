@@ -118,6 +118,7 @@ test("AC36: the update step carries if, GH_TOKEN, ISSUES_TOKEN and the revisions
     assert.equal(step.env.ISSUES_TOKEN, "${{ secrets.GITHUB_TOKEN }}", id);
     assert.equal(step.env.UPSTREAM_SHA, "${{ inputs.upstream_sha }}", id);
     assert.equal(step.env.UPSTREAM_ETAG, "${{ inputs.upstream_etag }}", id);
+    assert.equal(step.env.CORRELATION_ID, "${{ inputs.correlation_id }}", `${id}: the failure issue of the script names the id of the routed event (SPEC-03 AC52)`);
     assert.ok(step.run.startsWith('node "$GITHUB_WORKSPACE/src/update-poll-state.mjs"'), id);
     for (const flag of SEVEN_FLAGS) assert.ok(step.run.includes(flag), `${id}: ${flag}`);
     assert.ok(step.run.includes('--base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG"'), id);
@@ -154,6 +155,7 @@ test("AC36: escalate_failure passes --record-failure, the slug, --target-sha and
     assert.equal(step.if, "inputs.dry_run != 'true'");
     assert.equal(step.env.GH_TOKEN, TOKEN);
     assert.equal(step.env.ISSUES_TOKEN, "${{ secrets.GITHUB_TOKEN }}");
+    assert.equal(step.env.CORRELATION_ID, "${{ inputs.correlation_id }}", `${id}: the failure issue of the script names the id of the routed event (SPEC-03 AC52)`);
     assert.ok(step.run.includes("--record-failure"), id);
     assert.ok(step.run.includes(edge.mode === "mechanical" ? edge.upstreamSlug : '"$REPO_SLUG"'), `${id}: the slug`);
     assert.ok(step.run.includes('--target-sha "$UPSTREAM_SHA"'), id);

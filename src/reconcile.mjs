@@ -1362,6 +1362,9 @@ function pollStateEnv(edge, kind) {
     GH_TOKEN: expr("steps.app_token.outputs.token"),
     ISSUES_TOKEN: expr("secrets.GITHUB_TOKEN"),
     UPSTREAM_SHA: expr("inputs.upstream_sha"),
+    // the id that the router generated for the event and dispatched as correlation_id: the script writes it into the [sdlc-failure] issue (SPEC-03 AC52),
+    // because this job is a run of its own whose run id is not the event's
+    CORRELATION_ID: expr("inputs.correlation_id"),
   };
   if (kind === "finalize") env.UPSTREAM_ETAG = expr("inputs.upstream_etag");
   if (edge.mode === "ai-adaptation") {

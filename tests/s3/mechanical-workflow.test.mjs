@@ -159,6 +159,8 @@ test("AC46 AC59 finalize_poll_state: token, sparse checkout of src and schemas, 
     GH_TOKEN: "${{ steps.app_token.outputs.token }}",
     ISSUES_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
     UPSTREAM_SHA: "${{ inputs.upstream_sha }}",
+    // the id that the router generated for the event (AC52), so that the failure issue of this run names it (tests/s3/correlation-id.test.mjs runs the chain)
+    CORRELATION_ID: "${{ inputs.correlation_id }}",
     UPSTREAM_ETAG: "${{ inputs.upstream_etag }}",
   });
   assert.equal(script.run, FINALIZE_RUN);
@@ -178,6 +180,7 @@ test("AC46 AC59 the compiled finalize_poll_state keeps the order, names the Vari
   const script = runStepsOf(steps).find((step) => step.run.includes("update-poll-state.mjs"));
   assert.equal(script.run, FINALIZE_RUN);
   assert.equal(script.if, "inputs.dry_run != 'true'");
+  assert.equal(script.env.CORRELATION_ID, "${{ inputs.correlation_id }}", "the compiled step hands the script the id of the routed event");
   assert.equal(steps.indexOf(script) > steps.findIndex((step) => String(step.uses).startsWith("actions/download-artifact")), true);
 });
 
@@ -193,6 +196,7 @@ test("AC49 AC63 escalate_failure: token, checkout, npm ci, then the --record-fai
   assert.equal(record.env.GH_TOKEN, "${{ steps.app_token.outputs.token }}");
   assert.equal(record.env.ISSUES_TOKEN, "${{ secrets.GITHUB_TOKEN }}");
   assert.equal(record.env.UPSTREAM_SHA, "${{ inputs.upstream_sha }}");
+  assert.equal(record.env.CORRELATION_ID, "${{ inputs.correlation_id }}", "the failure issue names the id of the routed event (AC52)");
   assert.equal(record.run, FAILURE_RUN);
 
   const compiled = authoredSteps(lock.jobs.escalate_failure);
@@ -200,6 +204,7 @@ test("AC49 AC63 escalate_failure: token, checkout, npm ci, then the --record-fai
   assert.equal(compiled[1].with["sparse-checkout"], "src\nschemas");
   assert.equal(compiled[2].run, "npm ci --ignore-scripts");
   assert.equal(compiled[3].run, FAILURE_RUN);
+  assert.equal(compiled[3].env.CORRELATION_ID, "${{ inputs.correlation_id }}");
   assert.equal(lock.jobs.escalate_failure.permissions.issues, "write");
 });
 

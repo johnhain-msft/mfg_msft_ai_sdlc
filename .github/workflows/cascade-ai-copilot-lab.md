@@ -364,6 +364,7 @@ jobs:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           ISSUES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+          CORRELATION_ID: ${{ inputs.correlation_id }}
           UPSTREAM_ETAG: ${{ inputs.upstream_etag }}
           REPO_SLUG: COPILOT_LAB
           BRANCH_NAME: sdlc/cascade-copilot-lab
@@ -403,6 +404,7 @@ jobs:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           ISSUES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+          CORRELATION_ID: ${{ inputs.correlation_id }}
           REPO_SLUG: COPILOT_LAB
           BRANCH_NAME: sdlc/cascade-copilot-lab
         run: node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --record-failure --slug "$REPO_SLUG" --target-sha "$UPSTREAM_SHA" --workflow-id cascade-ai-copilot-lab

@@ -339,6 +339,7 @@ jobs:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           ISSUES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+          CORRELATION_ID: ${{ inputs.correlation_id }}
           UPSTREAM_ETAG: ${{ inputs.upstream_etag }}
           REPO_SLUG: GITHUB_INTERMEDIATE
           BRANCH_NAME: sdlc/cascade-github-intermediate
@@ -378,6 +379,7 @@ jobs:
           GH_TOKEN: ${{ steps.app_token.outputs.token }}
           ISSUES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_SHA: ${{ inputs.upstream_sha }}
+          CORRELATION_ID: ${{ inputs.correlation_id }}
           REPO_SLUG: GITHUB_INTERMEDIATE
           BRANCH_NAME: sdlc/cascade-github-intermediate
         run: node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --record-failure --slug "$REPO_SLUG" --target-sha "$UPSTREAM_SHA" --workflow-id cascade-ai-github-intermediate

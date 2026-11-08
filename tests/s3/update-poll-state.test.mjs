@@ -271,7 +271,7 @@ test("AC49 --record-failure ignores the success flags when they are also passed,
   }
 });
 
-test("AC49 the issue of the failure path names the workflow and the downstream repository, carries the correlation id of the run and is opened once", async (t) => {
+test("AC49 the issue of the failure path names the workflow and the downstream repository, carries the correlation id of the run when the dispatch gave none (tests/s3/correlation-id.test.mjs: the id of the dispatch when it did) and is opened once", async (t) => {
   const w = world({ edgeValue: mechanicalEdge() });
   t.after(() => w.workspace.cleanup());
   const argv = ["--record-failure", "--slug", "GADGETS", "--target-sha", TARGET, "--workflow-id", "cascade-mechanical-gadgets-to-portal"];
