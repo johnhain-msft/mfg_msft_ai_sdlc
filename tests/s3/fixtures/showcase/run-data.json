@@ -1,0 +1,10 @@
+{
+  "snapshotAt": "2026-11-01T00:00:00.000Z",
+  "repo": { "fullName": "initech/showcase", "visibility": "public", "template": true },
+  "gate": { "legs": ["lint", "unit", "build"] },
+  "scorecard": { "score": 7.4 },
+  "runs": [
+    { "key": "ci", "id": 39781079785, "conclusion": "success" },
+    { "key": "cd", "id": 39443641702, "conclusion": "success" }
+  ]
+}
