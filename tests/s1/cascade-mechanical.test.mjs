@@ -107,18 +107,23 @@ test("AC32: the first post-step records the revisions in one shell, writes casca
   assert.ok(run.includes("^[0-9a-f]{40}$"), "a damaged base-sha.txt cannot add a line to GITHUB_ENV");
 });
 
-test("AC32: then the artifact upload, the clean-tree check, the changed-paths check, buildCommands and verifyCommands, in that order", () => {
+test("AC32: then the artifact upload, the clean-tree check, the changed-paths check, the import check, buildCommands and verifyCommands, in that order", () => {
   const steps = frontmatter["post-steps"];
   assert.equal(steps[1].uses, "actions/upload-artifact@v4");
   assert.equal(steps[1].with.name, "sdlc-cascade-shas-${{ github.run_id }}");
   assert.equal(steps[1].with.path, "/tmp/gh-aw/cascade-shas.json");
   assert.ok(steps[2].run.includes('git -C "$GITHUB_WORKSPACE/portfolio" status --porcelain'));
   assert.ok(steps[2].run.includes("exit 1"), "a dirty tree fails the step");
-  assert.ok(steps[3].run.includes('git -C "$GITHUB_WORKSPACE/portfolio" diff --name-only "$BASE_SHA" HEAD'));
+  assert.ok(steps[3].run.includes('git -C "$GITHUB_WORKSPACE/portfolio" diff --name-only --no-renames "$BASE_SHA" HEAD'), "renames are not detected, so that the deletion of a file outside the allowed files cannot hide behind the move of it into them");
   assert.ok(steps[3].run.includes("allowed='^(public/ghec-admin/.*)$'"), "only paths covered by allowedFiles pass: the entry's `**` is `.*`");
   assert.equal(/\bcase\b/.test(steps[3].run), false, "no shell case pattern, whose `*` would also cross directories");
-  assert.deepEqual(steps.slice(4).map((step) => step.run), [...edge.buildCommands, ...edge.verifyCommands]);
-  for (const step of steps.slice(4)) {
+  // the importer throws before its first write, so a failed import leaves a clean tree and no commit: the check that comes next is what fails the job (SPEC-03 AC62)
+  assert.equal(steps[4].name, "Verify the import recorded the upstream revision");
+  assert.deepEqual(steps[4].env, { PROVENANCE_FILE: edge.provenanceFile, PROVENANCE_POINTER: edge.provenanceJsonPointer }, "the edge's data reaches the script through the environment, never through its text");
+  assert.equal(steps[4].run.includes(edge.provenanceFile), false);
+  assert.ok(steps[4].run.includes("process.env.UPSTREAM_SHA"));
+  assert.deepEqual(steps.slice(5).map((step) => step.run), [...edge.buildCommands, ...edge.verifyCommands]);
+  for (const step of steps.slice(5)) {
     assert.equal(step["working-directory"], "portfolio");
     assert.equal("continue-on-error" in step, false);
     assert.equal("if" in step, false);

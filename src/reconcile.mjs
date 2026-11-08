@@ -1208,7 +1208,9 @@ function allowedPathsStep(edge) {
     name: "Verify changed paths are covered by the allowed files",
     run: [
       "set -euo pipefail",
-      `changed="$(git -C "$GITHUB_WORKSPACE/${down}" diff --name-only "$BASE_SHA" HEAD)"`,
+      // --no-renames: with rename detection (git's default) a file moved from outside the allowed files into them is listed by its destination only,
+      // and the deletion of its source would go unseen
+      `changed="$(git -C "$GITHUB_WORKSPACE/${down}" diff --name-only --no-renames "$BASE_SHA" HEAD)"`,
       `allowed=${shArg(allowed)}`,
       "bad=0",
       "while IFS= read -r file; do",
@@ -1216,6 +1218,35 @@ function allowedPathsStep(edge) {
       '  [[ "$file" =~ $allowed ]] || { echo "path outside the allowed files: $file" >&2; bad=1; }',
       'done <<< "$changed"',
       'exit "$bad"',
+    ].join("\n"),
+  };
+}
+
+/**
+ * The importer is a black box that throws before its first write when it cannot import (SPEC-03 AC62, AC64), so a failed import leaves a clean worktree and no
+ * commit, which the two checks before this one accept. What a successful import always does is record the revision of the upstream checkout that it read, and the
+ * checkout is pinned to upstream_sha: the edge's provenance file, at its JSON pointer, has to name upstream_sha. The file and the pointer are data of the edge and
+ * reach the script through the environment of the step, never through its text.
+ */
+function importRecordedStep(edge) {
+  const down = downstreamName(edge);
+  return {
+    name: "Verify the import recorded the upstream revision",
+    env: { PROVENANCE_FILE: edge.provenanceFile, PROVENANCE_POINTER: edge.provenanceJsonPointer },
+    run: [
+      "set -euo pipefail",
+      "node --input-type=module -e '",
+      'import { readFileSync } from "node:fs";',
+      `const file = process.env.GITHUB_WORKSPACE + "/${down}/" + process.env.PROVENANCE_FILE;`,
+      "let value;",
+      'try { value = JSON.parse(readFileSync(file, "utf8")); }',
+      'catch { console.error("the import left no readable " + process.env.PROVENANCE_FILE); process.exit(1); }',
+      'for (const key of process.env.PROVENANCE_POINTER.split("/").slice(1).map((part) => part.replace(/~1/g, "/").replace(/~0/g, "~"))) value = value?.[key];',
+      "if (value !== process.env.UPSTREAM_SHA) {",
+      '  console.error("the import did not record " + process.env.UPSTREAM_SHA + " in " + process.env.PROVENANCE_FILE + " (it records " + JSON.stringify(value) + ")");',
+      "  process.exit(1);",
+      "}",
+      "'",
     ].join("\n"),
   };
 }
@@ -1570,6 +1601,7 @@ function renderCascade(ctx, edge) {
       uploadShasStep(),
       { name: "Verify the downstream worktree is clean", run: cleanTreeScript(`git -C "$GITHUB_WORKSPACE/${down}" status --porcelain`) },
       allowedPathsStep(edge),
+      importRecordedStep(edge),
       ...commandSteps(edge.buildCommands, down),
       ...commandSteps(edge.verifyCommands, down),
     ];

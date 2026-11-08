@@ -70,7 +70,7 @@ for (const [index, value] of TRICKY.entries()) {
     assert.deepEqual(mechanical.jobs.detection, { if: "needs.agent.result == 'success'" }, "the hostile value does not reach the guard");
     assert.deepEqual(mechanical.jobs.safe_outputs, { if: "needs.agent.result == 'success'" });
     assert.deepEqual(mechanical["safe-outputs"]["create-pull-request"].reviewers, [value]);
-    assert.equal(mechanical["post-steps"].length, 4 + 1 + 1, "four fixed steps, one build command and one verify command");
+    assert.equal(mechanical["post-steps"].length, 5 + 1 + 1, "five fixed steps, one build command and one verify command");
     assert.equal(mechanical["pre-agent-steps"].length, 1);
     for (const job of Object.values(customJobsOf(mechanical.jobs))) assert.equal(job.steps.length >= 4, true);
 

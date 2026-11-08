@@ -108,7 +108,7 @@ post-steps:
   - name: Verify changed paths are covered by the allowed files
     run: |-
       set -euo pipefail
-      changed="$(git -C "$GITHUB_WORKSPACE/beta-docs" diff --name-only "$BASE_SHA" HEAD)"
+      changed="$(git -C "$GITHUB_WORKSPACE/beta-docs" diff --name-only --no-renames "$BASE_SHA" HEAD)"
       allowed='^(docs/imported/.*)$'
       bad=0
       while IFS= read -r file; do
@@ -116,6 +116,24 @@ post-steps:
         [[ "$file" =~ $allowed ]] || { echo "path outside the allowed files: $file" >&2; bad=1; }
       done <<< "$changed"
       exit "$bad"
+  - name: Verify the import recorded the upstream revision
+    env:
+      PROVENANCE_FILE: docs/source.json
+      PROVENANCE_POINTER: /commit
+    run: |-
+      set -euo pipefail
+      node --input-type=module -e '
+      import { readFileSync } from "node:fs";
+      const file = process.env.GITHUB_WORKSPACE + "/beta-docs/" + process.env.PROVENANCE_FILE;
+      let value;
+      try { value = JSON.parse(readFileSync(file, "utf8")); }
+      catch { console.error("the import left no readable " + process.env.PROVENANCE_FILE); process.exit(1); }
+      for (const key of process.env.PROVENANCE_POINTER.split("/").slice(1).map((part) => part.replace(/~1/g, "/").replace(/~0/g, "~"))) value = value?.[key];
+      if (value !== process.env.UPSTREAM_SHA) {
+        console.error("the import did not record " + process.env.UPSTREAM_SHA + " in " + process.env.PROVENANCE_FILE + " (it records " + JSON.stringify(value) + ")");
+        process.exit(1);
+      }
+      '
   - name: npm run build
     run: npm run build
     working-directory: beta-docs
