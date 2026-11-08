@@ -1,0 +1,50 @@
+# Content registry (a synthetic fixture of the lab layout; it carries the eleven top-level keys that the validator requires).
+#
+# Rules
+#   - Keep keys stable; the audit matches on them.
+#   - Never place secrets here.
+
+schema_version: 1
+
+copilot_cli_version_floor: "1.0.82" # floor; re-check on the last_verified date
+
+# The compiler version the committed lock files were built with.
+# NOTE: this value is report-only for the orchestrator's drift workflows.
+gh_aw_schema_version: "0.86.2"
+
+mcp_protocol_spec_version: "2026-07-28"
+
+mcp_servers:
+  example-server:
+    package: "@example/server"
+    version: "1.2.3"
+    last_verified: "2026-09-01"
+    note: >-
+      A folded note that spans
+      two lines.
+
+prepared_core:
+  image: example/base@sha256:0000000000000000000000000000000000000000000000000000000000000000
+  last_verified: "2026-09-08"
+
+models:
+  default: auto
+  cheap:
+    - model-a
+    - model-b
+  standard: [model-c]
+
+model_default_availability_policy: "default-on-unless-disabled"
+
+enterprise_managed_settings:
+  settings:
+    - name: example_setting
+      lab: 11
+
+labs:
+  pace_presenter_minutes: 5
+  pace_workshop_minutes: 12
+  pace_self_minutes: 30
+
+audit:
+  draft_pr_if_changes_exceed: 10

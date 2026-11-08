@@ -1,0 +1,95 @@
+{
+  "numTotalTestSuites": 1,
+  "numPassedTestSuites": 1,
+  "numFailedTestSuites": 0,
+  "numPendingTestSuites": 0,
+  "numTotalTests": 5,
+  "numPassedTests": 5,
+  "numFailedTests": 0,
+  "numPendingTests": 0,
+  "numTodoTests": 0,
+  "snapshot": {
+    "added": 0,
+    "failure": false,
+    "filesAdded": 0,
+    "filesRemoved": 0,
+    "filesRemovedList": [],
+    "filesUnmatched": 0,
+    "filesUpdated": 0,
+    "matched": 0,
+    "total": 0,
+    "unchecked": 0,
+    "uncheckedKeysByFile": [],
+    "unmatched": 0,
+    "updated": 0,
+    "didUpdate": false
+  },
+  "startTime": 1794079454248,
+  "success": true,
+  "testResults": [
+    {
+      "assertionResults": [
+        {
+          "ancestorTitles": [
+            "the course"
+          ],
+          "fullName": "the course passes every content rule: no errors and no warnings",
+          "status": "passed",
+          "title": "passes every content rule: no errors and no warnings",
+          "duration": 1.2,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "the course"
+          ],
+          "fullName": "the course gives every teaching page a literal script, not notes",
+          "status": "passed",
+          "title": "gives every teaching page a literal script, not notes",
+          "duration": 1.2,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "the course"
+          ],
+          "fullName": "the course can be delivered in the minutes the plan gives it: speech at the app's own rate plus the live cues, on every page and in every module",
+          "status": "passed",
+          "title": "can be delivered in the minutes the plan gives it: speech at the app's own rate plus the live cues, on every page and in every module",
+          "duration": 1.2,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "the course"
+          ],
+          "fullName": "the course plans with one speaking rate: the pace band tops out at it, and the speaker view reads it from the rules instead of typing its own",
+          "status": "passed",
+          "title": "plans with one speaking rate: the pace band tops out at it, and the speaker view reads it from the rules instead of typing its own",
+          "duration": 1.2,
+          "failureMessages": [],
+          "meta": {}
+        },
+        {
+          "ancestorTitles": [
+            "provenance"
+          ],
+          "fullName": "provenance records one revision, and every artefact that names it agrees",
+          "status": "passed",
+          "title": "records one revision, and every artefact that names it agrees",
+          "duration": 1.2,
+          "failureMessages": [],
+          "meta": {}
+        }
+      ],
+      "startTime": 1794079455320,
+      "endTime": 1794079455399,
+      "status": "passed",
+      "message": "",
+      "name": "/work/portfolio/tests/copilot-workshop.test.ts"
+    }
+  ]
+}

@@ -1,0 +1,25 @@
+# Rejected: verifyCommands holds only blank strings, so nothing would verify the agent's work.
+projects:
+  - projectKey: no-verify
+    repo: acme-labs/no-verify
+    defaultBranch: main
+    driftAudit:
+      enabled: true
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: Keep the documentation current.
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls:
+          - url: https://example.org/changelog
+            label: Changelog
+            kind: changelog
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands:
+        - ""
+        - "   "
+      draft: false
+      reviewers:
+        - acme-reviewer

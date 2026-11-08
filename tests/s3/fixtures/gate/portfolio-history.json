@@ -1,0 +1,56 @@
+{
+  "description": "The downstream repository of the mechanical cascade as the gate tests of SPEC-03 AC56, AC57 and AC62 see it. A nested git repository cannot be committed to this one, so tests/s3/mechanical-gate.test.mjs materialises this recipe into real repositories (git plumbing, no network). {{PREVIOUS_SHA}} and {{UPSTREAM_SHA}} are replaced by the revisions of the dispatch. The importer's failure triggers are the throws of scripts/import-ghec-admin.mjs of the downstream, re-read for this recipe (SPEC-03 OQ1, OQ2, OQ3, AC64): every one of them is thrown before the first write to public/ghec-admin (the writes start at line 222), so a failed import leaves a clean worktree and no commit.",
+  "base": {
+    "package.json": "{}\n",
+    "src/app.ts": "export const app = 1;\n",
+    "keep.txt": "stays where it is\n",
+    "public/ghec-admin/index.json": "{\"revision\":1}\n",
+    "public/ghec-admin/source.json": "{\"commit\":\"{{PREVIOUS_SHA}}\",\"build\":\"node presentation/build.mjs\"}\n"
+  },
+  "recordedProvenance": {
+    "public/ghec-admin/source.json": "{\"commit\":\"{{UPSTREAM_SHA}}\",\"build\":\"node presentation/build.mjs\"}\n"
+  },
+  "agentCommits": {
+    "clean-import": {
+      "set": { "public/ghec-admin/index.json": "{\"revision\":2}\n" },
+      "recordsProvenance": true
+    },
+    "no-commit": { "set": {}, "recordsProvenance": false },
+    "outside-path": {
+      "set": { "src/app.ts": "export const app = 2;\n", "public/ghec-admin/index.json": "{\"revision\":2}\n" },
+      "recordsProvenance": true
+    },
+    "lookalike-directory": {
+      "set": { "public/ghec-admin-evil/index.json": "{}\n" },
+      "recordsProvenance": true
+    },
+    "lookalike-file": {
+      "set": { "public/ghec-admin.txt": "not inside the directory\n" },
+      "recordsProvenance": true
+    },
+    "move-into-allowed": {
+      "description": "keep.txt (outside the allowed paths) is moved to public/ghec-admin/keep.txt: git names only the destination of a rename unless renames are switched off",
+      "set": { "public/ghec-admin/keep.txt": "stays where it is\n" },
+      "remove": ["keep.txt"],
+      "recordsProvenance": true
+    },
+    "delete-outside": {
+      "set": { "public/ghec-admin/index.json": "{\"revision\":2}\n" },
+      "remove": ["src/app.ts"],
+      "recordsProvenance": true
+    },
+    "delete-inside": {
+      "set": {},
+      "remove": ["public/ghec-admin/index.json"],
+      "recordsProvenance": true
+    }
+  },
+  "importerFailures": [
+    { "trigger": "dirty-source-tree", "lines": "L18-L20", "stderr": "Error: Commit the workshop source changes before importing a revision-pinned build.\n" },
+    { "trigger": "unsupported-link", "lines": "L73", "stderr": "Error: Unsupported link in labs/lab02.md: ftp://example.invalid/file\n" },
+    { "trigger": "unhosted-internal-link", "lines": "L82", "stderr": "Error: Unhosted internal link in labs/lab01.md: ../notes.md\n" },
+    { "trigger": "missing-deck-data", "lines": "L161", "stderr": "Error: The Teaching SPA no longer has the expected deck-data block.\n" },
+    { "trigger": "topbar-changed", "lines": "L182", "stderr": "Error: Teaching SPA topbar changed; project navigation needs review.\n" },
+    { "trigger": "modified-generated-file", "lines": "L218", "stderr": "Error: Refusing to overwrite a modified or unmanaged generated file: labs/index.html\n" }
+  ]
+}

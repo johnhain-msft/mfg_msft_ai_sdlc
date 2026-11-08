@@ -1,0 +1,100 @@
+[
+  {
+    "workflow": "cascade-ai-copilot-lab.md",
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "compiled_file": ".github/workflows/cascade-ai-copilot-lab.lock.yml",
+    "labels": [
+      "automated",
+      "sdlc-cascade",
+      "ai-adapted",
+      "needs-review"
+    ]
+  },
+  {
+    "workflow": "cascade-ai-github-intermediate.md",
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "compiled_file": ".github/workflows/cascade-ai-github-intermediate.lock.yml",
+    "labels": [
+      "automated",
+      "sdlc-cascade",
+      "ai-adapted",
+      "needs-review"
+    ]
+  },
+  {
+    "workflow": "cascade-ai-pipeline-showcase.md",
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "compiled_file": ".github/workflows/cascade-ai-pipeline-showcase.lock.yml",
+    "labels": [
+      "automated",
+      "sdlc-cascade",
+      "ai-adapted",
+      "needs-review"
+    ]
+  },
+  {
+    "workflow": "cascade-mechanical-ghec-admin.md",
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "compiled_file": ".github/workflows/cascade-mechanical-ghec-admin.lock.yml",
+    "labels": [
+      "automated",
+      "sdlc-cascade",
+      "needs-review"
+    ]
+  },
+  {
+    "workflow": "drift-copilot-lab.md",
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "compiled_file": ".github/workflows/drift-copilot-lab.lock.yml",
+    "labels": [
+      "automated",
+      "sdlc-drift",
+      "needs-review"
+    ]
+  },
+  {
+    "workflow": "drift-gh-admin-msft.md",
+    "valid": false,
+    "errors": [
+      {
+        "type": "parse_error",
+        "message": ".github\\workflows\\drift-gh-admin-msft.md:118:1: error: strict mode: write permission 'contents: write' is not allowed for security reasons. Use 'safe-outputs.create-issue', 'safe-outputs.create-pull-request', 'safe-outputs.add-comment', or 'safe-outputs.update-issue' to perform write operations safely. See: https://github.github.com/gh-aw/reference/safe-outputs/\n115 |     auto-merge: false\n116 |     fallback-as-issue: true\n117 |     max: 1\n118 | engine:\n      ^^^^^^\n119 |   id: copilot\n120 |   copilot-sdk: true\n121 |   env:"
+      }
+    ],
+    "warnings": []
+  },
+  {
+    "workflow": "drift-self-improving-agents.md",
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "compiled_file": ".github/workflows/drift-self-improving-agents.lock.yml",
+    "labels": [
+      "automated",
+      "sdlc-drift",
+      "needs-review"
+    ]
+  },
+  {
+    "workflow": "sdlc-onboard.md",
+    "valid": true,
+    "errors": [],
+    "warnings": [],
+    "compiled_file": ".github/workflows/sdlc-onboard.lock.yml",
+    "labels": [
+      "automated",
+      "sdlc-onboard",
+      "needs-review"
+    ]
+  }
+]

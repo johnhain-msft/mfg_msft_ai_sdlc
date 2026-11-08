@@ -1,0 +1,8 @@
+{
+  "correlation_id": "bridge-run-4711-1",
+  "upstream_repo": "initech/widgets",
+  "merged_sha": "9f2c4a1",
+  "pr_number": 12,
+  "merged_at": "2026-11-05T12:00:00Z",
+  "default_branch": "trunk"
+}

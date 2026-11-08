@@ -1,0 +1,24 @@
+# Rejected (SPEC-02 AC6): the close-older-key of a drift workflow is sdlc-drift-<projectKey>, so a project without a
+# projectKey has no close-older-key and the reconciler refuses to render it.
+projects:
+  - repo: acme-labs/no-key
+    defaultBranch: main
+    driftAudit:
+      enabled: true
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: Keep the documentation current.
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls:
+          - url: https://example.org/changelog
+            label: Example changelog
+            kind: changelog
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands:
+        - npm test
+      draft: false
+      reviewers:
+        - acme-reviewer

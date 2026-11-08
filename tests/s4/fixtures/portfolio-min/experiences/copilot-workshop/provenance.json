@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/ms-mfg-community/day-in-the-life-copilot-lab",
+  "commit": "2108ac9a1e9eff96e97b500117b0de4a546768c3",
+  "documentCommit": "2108ac9a1e9eff96e97b500117b0de4a546768c3",
+  "path": "experiences/copilot-workshop",
+  "kind": "authored adaptation of the workshop at the revision above",
+  "build": "npm run build:experiences",
+  "license": "MIT",
+  "inputs": "experiences/copilot-workshop/source-inputs.json",
+  "documentRoutes": []
+}

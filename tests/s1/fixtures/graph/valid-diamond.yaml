@@ -1,0 +1,146 @@
+# Fan-out and fan-in: a -> b, a -> c, b -> d, c -> d.
+projects:
+  - projectKey: graph-node
+    repo: acme-labs/graph-node
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: 0 6 * * 1
+      upkeepStrategy: custom
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+dependencyEdges:
+  - edgeId: ab
+    upstreamRepo: acme-labs/a
+    upstreamKey: ab
+    upstreamSlug: AB
+    upstreamDefaultBranch: main
+    initialBaselineSha: "0000000000000000000000000000000000000016"
+    downstreamRepo: acme-labs/b
+    mode: mechanical
+    schedule: null
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_AB
+    provenanceFile: source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-ab
+    closeOlderKey: sdlc-cascade-ab
+    reviewers:
+      - graph-reviewer
+    importCommands:
+      - node import.mjs <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands: []
+    verifyCommands:
+      - npm test
+    adaptationInstructions: ""
+    allowedFiles:
+      - imported/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []
+  - edgeId: ac
+    upstreamRepo: acme-labs/a
+    upstreamKey: ac
+    upstreamSlug: AC
+    upstreamDefaultBranch: main
+    initialBaselineSha: "0000000000000000000000000000000000000017"
+    downstreamRepo: acme-labs/c
+    mode: mechanical
+    schedule: null
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_AC
+    provenanceFile: source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-ac
+    closeOlderKey: sdlc-cascade-ac
+    reviewers:
+      - graph-reviewer
+    importCommands:
+      - node import.mjs <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands: []
+    verifyCommands:
+      - npm test
+    adaptationInstructions: ""
+    allowedFiles:
+      - imported/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []
+  - edgeId: bd
+    upstreamRepo: acme-labs/b
+    upstreamKey: bd
+    upstreamSlug: BD
+    upstreamDefaultBranch: main
+    initialBaselineSha: "0000000000000000000000000000000000000018"
+    downstreamRepo: acme-labs/d
+    mode: mechanical
+    schedule: null
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_BD
+    provenanceFile: source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-bd
+    closeOlderKey: sdlc-cascade-bd
+    reviewers:
+      - graph-reviewer
+    importCommands:
+      - node import.mjs <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands: []
+    verifyCommands:
+      - npm test
+    adaptationInstructions: ""
+    allowedFiles:
+      - imported/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []
+  - edgeId: cd
+    upstreamRepo: acme-labs/c
+    upstreamKey: cd
+    upstreamSlug: CD
+    upstreamDefaultBranch: main
+    initialBaselineSha: "0000000000000000000000000000000000000019"
+    downstreamRepo: acme-labs/d
+    mode: mechanical
+    schedule: null
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_CD
+    provenanceFile: source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-cd
+    closeOlderKey: sdlc-cascade-cd
+    reviewers:
+      - graph-reviewer
+    importCommands:
+      - node import.mjs <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands: []
+    verifyCommands:
+      - npm test
+    adaptationInstructions: ""
+    allowedFiles:
+      - imported/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []

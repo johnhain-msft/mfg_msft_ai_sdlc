@@ -1,0 +1,131 @@
+# Fixture manifest for the S5 suites: one account (example-owner) with an upstream project, a downstream hub and an
+# upstream-only third-party project, two edges and no deconfliction. It is valid against schemas/sdlc.schema.json.
+projects:
+  - projectKey: alpha-service
+    repo: example-owner/alpha-service
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: true
+      schedule: "15 4 * * 2"
+      upkeepStrategy: dependency-and-pattern-modernization
+      instructions: Keep the service documentation and its dependency pins current.
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls:
+          - url: https://example.org/releases
+            label: Example releases
+            kind: release-notes
+        packageManifests:
+          - package.json
+        mcpServers: {}
+      buildCommands:
+        - npm run build
+      verifyCommands:
+        - npm test
+      draft: true
+      reviewers:
+        - acme-reviewer
+  - projectKey: gamma-lib
+    repo: third-party/gamma-lib
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: custom
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+  - projectKey: hub
+    repo: example-owner/hub
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: custom
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+
+dependencyEdges:
+  - edgeId: alpha-service
+    upstreamRepo: example-owner/alpha-service
+    upstreamKey: alpha-service
+    upstreamSlug: ALPHA_SERVICE
+    upstreamDefaultBranch: main
+    initialBaselineSha: 0123456789abcdef0123456789abcdef01234567
+    downstreamRepo: example-owner/hub
+    mode: mechanical
+    schedule: "0 */4 * * *"
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_ALPHA_SERVICE
+    provenanceFile: docs/source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-alpha-service
+    closeOlderKey: sdlc-cascade-alpha-service
+    reviewers:
+      - hub-reviewer
+    importCommands:
+      - node scripts/import.mjs <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands:
+      - npm run build
+    verifyCommands:
+      - npm test
+    adaptationInstructions: ""
+    allowedFiles:
+      - docs/imported/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []
+  - edgeId: gamma-lib
+    upstreamRepo: third-party/gamma-lib
+    upstreamKey: gamma-lib
+    upstreamSlug: GAMMA_LIB
+    upstreamDefaultBranch: main
+    initialBaselineSha: 89abcdef0123456789abcdef0123456789abcdef
+    downstreamRepo: example-owner/hub
+    mode: ai-adaptation
+    schedule: null
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_GAMMA_LIB
+    provenanceFile: vendor/gamma/provenance.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-gamma-lib
+    closeOlderKey: sdlc-cascade-gamma-lib
+    reviewers:
+      - hub-reviewer
+    importCommands: []
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands: []
+    verifyCommands:
+      - npm test
+    adaptationInstructions: Adapt the vendored copy to the cumulative upstream change.
+    allowedFiles:
+      - vendor/gamma/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []

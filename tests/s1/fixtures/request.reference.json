@@ -1,0 +1,24 @@
+{
+  "manifestPath": "sdlc.yaml",
+  "appSlug": "fixture-app",
+  "appClientIdVar": "APP_CLIENT_ID",
+  "appPrivateKeySecret": "APP_PRIVATE_KEY",
+  "pollStateVarPrefix": "SDLC_SYNC_STATE_",
+  "engineAuthMode": "copilot-pat",
+  "ghAwVersionPin": ">=v1.0.1",
+  "securityBaseline": {
+    "minGhAwVersion": "1.0.1",
+    "grantedAppPermissions": {
+      "contents": "write",
+      "pull_requests": "write",
+      "issues": "write",
+      "actions": "write",
+      "variables": "write",
+      "metadata": "read"
+    },
+    "requireStrictMode": true,
+    "requireThreatDetection": true,
+    "forbidAutoMerge": true
+  },
+  "dryRun": false
+}

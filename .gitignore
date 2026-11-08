@@ -1,0 +1,6 @@
+node_modules/
+
+# gh aw compile also emits maintenance workflows for cross-repository targets. They are not
+# part of the generated fleet, the reconciler removes them, and a manual compile must not
+# leave them behind as untracked changes.
+.github/workflows/agentics-maintenance*.yml

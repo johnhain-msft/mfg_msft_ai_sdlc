@@ -1,0 +1,3 @@
+# Owners: one individual and one team. Only the individual can be requested as a pull-request reviewer.
+*       @lead-dev @example-owner/platform-team
+docs/   @lead-dev

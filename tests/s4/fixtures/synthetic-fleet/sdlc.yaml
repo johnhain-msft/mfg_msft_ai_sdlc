@@ -1,0 +1,99 @@
+# A fleet whose repositories, paths and test titles share nothing with the reference preset.
+projects:
+  - projectKey: widget-site
+    repo: acme-labs/widget-site
+    defaultBranch: main
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+
+dependencyEdges:
+  - edgeId: gadget-lessons
+    upstreamRepo: globex-corp/gadget-lessons
+    upstreamKey: gadget-lessons
+    upstreamSlug: GADGET_LESSONS
+    upstreamDefaultBranch: trunk
+    initialBaselineSha: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    downstreamRepo: acme-labs/widget-site
+    mode: ai-adaptation
+    schedule: null
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_GADGET_LESSONS
+    provenanceFile: web/provenance.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-gadget-lessons
+    closeOlderKey: sdlc-cascade-gadget-lessons
+    reviewers:
+      - octo-reviewer
+    importCommands: []
+    preflightCommands:
+      - git -C <checkout> diff --stat "$LAST_MERGED_SHA" "$TARGET_SHA"
+    acceptCommands:
+      - echo accept-gadget-lessons
+    buildCommands: []
+    verifyCommands: []
+    adaptationInstructions: Keep the widget site in step with the gadget lessons.
+    allowedFiles:
+      - web/**
+      - checks/site.test.ts
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths:
+        - kernel
+        - ops/deploy.sh
+      lockedTestBlocks:
+        - file: checks/site.test.ts
+          blocks:
+            - kind: it
+              title: 'keeps the kernel limits'
+            - kind: describe
+              title: "site guard rails"
+      inProcessInvariants:
+        frozenModules:
+          - kernel/limits.ts
+          - checks/terms.ts
+        course:
+          module: web/pages.ts
+          export: pages
+        check:
+          module: kernel/limits.ts
+          export: verifyPages
+        constants:
+          - module: kernel/limits.ts
+            export: MAX_LINES
+            value: 12
+        customerTerms:
+          module: checks/terms.ts
+          export: scanText
+    adaptation:
+      preflightReports:
+        - lessons-drift.txt
+      labStudioDrift:
+        manifest: studio/sources.json
+      revisionPins:
+        provenance:
+          - file: studio/sources.json
+            pointer: /_provenance/commit
+          - file: web/provenance.json
+            pointer: /commit
+        files:
+          - web/revision.ts
+          - README.md
+        constant:
+          file: web/revision.ts
+          name: PINNED_REVISION
+      pullRequestResult:
+        adaptedModules: web/pages/p*.ts
+        adaptedStudioLabs: studio/views/v*.tsx

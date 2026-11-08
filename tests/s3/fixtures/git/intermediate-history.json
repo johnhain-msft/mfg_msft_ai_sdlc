@@ -1,0 +1,33 @@
+{
+  "description": "The commit history of the fixture upstream for the intermediate edge's preflight (SPEC-03 AC23). A nested git repository cannot be committed to this one, so the tests/s3 helpers materialise this recipe into a real bare repository on disk. The curriculum paths of the edge are labs, solutions, src, style, index.html and README.md; docs and .github are not curriculum.",
+  "commits": [
+    {
+      "name": "baseline",
+      "message": "baseline",
+      "files": {
+        "labs/lab01.md": "lab one, revision 1\n",
+        "solutions/lab01.md": "solution one, revision 1\n",
+        "src/app.js": "export const app = 1;\n",
+        "style/site.css": "body { margin: 0; }\n",
+        "index.html": "<h1>template</h1>\n",
+        "README.md": "the template\n",
+        "docs/notes.md": "notes, revision 1\n"
+      }
+    },
+    {
+      "name": "curriculum-change",
+      "message": "change a lab",
+      "files": { "labs/lab01.md": "lab one, revision 2\n" }
+    },
+    {
+      "name": "outside-change",
+      "message": "change only what is not curriculum",
+      "files": { "docs/notes.md": "notes, revision 2\n", ".github/workflows/ci.yml": "name: ci\n" }
+    },
+    {
+      "name": "curriculum-revert",
+      "message": "put the lab back as it was in the baseline",
+      "files": { "labs/lab01.md": "lab one, revision 1\n" }
+    }
+  ]
+}

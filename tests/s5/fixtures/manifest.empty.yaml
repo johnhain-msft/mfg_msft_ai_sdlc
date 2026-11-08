@@ -1,0 +1,4 @@
+# An empty fleet manifest: the only thing in it to preserve is this comment.
+projects: []
+
+dependencyEdges: []

@@ -1,0 +1,24 @@
+# Rejected (SPEC-02 AC6): the checkout mapping of a drift workflow is its project's repo, so a project without a repo has
+# no target checkout and the reconciler refuses to render it.
+projects:
+  - projectKey: no-checkout
+    defaultBranch: main
+    driftAudit:
+      enabled: true
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: Keep the documentation current.
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls:
+          - url: https://example.org/changelog
+            label: Example changelog
+            kind: changelog
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands:
+        - npm test
+      draft: false
+      reviewers:
+        - acme-reviewer

@@ -1,0 +1,8 @@
+{
+  "name": "lab-fixture",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test": "echo stand-in for the lab test suite"
+  }
+}

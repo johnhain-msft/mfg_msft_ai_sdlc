@@ -1,0 +1,9 @@
+Source revision: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb  (content was written against 2108ac9a1e9eff96e97b500117b0de4a546768c3)
+Inputs checked: 41; changed 2, new 1, gone 0
+  changed: labs/lab05.md  -> re-read M3
+  changed: labs/lab10.md  -> re-read M4, M5
+  new: labs/lab21.md
+Modules to re-read: M3, M4, M5
+  PROBLEM pace: lab05 front matter says 3/50 minutes, content/lab-pace.ts says 4/15
+
+The content was written against different inputs. Re-read the modules above, update the pages, then run again with --accept.

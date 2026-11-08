@@ -1,0 +1,6 @@
+{
+  "number": 42,
+  "html_url": "https://github.example/example-owner/example-target/pull/42",
+  "head": { "sha": "0123456789abcdef0123456789abcdef01234567" },
+  "draft": false
+}

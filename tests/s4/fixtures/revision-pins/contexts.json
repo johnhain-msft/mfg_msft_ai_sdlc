@@ -1,0 +1,64 @@
+[
+  {
+    "file": "apps/lab-studio/client/src/labs/source.ts",
+    "line": 7,
+    "kind": "40-hex",
+    "context": "the string assigned to SOURCE_COMMIT",
+    "bump": "replaced"
+  },
+  {
+    "file": "apps/lab-studio/server/tests/source.test.ts",
+    "kind": "40-hex",
+    "context": "expect(SOURCE_COMMIT).toBe(\"<40-hex>\"), the PINNED url string and the expected tree url",
+    "bump": "replaced"
+  },
+  {
+    "file": "apps/lab-studio/server/tests/source.test.ts",
+    "kind": "7-hex",
+    "context": "expect(SOURCE_SHORT_COMMIT).toBe(\"<7-hex>\")",
+    "bump": "replaced"
+  },
+  {
+    "file": "apps/lab-studio/server/tests/source.test.ts",
+    "kind": "7-hex",
+    "context": "a // line comment (\"At <7-hex> labs/setup.md is a pointer\")",
+    "bump": "left alone"
+  },
+  {
+    "file": "apps/lab-studio/server/tests/lab-drift.test.ts",
+    "kind": "40-hex",
+    "context": "a commit: \"<40-hex>\" property inside expect(...).toEqual({...})",
+    "bump": "replaced"
+  },
+  {
+    "file": "apps/lab-studio/server/tests/lab-drift.test.ts",
+    "kind": "7-hex",
+    "context": "// line comments that name <7-hex> and two older revisions, and the unrelated test inputs \"abc1234\" and \"def5678\"",
+    "bump": "left alone"
+  },
+  {
+    "file": "README.md",
+    "kind": "40-hex",
+    "context": "a backticked revision in prose; an older revision and an even older one stay as they are",
+    "bump": "replaced (only the prior revision)"
+  },
+  {
+    "file": "experiences/copilot-workshop/public/NOTICE.txt",
+    "kind": "40-hex",
+    "context": "a revision wrapped across lines of a notice",
+    "bump": "replaced"
+  },
+  {
+    "file": "public/copilot-project.html",
+    "kind": "40-hex",
+    "context": "revisions inside href URLs of anchors",
+    "bump": "replaced"
+  },
+  {
+    "file": "public/copilot-project.html",
+    "line": 5,
+    "kind": "7-hex",
+    "context": "prose: \"(<7-hex>, PR #86)\" in a paragraph",
+    "bump": "reported as unreplaced-short-sha"
+  }
+]

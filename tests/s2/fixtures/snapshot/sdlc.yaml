@@ -1,0 +1,34 @@
+# The manifest that the snapshot tests read: one drift project of a repository that these tests invent.
+# The three watched URLs are served by the test (a stub), the three package manifest patterns are matched against the
+# fixture checkout: package.json and **/*.csproj match files, docs/**/package.json matches nothing.
+projects:
+  - projectKey: snapshot-fixture
+    repo: example-owner/checkout
+    defaultBranch: main
+    driftAudit:
+      enabled: true
+      schedule: "0 6 * * 1"
+      upkeepStrategy: dependency-and-pattern-modernization
+      instructions: Keep the fixture current.
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls:
+          - url: https://changelog.example.test/changelog
+            label: Example changelog
+            kind: changelog
+          - url: https://changelog.example.test/missing
+            label: Missing page
+            kind: docs
+          - url: https://changelog.example.test/slow
+            label: Slow blog
+            kind: blog
+        packageManifests:
+          - package.json
+          - "**/*.csproj"
+          - docs/**/package.json
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands:
+        - npm test
+      draft: false
+      reviewers: []
