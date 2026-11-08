@@ -145,6 +145,7 @@ pre-agent-steps:
       for rc in "$rc1"; do
         if [ "$rc" -ge 2 ]; then echo "a preflight command failed with exit code $rc" >&2; exit 2; fi
       done
+      if grep -Eq '^[[:space:]]+at[[:space:]]+[^[:space:]]' /tmp/gh-aw/agent/preflight-1.txt; then echo "a preflight report holds an uncaught-exception stack trace" >&2; exit 2; fi
   - name: Verify the downstream worktree is read-only so far
     run: |-
       set -euo pipefail
@@ -344,7 +345,12 @@ jobs:
           REPO_SLUG: GITHUB_INTERMEDIATE
           BRANCH_NAME: sdlc/cascade-github-intermediate
           PROVENANCE_FILE: experiences/github-intermediate-labs/provenance.json
-        run: node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --slug "$REPO_SLUG" --branch "$BRANCH_NAME" --provenance-file "$PROVENANCE_FILE" --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG"
+        run: |-
+          node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --slug "$REPO_SLUG" --branch "$BRANCH_NAME" --provenance-file "$PROVENANCE_FILE" --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG" > "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
+          cat "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
+          if [ -s "${RUNNER_TEMP:-/tmp}/poll-state-result.json" ]; then
+            node "$GITHUB_WORKSPACE/src/ai-pull-request-result.mjs" --slug "$REPO_SLUG" --poll-state-result "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
+          fi
   escalate_failure:
     needs:
       - agent
@@ -387,15 +393,31 @@ jobs:
 
 # AI adaptation: github-intermediate
 
-Adapt the downstream checkout `portfolio/` of `johnhain-msft/portfolio` to the upstream changes in `githubschool/gh-github-intermediate-template`. The cumulative range you adapt against is `previous_sha..upstream_sha`; the exact revisions are in `/tmp/gh-aw/agent/dispatch-inputs.json`.
+Adapt the downstream checkout `portfolio/` of `johnhain-msft/portfolio` to the upstream changes in `githubschool/gh-github-intermediate-template`. The cumulative range you adapt against is `previous_sha..upstream_sha`; the exact revisions are in `/tmp/gh-aw/agent/dispatch-inputs.json`. Work in this order: read the evidence, decide whether anything must change, make the edits, run the deterministic commands, commit, and only then open the pull request.
 
 ## Adaptation instructions
 
-Diff the cumulative upstream range and adapt the GitHub Intermediate labs, the Teaching SPA content and their tests only where the upstream change requires it. Exclude customer-specific authoring tools. When no adaptation is needed, leave the worktree clean so the run ends without a pull request.
+Diff the cumulative upstream range previous_sha..upstream_sha (upstream-diff.txt lists the changed files and dispatch-inputs.json holds both revisions) and adapt only what that change requires: experiences/github-intermediate-labs/**, experiences/github-intermediate-workshop/** and tests/github-intermediate-labs.test.ts and tests/github-intermediate-workshop.test.ts, within the allowed files below and without customer-specific authoring tools. In both test files keep the lines before the first describe(, every describe( header and the locked it(...) blocks byte for byte. When no adaptation is required, leave the worktree exactly as it is and make no commit, so that the run ends with outcome noop-no-changes and no pull request. Otherwise write { "repository": "githubschool/gh-github-intermediate-template", "commit": "$UPSTREAM_SHA" } to experiences/github-intermediate-labs/provenance.json, run npm run build:experiences, and commit provenance.json, experiences/**, tests/github-intermediate-*.test.ts and public/github-intermediate/** before the pull request is created.
 
-## Branch
+## Evidence
 
-Pass exactly the branch `sdlc/cascade-github-intermediate` to `create_pull_request`.
+Read the artifacts under `/tmp/gh-aw/agent/` first. They were captured before you started and are what you know about the upstream change:
+
+- `dispatch-inputs.json`: the ten dispatch inputs verbatim, among them `correlation_id`, `previous_sha`, `upstream_sha` and `on_commit_only_advance`.
+- `upstream-diff.txt`: the changed upstream files of `previous_sha..upstream_sha`, with their status.
+- `existing-pr.json`: the open pull request for the branch of this workflow, or `null`.
+- `preflight-1.txt`: the output of `git -C "$UPSTREAM_DIR" diff --quiet "$LAST_MERGED_SHA" "$TARGET_SHA" -- labs solutions src style index.html README.md`.
+- `preflight-exit-codes.txt`: the exit codes of those commands. An exit code of 1 is a drift report for you to act on, not a failure.
+
+The variables `UPSTREAM_DIR`, `UPSTREAM_SHA`, `PREVIOUS_SHA`, `BASE_SHA` and `BRANCH_NAME` are exported for you. The upstream checkout `$UPSTREAM_DIR` is read-only: never write to it.
+
+## What to do
+
+1. Decide from the evidence which case applies. When nothing has to be adapted, read `on_commit_only_advance` in `dispatch-inputs.json`: `noop` means that you leave the worktree exactly as it is, with no edit and no commit, so that the run ends without a pull request; `bump-provenance` means that you make no content edit and go to step 3, which records the new revision. Otherwise adapt the downstream as the adaptation instructions say.
+2. Make the edits, changing only the files you may change and never the files you must not change (both lists are below).
+3. Run the deterministic commands below, in their order.
+4. Commit what they and you changed, with the commands that close that block.
+5. Open the pull request (the last section).
 
 ## Files you may change
 
@@ -409,6 +431,8 @@ Only these paths (the pull request is refused for any other file):
 - `tests/github-intermediate-workshop.test.ts`
 
 ## Files you must not change
+
+A difference in any of them fails the verification that runs after you finish, and no pull request is opened:
 
 - `experiences/copilot-workshop/content/rules.ts`
 - `experiences/copilot-workshop/content/source.ts`
@@ -428,23 +452,40 @@ Only these paths (the pull request is refused for any other file):
 - `apps/lab-studio/server/src/skills.ts`
 - `apps/lab-studio/server/tests/sandbox.test.ts`
 
-## Evidence
+The companion test files of the other adaptation workflows are theirs alone:
 
-Read the artifacts under `/tmp/gh-aw/agent/` first: `upstream-diff.txt`, `dispatch-inputs.json`, `existing-pr.json` and the preflight reports.
+- `tests/copilot-workshop.test.ts`
+- `tests/pipeline-showcase.test.ts`
+
+## Test blocks that stay byte for byte
+
+After you finish, these parts of the test files below are compared with the base revision, and any difference fails the run. Every other test in those files may be edited.
+
+- `tests/github-intermediate-labs.test.ts`: the lines before the first `describe(`, every `describe(` header line, and these blocks:
+  - `it("Lab 0 HTTPS prompts accept only simulated credentials and do not retain them")`
+
+- `tests/github-intermediate-workshop.test.ts`: the lines before the first `describe(`, every `describe(` header line, and these blocks:
+  - `it("gives every slide a title and non-empty, original speaker notes")`
+  - `it("contains no customer names, private framing, personal paths or real emails")`
 
 ## Deterministic commands
 
-Run these from `$GITHUB_WORKSPACE/portfolio`, in this order, and commit their outputs before you call `create_pull_request`:
+Run these from `$GITHUB_WORKSPACE/portfolio`, in this order, after your edits. A non-zero exit of any command is a failed run: stop, do not commit, and do not open the pull request. The last two lines commit the result.
 
 ```bash
 cd "$GITHUB_WORKSPACE/portfolio"
 node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync("experiences/github-intermediate-labs/provenance.json", JSON.stringify({ repository: "githubschool/gh-github-intermediate-template", commit: process.env.UPSTREAM_SHA }, null, 2) + "\n");'
 npm run build:experiences
+git add -- experiences/github-intermediate-labs/provenance.json experiences/github-intermediate-labs/src experiences/github-intermediate-workshop/content public/github-intermediate tests/github-intermediate-labs.test.ts tests/github-intermediate-workshop.test.ts
+git commit -m "feat(cascade): adapt github-intermediate to $UPSTREAM_SHA"
 ```
+
+## Pull request
+
+Only after that commit, call `create_pull_request` with exactly the branch `sdlc/cascade-github-intermediate`. Its body lists `previous_sha..upstream_sha`, the `correlation_id` of `dispatch-inputs.json`, the adapted modules and Studio labs, and anything a reviewer must check by hand.
 
 ## Rules
 
 - When no adaptation is required, leave the worktree clean and make no commit, so the run ends without a pull request.
 - When the dispatch input `dry_run` is `true`, do not run `git commit` and do not call `create_pull_request`.
-- The pull request body lists `previous_sha..upstream_sha`, the `correlation_id`, the adapted modules and Studio labs, and anything a reviewer must check by hand.
 - Do not edit anything under `upstream/`. The pull request is created only through the safe output; do not publish branches yourself.

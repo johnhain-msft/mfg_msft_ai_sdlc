@@ -528,6 +528,8 @@ function readInstructionFile(cwd, relative) {
 }
 
 const COMMAND_ARRAYS = ["importCommands", "preflightCommands", "acceptCommands", "buildCommands", "verifyCommands"];
+// the files that an AI workflow writes into the artifact directory for itself; a report of the edge's own cannot take one of these names
+const RESERVED_ARTIFACT_NAMES = ["dispatch-inputs.json", "upstream-diff.txt", "existing-pr.json", "preflight-exit-codes.txt"];
 
 function validateSemantics(manifest, request, context) {
   const errors = [];
@@ -593,6 +595,25 @@ function validateSemantics(manifest, request, context) {
           errors.push(
             rule("allowed-files-locked-path", `edge '${edge.edgeId}': allowedFiles entry '${pattern}' includes the locked path '${protectedPath}' (immutableGates.zeroDiffPaths)`),
           );
+        }
+      }
+    }
+    if (edge.adaptation !== undefined) {
+      const where = `edge '${edge.edgeId}' (${manifestFile}#/dependencyEdges/${index}/adaptation)`;
+      if (edge.mode !== "ai-adaptation") {
+        errors.push(rule("edge-adaptation-mode", `${where}: adaptation is the data of an ai-adaptation edge, and this edge is ${edge.mode}`));
+      }
+      const reports = edge.adaptation.preflightReports;
+      if (reports !== undefined) {
+        if (reports.length !== edge.preflightCommands.length) {
+          errors.push(
+            rule("edge-preflight-reports-count", `${where}/preflightReports: ${reports.length} report names for ${edge.preflightCommands.length} preflightCommands (one name for each command, in order)`),
+          );
+        }
+        for (const name of reports) {
+          if (RESERVED_ARTIFACT_NAMES.includes(name) || /^preflight-\d+\.txt$/.test(name)) {
+            errors.push(rule("edge-preflight-reports-reserved", `${where}/preflightReports: '${name}' is a file that the workflow writes for itself`));
+          }
         }
       }
     }
@@ -1318,8 +1339,17 @@ function aiBaseShaStep(edge) {
   };
 }
 
+/**
+ * The capture hook of an AI workflow: every preflight command runs in the downstream checkout against the upstream checkout, read-only, and its output lands in
+ * the artifact directory as preflight-<n>.txt (the exit codes in preflight-exit-codes.txt). The edge's `adaptation.preflightReports` names each report as the
+ * agent and the later steps know it, and the file is a copy of the numbered one, so that the commands (shared with the router's matrix) stay the single source
+ * of what runs. An exit code of 2 or more, or an uncaught-exception stack trace in any report (the exit code 1 of a drift report cannot tell drift from a
+ * crash), fails the step before the agent starts; drift itself (exit code 1) is evidence for the agent, never a failure.
+ */
 function aiCaptureStep(edge) {
   const down = downstreamName(edge);
+  const reports = edge.adaptation?.preflightReports ?? [];
+  const numbered = edge.preflightCommands.map((_, index) => `${AGENT_DIR}/preflight-${index + 1}.txt`);
   const lines = [
     "set -uo pipefail",
     `mkdir -p ${AGENT_DIR}`,
@@ -1334,11 +1364,13 @@ function aiCaptureStep(edge) {
     lines.push(`rc${n}=$?`);
   });
   lines.push("set -e");
+  reports.forEach((name, index) => lines.push(`cp ${numbered[index]} ${AGENT_DIR}/${name}`));
   const codes = edge.preflightCommands.map((_, index) => `rc${index + 1}`);
   lines.push(`printf 'preflight exit codes:${codes.map((code) => ` %s`).join("")}\\n' ${codes.map((code) => `"$${code}"`).join(" ")} > ${AGENT_DIR}/preflight-exit-codes.txt`);
   lines.push(`for rc in ${codes.map((code) => `"$${code}"`).join(" ")}; do`);
   lines.push('  if [ "$rc" -ge 2 ]; then echo "a preflight command failed with exit code $rc" >&2; exit 2; fi');
   lines.push("done");
+  lines.push(`if grep -Eq '^[[:space:]]+at[[:space:]]+[^[:space:]]' ${numbered.join(" ")}; then echo "a preflight report holds an uncaught-exception stack trace" >&2; exit 2; fi`);
   const step = { name: "Capture the drift reports", "working-directory": down, run: lines.join("\n") };
   if (edge.preflightCommands.some((command) => usesGhCli(command))) step.env = { GH_TOKEN: expr("github.token") };
   return step;
@@ -1411,6 +1443,22 @@ function cascadeJobs(ctx, edge) {
   const slugArgs = mechanical
     ? `--slug ${shArg(edge.upstreamSlug)} --branch ${shArg(edge.branchName)} --provenance-file ${shArg(edge.provenanceFile)}`
     : '--slug "$REPO_SLUG" --branch "$BRANCH_NAME" --provenance-file "$PROVENANCE_FILE"';
+  const pollState =
+    `node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" ${slugArgs}` +
+    ' --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG"';
+  // The poll-state script prints one JSON line when it succeeds (SPEC-03), which this step keeps in a file and prints. An AI adaptation run then extends it
+  // into its own result, PortfolioAiPullRequestResult, as the last line printed and as the output `result` of the step (SPEC-04 AC70); a step that
+  // fails stops before that, because the script's exit code decides the run.
+  const resultFile = '"${RUNNER_TEMP:-/tmp}/poll-state-result.json"';
+  const updateRun = mechanical
+    ? pollState
+    : [
+        `${pollState} > ${resultFile}`,
+        `cat ${resultFile}`,
+        `if [ -s ${resultFile} ]; then`,
+        `  node "$GITHUB_WORKSPACE/src/ai-pull-request-result.mjs" --slug "$REPO_SLUG" --poll-state-result ${resultFile}`,
+        "fi",
+      ].join("\n");
   const finalize = {
     needs: ["agent", "detection", "safe_outputs"],
     if: "success() && inputs.dry_run != 'true'",
@@ -1437,9 +1485,7 @@ function cascadeJobs(ctx, edge) {
         name: "Update the poll state",
         if: "inputs.dry_run != 'true'",
         env: pollStateEnv(edge, "finalize"),
-        run:
-          `node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" ${slugArgs}` +
-          ' --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG"',
+        run: updateRun,
       },
     ],
   };
@@ -1506,13 +1552,46 @@ function mechanicalBody(edge) {
   return lines.join("\n");
 }
 
-function aiBody(edge) {
+/** An inline code span whose delimiter is longer than any run of backticks inside the text. */
+function codeSpan(text) {
+  const value = oneLine(text);
+  const longest = Math.max(0, ...(value.match(/`+/g) ?? []).map((run) => run.length));
+  const tick = "`".repeat(longest + 1);
+  const pad = value.startsWith("`") || value.endsWith("`") ? " " : "";
+  return `${tick}${pad}${value}${pad}${tick}`;
+}
+
+/** The locked test files of an edge, as the verification gate reads them: a file and its named blocks. Entries of another shape are not listed. */
+function lockedTestsOf(edge) {
+  const entries = Array.isArray(edge.immutableGates.lockedTestBlocks) ? edge.immutableGates.lockedTestBlocks : [];
+  return entries
+    .filter((entry) => isObj(entry) && typeof entry.file === "string" && entry.file !== "" && Array.isArray(entry.blocks))
+    .map((entry) => ({
+      file: entry.file,
+      blocks: entry.blocks.filter((block) => isObj(block) && (block.kind === "it" || block.kind === "describe") && typeof block.title === "string" && block.title !== ""),
+      lockedImports: Array.isArray(entry.lockedImports) ? entry.lockedImports.filter((name) => typeof name === "string" && name !== "") : [],
+    }));
+}
+
+/** The companion test files of the other AI edges into the same downstream repository: each belongs to its own workflow, which is its only writer. */
+function siblingTestFilesOf(ctx, edge) {
+  const siblings = ctx.manifest.dependencyEdges.filter((other) => other !== edge && other.mode === "ai-adaptation" && other.downstreamRepo === edge.downstreamRepo);
+  return uniqueStable(siblings.flatMap((other) => lockedTestsOf(other).map((entry) => entry.file)));
+}
+
+/**
+ * The prompt of an AI adaptation workflow. The order is the order of the work, and the first mention of the pull request comes after the commit that it
+ * packages: read the evidence, decide, edit, run the deterministic commands, commit, and only then open the pull request. Everything in it is data of the
+ * edge: the instructions, the paths, the locked blocks and the commands.
+ */
+function aiBody(ctx, edge) {
   const down = downstreamName(edge);
+  const reports = edge.adaptation?.preflightReports ?? [];
   const lines = [];
   lines.push(`# AI adaptation: ${edge.edgeId}`);
   lines.push("");
   lines.push(
-    `Adapt the downstream checkout \`${down}/\` of \`${edge.downstreamRepo}\` to the upstream changes in \`${edge.upstreamRepo}\`. The cumulative range you adapt against is \`previous_sha..upstream_sha\`; the exact revisions are in \`${AGENT_DIR}/dispatch-inputs.json\`.`,
+    `Adapt the downstream checkout \`${down}/\` of \`${edge.downstreamRepo}\` to the upstream changes in \`${edge.upstreamRepo}\`. The cumulative range you adapt against is \`previous_sha..upstream_sha\`; the exact revisions are in \`${AGENT_DIR}/dispatch-inputs.json\`. Work in this order: read the evidence, decide whether anything must change, make the edits, run the deterministic commands, commit, and only then open the pull request.`,
   );
   lines.push("");
   lines.push("## Adaptation instructions");
@@ -1520,44 +1599,102 @@ function aiBody(edge) {
   const instructions = lf(edge.adaptationInstructions).trim();
   lines.push(instructions === "" ? "No edge-specific instructions are configured." : instructions);
   lines.push("");
-  lines.push("## Branch");
+  lines.push("## Evidence");
   lines.push("");
-  lines.push(`Pass exactly the branch \`${edge.branchName}\` to \`create_pull_request\`.`);
+  lines.push(`Read the artifacts under \`${AGENT_DIR}/\` first. They were captured before you started and are what you know about the upstream change:`);
+  lines.push("");
+  lines.push("- `dispatch-inputs.json`: the ten dispatch inputs verbatim, among them `correlation_id`, `previous_sha`, `upstream_sha` and `on_commit_only_advance`.");
+  lines.push("- `upstream-diff.txt`: the changed upstream files of `previous_sha..upstream_sha`, with their status.");
+  lines.push("- `existing-pr.json`: the open pull request for the branch of this workflow, or `null`.");
+  edge.preflightCommands.forEach((command, index) => {
+    const numbered = `preflight-${index + 1}.txt`;
+    const files = reports[index] === undefined ? codeSpan(numbered) : `${codeSpan(reports[index])} (also ${codeSpan(numbered)})`;
+    lines.push(`- ${files}: the output of ${codeSpan(fillCheckout(command))}.`);
+  });
+  if (edge.preflightCommands.length > 0) {
+    lines.push("- `preflight-exit-codes.txt`: the exit codes of those commands. An exit code of 1 is a drift report for you to act on, not a failure.");
+  }
+  lines.push("");
+  lines.push(
+    "The variables `UPSTREAM_DIR`, `UPSTREAM_SHA`, `PREVIOUS_SHA`, `BASE_SHA` and `BRANCH_NAME` are exported for you. The upstream checkout `$UPSTREAM_DIR` is read-only: never write to it.",
+  );
+  lines.push("");
+  lines.push("## What to do");
+  lines.push("");
+  lines.push("1. Decide from the evidence which case applies. When nothing has to be adapted, read `on_commit_only_advance` in `dispatch-inputs.json`: `noop` means that you leave the worktree exactly as it is, with no edit and no commit, so that the run ends without a pull request; `bump-provenance` means that you make no content edit and go to step 3, which records the new revision. Otherwise adapt the downstream as the adaptation instructions say.");
+  lines.push("2. Make the edits, changing only the files you may change and never the files you must not change (both lists are below).");
+  lines.push("3. Run the deterministic commands below, in their order.");
+  lines.push("4. Commit what they and you changed, with the commands that close that block.");
+  lines.push("5. Open the pull request (the last section).");
   lines.push("");
   lines.push("## Files you may change");
   lines.push("");
   lines.push("Only these paths (the pull request is refused for any other file):");
   lines.push("");
-  for (const pattern of edge.allowedFiles) lines.push(`- \`${pattern}\``);
+  for (const pattern of edge.allowedFiles) lines.push(`- ${codeSpan(pattern)}`);
   lines.push("");
   lines.push("## Files you must not change");
   lines.push("");
   const locked = edge.immutableGates.zeroDiffPaths;
-  if (locked.length === 0) {
+  const siblings = siblingTestFilesOf(ctx, edge).filter((file) => !locked.includes(file));
+  if (locked.length === 0 && siblings.length === 0) {
     lines.push("No paths are locked for this edge.");
   } else {
-    for (const lockedPath of locked) lines.push(`- \`${lockedPath}\``);
+    lines.push("A difference in any of them fails the verification that runs after you finish, and no pull request is opened:");
+    lines.push("");
+    for (const lockedPath of locked) lines.push(`- ${codeSpan(lockedPath)}`);
+    if (siblings.length > 0) {
+      lines.push("");
+      lines.push("The companion test files of the other adaptation workflows are theirs alone:");
+      lines.push("");
+      for (const sibling of siblings) lines.push(`- ${codeSpan(sibling)}`);
+    }
   }
-  lines.push("");
-  lines.push("## Evidence");
-  lines.push("");
-  lines.push(`Read the artifacts under \`${AGENT_DIR}/\` first: \`upstream-diff.txt\`, \`dispatch-inputs.json\`, \`existing-pr.json\` and the preflight reports.`);
+  const lockedTests = lockedTestsOf(edge).filter((entry) => entry.blocks.length > 0);
+  if (lockedTests.length > 0) {
+    lines.push("");
+    lines.push("## Test blocks that stay byte for byte");
+    lines.push("");
+    lines.push("After you finish, these parts of the test files below are compared with the base revision, and any difference fails the run. Every other test in those files may be edited.");
+    for (const entry of lockedTests) {
+      lines.push("");
+      lines.push(`- ${codeSpan(entry.file)}: the lines before the first ${codeSpan("describe(")}, every ${codeSpan("describe(")} header line, and these blocks:`);
+      for (const block of entry.blocks) lines.push(`  - ${codeSpan(`${block.kind}(${JSON.stringify(block.title)})`)}`);
+      if (entry.lockedImports.length > 0) lines.push(`  - the import of ${entry.lockedImports.map(codeSpan).join(", ")}, which must stay as it is`);
+    }
+  }
   lines.push("");
   const accept = edge.acceptCommands.map((command) => fillCheckout(command));
   const build = edge.buildCommands.map((command) => fillCheckout(command));
   lines.push("## Deterministic commands");
   lines.push("");
   lines.push(
-    `Run these from \`$GITHUB_WORKSPACE/${down}\`, in this order, and commit their outputs before you call \`create_pull_request\`:`,
+    `Run these from \`$GITHUB_WORKSPACE/${down}\`, in this order, after your edits. A non-zero exit of any command is a failed run: stop, do not commit, and do not open the pull request. The last two lines commit the result.`,
   );
   lines.push("");
-  lines.push(fenced([`cd "$GITHUB_WORKSPACE/${down}"`, ...accept, ...build].join("\n"), "bash"));
+  lines.push(
+    fenced(
+      [
+        `cd "$GITHUB_WORKSPACE/${down}"`,
+        ...accept,
+        ...build,
+        `${gitCommand("add")} -- ${allowedGitPaths(edge.allowedFiles).map(shArg).join(" ")}`,
+        `${gitCommand("commit")} -m "feat(cascade): adapt ${edge.upstreamKey} to $UPSTREAM_SHA"`,
+      ].join("\n"),
+      "bash",
+    ),
+  );
+  lines.push("");
+  lines.push("## Pull request");
+  lines.push("");
+  lines.push(
+    `Only after that commit, call \`create_pull_request\` with exactly the branch \`${edge.branchName}\`. Its body lists \`previous_sha..upstream_sha\`, the \`correlation_id\` of \`dispatch-inputs.json\`, the adapted modules and Studio labs, and anything a reviewer must check by hand.`,
+  );
   lines.push("");
   lines.push("## Rules");
   lines.push("");
   lines.push("- When no adaptation is required, leave the worktree clean and make no commit, so the run ends without a pull request.");
   lines.push(`- When the dispatch input \`dry_run\` is \`true\`, do not run ${"`" + gitCommand("commit") + "`"} and do not call \`create_pull_request\`.`);
-  lines.push("- The pull request body lists `previous_sha..upstream_sha`, the `correlation_id`, the adapted modules and Studio labs, and anything a reviewer must check by hand.");
   lines.push("- Do not edit anything under `upstream/`. The pull request is created only through the safe output; do not publish branches yourself.");
   return lines.join("\n");
 }
@@ -1630,7 +1767,7 @@ function renderCascade(ctx, edge) {
     id: workflowId,
     kind: mechanical ? "mechanical" : "ai",
     edge,
-    text: serializeWorkflow(frontmatter, mechanical ? mechanicalBody(edge) : aiBody(edge)),
+    text: serializeWorkflow(frontmatter, mechanical ? mechanicalBody(edge) : aiBody(ctx, edge)),
   };
 }
 

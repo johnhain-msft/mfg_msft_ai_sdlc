@@ -22,13 +22,13 @@ import { HERMETIC_WORKERS, hermeticWorkers, TEST_FILE_CONCURRENCY } from "./help
 import { createShims } from "./helpers/shims.mjs";
 import { cleanEnv } from "./helpers/stub-server.mjs";
 
-const TEST_SCRIPTS = ["test", "test:s1", "test:s2", "test:s5"];
-const SUITES = ["s1", "s2", "s5"];
+const TEST_SCRIPTS = ["test", "test:s1", "test:s2", "test:s3", "test:s4", "test:s5"];
+const SUITES = ["s1", "s2", "s3", "s4", "s5"];
 /** The values that a command line gives `--test-concurrency` (`--test-concurrency=4` or `--test-concurrency 4`). */
 const concurrencyOf = (command) => [...String(command ?? "").matchAll(/(?:^|\s)--test-concurrency(?:=|\s+)(\S+)/g)].map((match) => match[1]);
 const scripts = () => JSON.parse(fs.readFileSync(abs("package.json"), "utf8")).scripts;
 
-test("every test script of package.json caps how many test files run at once, at the same small number, and the full run still covers the three suites", () => {
+test("every test script of package.json caps how many test files run at once, at the same small number, and the full run still covers all five suites", () => {
   const found = scripts();
   for (const name of TEST_SCRIPTS) assert.deepEqual(concurrencyOf(found[name]), [String(TEST_FILE_CONCURRENCY)], `${name}: ${found[name]}`);
   for (const suite of SUITES) {

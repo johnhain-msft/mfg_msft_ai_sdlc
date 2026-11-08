@@ -220,7 +220,70 @@
           "uniqueItems": true,
           "items": { "$ref": "#/definitions/relativePath" }
         },
-        "immutableGates": { "$ref": "#/definitions/immutableGates" }
+        "immutableGates": { "$ref": "#/definitions/immutableGates" },
+        "adaptation": { "$ref": "#/definitions/adaptation" }
+      }
+    },
+    "adaptation": {
+      "description": "Optional data of an ai-adaptation edge that the helper commands and the run report read (SPEC-04): the file names of the preflight reports, the path of the studio manifest, the revision-pin literals and the globs of the files that the pull-request result reports.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preflightReports": {
+          "description": "File names, under the artifact directory of the run, of the reports of the preflightCommands, in the order of the commands (each report is also kept as preflight-<n>.txt).",
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]*$" }
+        },
+        "labStudioDrift": {
+          "description": "Data of the studio drift helper.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["manifest"],
+          "properties": {
+            "manifest": { "$ref": "#/definitions/relativePath" }
+          }
+        },
+        "revisionPins": {
+          "description": "Data of the revision-pin helper: where the prior revisions are recorded, which files carry the pins, and which constant must hold the new revision afterwards.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["provenance", "files", "constant"],
+          "properties": {
+            "provenance": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["file", "pointer"],
+                "properties": {
+                  "file": { "$ref": "#/definitions/relativePath" },
+                  "pointer": { "type": "string", "pattern": "^(?:/(?:[^/~]|~[01])*)+$" }
+                }
+              }
+            },
+            "files": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/definitions/relativePath" } },
+            "constant": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["file", "name"],
+              "properties": {
+                "file": { "$ref": "#/definitions/relativePath" },
+                "name": { "type": "string", "pattern": "^[A-Za-z_$][A-Za-z0-9_$]*$" }
+              }
+            }
+          }
+        },
+        "pullRequestResult": {
+          "description": "Globs of the changed files that the pull-request result names: the base names of the matches, without their extension, sorted.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "adaptedModules": { "$ref": "#/definitions/globEntry" },
+            "adaptedStudioLabs": { "$ref": "#/definitions/globEntry" }
+          }
+        }
       }
     },
     "immutableGates": {

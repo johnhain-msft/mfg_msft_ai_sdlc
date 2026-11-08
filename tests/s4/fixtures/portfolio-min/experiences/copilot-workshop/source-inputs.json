@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/ms-mfg-community/day-in-the-life-copilot-lab",
+  "commit": "2108ac9a1e9eff96e97b500117b0de4a546768c3",
+  "hashing": "sha256 over LF-normalised bytes",
+  "files": {
+    ".github/agents/*.agent.md": "8c70b25cbbbe8e7935bbc70516181551934ae5e917b40d25c4a72bbbd865f2e4",
+    ".github/skills/": "32c1cf49a2feee269ed74dd860f72644ac71029839b21b1ce0c212efafa9ef07",
+    ".github/workflows/": "45b34f16db605a06e99207c844b67ee88e470b5a68fbbab05dba0fc8b8e6cc9f",
+    "LICENSE": "cc1d3b0234846714b0aeda6cc34b057b4305bb83dd447fb88f816efeb59a4e96"
+  }
+}

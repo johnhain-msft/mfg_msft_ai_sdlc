@@ -1,0 +1,9 @@
+{
+  "name": "lab-studio",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "drift": "node scripts/check-lab-drift.mjs",
+    "drift:accept": "node scripts/check-lab-drift.mjs --accept"
+  }
+}

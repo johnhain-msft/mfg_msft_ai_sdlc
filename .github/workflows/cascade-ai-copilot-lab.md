@@ -143,10 +143,13 @@ pre-agent-steps:
       ( node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$TARGET_SHA" ) > /tmp/gh-aw/agent/preflight-2.txt 2>&1
       rc2=$?
       set -e
+      cp /tmp/gh-aw/agent/preflight-1.txt /tmp/gh-aw/agent/workshop-drift.txt
+      cp /tmp/gh-aw/agent/preflight-2.txt /tmp/gh-aw/agent/lab-studio-drift.txt
       printf 'preflight exit codes: %s %s\n' "$rc1" "$rc2" > /tmp/gh-aw/agent/preflight-exit-codes.txt
       for rc in "$rc1" "$rc2"; do
         if [ "$rc" -ge 2 ]; then echo "a preflight command failed with exit code $rc" >&2; exit 2; fi
       done
+      if grep -Eq '^[[:space:]]+at[[:space:]]+[^[:space:]]' /tmp/gh-aw/agent/preflight-1.txt /tmp/gh-aw/agent/preflight-2.txt; then echo "a preflight report holds an uncaught-exception stack trace" >&2; exit 2; fi
   - name: Verify the downstream worktree is read-only so far
     run: |-
       set -euo pipefail
@@ -369,7 +372,12 @@ jobs:
           REPO_SLUG: COPILOT_LAB
           BRANCH_NAME: sdlc/cascade-copilot-lab
           PROVENANCE_FILE: experiences/copilot-workshop/source-inputs.json
-        run: node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --slug "$REPO_SLUG" --branch "$BRANCH_NAME" --provenance-file "$PROVENANCE_FILE" --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG"
+        run: |-
+          node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --slug "$REPO_SLUG" --branch "$BRANCH_NAME" --provenance-file "$PROVENANCE_FILE" --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG" > "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
+          cat "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
+          if [ -s "${RUNNER_TEMP:-/tmp}/poll-state-result.json" ]; then
+            node "$GITHUB_WORKSPACE/src/ai-pull-request-result.mjs" --slug "$REPO_SLUG" --poll-state-result "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
+          fi
   escalate_failure:
     needs:
       - agent
@@ -412,15 +420,32 @@ jobs:
 
 # AI adaptation: copilot-lab
 
-Adapt the downstream checkout `portfolio/` of `johnhain-msft/portfolio` to the upstream changes in `ms-mfg-community/day-in-the-life-copilot-lab`. The cumulative range you adapt against is `previous_sha..upstream_sha`; the exact revisions are in `/tmp/gh-aw/agent/dispatch-inputs.json`.
+Adapt the downstream checkout `portfolio/` of `johnhain-msft/portfolio` to the upstream changes in `ms-mfg-community/day-in-the-life-copilot-lab`. The cumulative range you adapt against is `previous_sha..upstream_sha`; the exact revisions are in `/tmp/gh-aw/agent/dispatch-inputs.json`. Work in this order: read the evidence, decide whether anything must change, make the edits, run the deterministic commands, commit, and only then open the pull request.
 
 ## Adaptation instructions
 
-Adapt the Copilot workshop pages and the hosted Lab Studio labs to the cumulative upstream change. Read the drift reports under /tmp/gh-aw/agent/ first and change only what the evidence supports. Keep every page inside the content rules and keep the Studio lab sources in step with the upstream labs. Never touch the locked rule, runtime, authentication and sandbox files.
+Adapt the Copilot workshop pages and the hosted Lab Studio labs to the cumulative upstream change. Read the drift reports under /tmp/gh-aw/agent/ first (workshop-drift.txt, lab-studio-drift.txt and upstream-diff.txt) and change only what the evidence supports. Treat the workshop report as opaque text and never assume that its exit code distinguishes drift from a crash. Changes are required when the workshop report lists changed, new or gone inputs or PROBLEM lines, or when lab-studio-drift.txt lists a lab in changedLabs. Update the workshop pages (experiences/copilot-workshop/content/index.ts, interludes.ts, lab-pace.ts and the m*.ts modules), experiences/copilot-workshop/public/LICENSE, experiences/copilot-workshop/public/NOTICE.txt, README.md, public/copilot-project.html and tests/copilot-workshop.test.ts. Keep every page inside the content rules of the locked rules module: speech counted at 140 words a minute (SPEAKING_WPM) plus the live cues (LIVE_SECONDS), the audience-word limits, no hollow cards, cue discipline, source links pinned to the new revision and the 227 of 240 minute budget. The workshop sync command writes none of content/*.ts, lab-pace.ts or public/LICENSE, so update lab-pace.ts, public/LICENSE and the page content yourself, and keep every source-lab link pointing at the pinned revision. In tests/copilot-workshop.test.ts keep the lines before the first describe(, every describe( header and the five locked it(...) blocks byte for byte. Update the Studio labs (apps/lab-studio/client/src/labs/labNN.tsx), apps/lab-studio/README.md, apps/lab-studio/server/src/verify.ts and the Studio tests source.test.ts, lab-drift.test.ts and lesson-content.test.ts, and never edit sandbox.test.ts. Hosted authentication and sandbox isolation must be preserved: the authentication and runtime tests and the gateway, bridge, sandbox, terminal and skills sources of the Studio server stay zero-diff. Never touch the locked rule, runtime, authentication and sandbox files.
 
-## Branch
+## Evidence
 
-Pass exactly the branch `sdlc/cascade-copilot-lab` to `create_pull_request`.
+Read the artifacts under `/tmp/gh-aw/agent/` first. They were captured before you started and are what you know about the upstream change:
+
+- `dispatch-inputs.json`: the ten dispatch inputs verbatim, among them `correlation_id`, `previous_sha`, `upstream_sha` and `on_commit_only_advance`.
+- `upstream-diff.txt`: the changed upstream files of `previous_sha..upstream_sha`, with their status.
+- `existing-pr.json`: the open pull request for the branch of this workflow, or `null`.
+- `workshop-drift.txt` (also `preflight-1.txt`): the output of `npm run sync:workshop-source -- "$UPSTREAM_DIR"`.
+- `lab-studio-drift.txt` (also `preflight-2.txt`): the output of `node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$TARGET_SHA"`.
+- `preflight-exit-codes.txt`: the exit codes of those commands. An exit code of 1 is a drift report for you to act on, not a failure.
+
+The variables `UPSTREAM_DIR`, `UPSTREAM_SHA`, `PREVIOUS_SHA`, `BASE_SHA` and `BRANCH_NAME` are exported for you. The upstream checkout `$UPSTREAM_DIR` is read-only: never write to it.
+
+## What to do
+
+1. Decide from the evidence which case applies. When nothing has to be adapted, read `on_commit_only_advance` in `dispatch-inputs.json`: `noop` means that you leave the worktree exactly as it is, with no edit and no commit, so that the run ends without a pull request; `bump-provenance` means that you make no content edit and go to step 3, which records the new revision. Otherwise adapt the downstream as the adaptation instructions say.
+2. Make the edits, changing only the files you may change and never the files you must not change (both lists are below).
+3. Run the deterministic commands below, in their order.
+4. Commit what they and you changed, with the commands that close that block.
+5. Open the pull request (the last section).
 
 ## Files you may change
 
@@ -449,6 +474,8 @@ Only these paths (the pull request is refused for any other file):
 
 ## Files you must not change
 
+A difference in any of them fails the verification that runs after you finish, and no pull request is opened:
+
 - `experiences/copilot-workshop/content/rules.ts`
 - `experiences/copilot-workshop/content/source.ts`
 - `experiences/copilot-workshop/content/types.ts`
@@ -467,13 +494,26 @@ Only these paths (the pull request is refused for any other file):
 - `apps/lab-studio/server/src/skills.ts`
 - `apps/lab-studio/server/tests/sandbox.test.ts`
 
-## Evidence
+The companion test files of the other adaptation workflows are theirs alone:
 
-Read the artifacts under `/tmp/gh-aw/agent/` first: `upstream-diff.txt`, `dispatch-inputs.json`, `existing-pr.json` and the preflight reports.
+- `tests/pipeline-showcase.test.ts`
+- `tests/github-intermediate-labs.test.ts`
+- `tests/github-intermediate-workshop.test.ts`
+
+## Test blocks that stay byte for byte
+
+After you finish, these parts of the test files below are compared with the base revision, and any difference fails the run. Every other test in those files may be edited.
+
+- `tests/copilot-workshop.test.ts`: the lines before the first `describe(`, every `describe(` header line, and these blocks:
+  - `it("passes every content rule: no errors and no warnings")`
+  - `it("gives every teaching page a literal script, not notes")`
+  - `it("can be delivered in the minutes the plan gives it: speech at the app's own rate plus the live cues, on every page and in every module")`
+  - `it("plans with one speaking rate: the pace band tops out at it, and the speaker view reads it from the rules instead of typing its own")`
+  - `it("keeps audience pages sparse")`
 
 ## Deterministic commands
 
-Run these from `$GITHUB_WORKSPACE/portfolio`, in this order, and commit their outputs before you call `create_pull_request`:
+Run these from `$GITHUB_WORKSPACE/portfolio`, in this order, after your edits. A non-zero exit of any command is a failed run: stop, do not commit, and do not open the pull request. The last two lines commit the result.
 
 ```bash
 cd "$GITHUB_WORKSPACE/portfolio"
@@ -481,11 +521,16 @@ node "$GITHUB_WORKSPACE/src/bump-studio-revision-pins.mjs" --portfolio "$GITHUB_
 npm run sync:workshop-source -- "$UPSTREAM_DIR" --accept
 node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$UPSTREAM_SHA" --accept
 npm run build:workshop
+git add -- README.md apps/lab-studio/README.md apps/lab-studio/client/src/labs apps/lab-studio/client/src/labs/source.ts apps/lab-studio/lab-sources.json apps/lab-studio/server/src/verify.ts apps/lab-studio/server/tests/lab-drift.test.ts apps/lab-studio/server/tests/lesson-content.test.ts apps/lab-studio/server/tests/source.test.ts experiences/copilot-workshop/content experiences/copilot-workshop/content/index.ts experiences/copilot-workshop/content/interludes.ts experiences/copilot-workshop/content/lab-pace.ts experiences/copilot-workshop/provenance.json experiences/copilot-workshop/public/LICENSE experiences/copilot-workshop/public/NOTICE.txt experiences/copilot-workshop/source-inputs.json public/copilot-project.html public/workshop tests/copilot-workshop.test.ts
+git commit -m "feat(cascade): adapt copilot-lab to $UPSTREAM_SHA"
 ```
+
+## Pull request
+
+Only after that commit, call `create_pull_request` with exactly the branch `sdlc/cascade-copilot-lab`. Its body lists `previous_sha..upstream_sha`, the `correlation_id` of `dispatch-inputs.json`, the adapted modules and Studio labs, and anything a reviewer must check by hand.
 
 ## Rules
 
 - When no adaptation is required, leave the worktree clean and make no commit, so the run ends without a pull request.
 - When the dispatch input `dry_run` is `true`, do not run `git commit` and do not call `create_pull_request`.
-- The pull request body lists `previous_sha..upstream_sha`, the `correlation_id`, the adapted modules and Studio labs, and anything a reviewer must check by hand.
 - Do not edit anything under `upstream/`. The pull request is created only through the safe output; do not publish branches yourself.

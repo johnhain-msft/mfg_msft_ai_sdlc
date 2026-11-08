@@ -1,0 +1,127 @@
+{
+  "_provenance": {
+    "repository": "globex-corp/gadget-lessons",
+    "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "hashing": "sha256, first 16 hex chars, over LF-normalised bytes"
+  },
+  "lab01": {
+    "source": "labs/lab01.md",
+    "sourceHash": "58a3be05309dc551",
+    "studio": "views/v01.tsx",
+    "studioExists": true
+  },
+  "lab02": {
+    "source": "labs/lab02.md",
+    "sourceHash": "778e8d7a4d20cc67",
+    "studio": "views/v02.tsx",
+    "studioExists": true
+  },
+  "lab03": {
+    "source": "labs/lab03.md",
+    "sourceHash": "bf60725a88edd6a5",
+    "studio": "views/v03.tsx",
+    "studioExists": true
+  },
+  "lab04": {
+    "source": "labs/lab04.md",
+    "sourceHash": "e4547efa8977fa22",
+    "studio": "views/v04.tsx",
+    "studioExists": true
+  },
+  "lab05": {
+    "source": "labs/lab05.md",
+    "sourceHash": "1a64c25e337ef6db",
+    "studio": "views/v05.tsx",
+    "studioExists": true
+  },
+  "lab06": {
+    "source": "labs/lab06.md",
+    "sourceHash": "5f947405819cd779",
+    "studio": "views/v06.tsx",
+    "studioExists": true
+  },
+  "lab07": {
+    "source": "labs/lab07.md",
+    "sourceHash": "58ffd468e2b75bc3",
+    "studio": "views/v07.tsx",
+    "studioExists": true
+  },
+  "lab08": {
+    "source": "labs/lab08.md",
+    "sourceHash": "e38097780fe4174b",
+    "studio": "views/v08.tsx",
+    "studioExists": true
+  },
+  "lab09": {
+    "source": "labs/lab09.md",
+    "sourceHash": "48791ec306d519fe",
+    "studio": "views/v09.tsx",
+    "studioExists": true
+  },
+  "lab10": {
+    "source": "labs/lab10.md",
+    "sourceHash": "aab316dd5fc66374",
+    "studio": "views/v10.tsx",
+    "studioExists": true
+  },
+  "lab11": {
+    "source": "labs/lab11.md",
+    "sourceHash": "2ab3946746a415f5",
+    "studio": "views/v11.tsx",
+    "studioExists": true
+  },
+  "lab12": {
+    "source": "labs/lab12.md",
+    "sourceHash": "01da5b909bf51b61",
+    "studio": "views/v12.tsx",
+    "studioExists": true
+  },
+  "lab13": {
+    "source": "labs/lab13.md",
+    "sourceHash": "cbd917c893ab92d0",
+    "studio": "views/v13.tsx",
+    "studioExists": true
+  },
+  "lab14": {
+    "source": "labs/lab14.md",
+    "sourceHash": "f6b38ab38e6944aa",
+    "studio": "views/v14.tsx",
+    "studioExists": true
+  },
+  "lab15": {
+    "source": "labs/lab15.md",
+    "sourceHash": "19d21ad9e0ca96c2",
+    "studio": "views/v15.tsx",
+    "studioExists": true
+  },
+  "lab16": {
+    "source": "labs/lab16.md",
+    "sourceHash": "e169b3e18c56e7d7",
+    "studio": "views/v16.tsx",
+    "studioExists": true
+  },
+  "lab17": {
+    "source": "labs/lab17.md",
+    "sourceHash": "1f473371fb5d076f",
+    "studio": "views/v17.tsx",
+    "studioExists": true
+  },
+  "lab18": {
+    "source": "labs/lab18.md",
+    "sourceHash": "921e5e998980c9a7",
+    "studio": "views/v18.tsx",
+    "studioExists": true
+  },
+  "lab19": {
+    "source": "labs/lab19.md",
+    "sourceHash": "4264d70df8d6ddb5",
+    "studio": "views/v19.tsx",
+    "studioExists": true
+  },
+  "lab20": {
+    "source": "labs/lab20.md",
+    "sourceHash": "d5bb38a828008636",
+    "studio": "views/v20.tsx",
+    "studioExists": true
+  }
+}

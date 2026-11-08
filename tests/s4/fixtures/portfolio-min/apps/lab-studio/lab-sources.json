@@ -1,0 +1,127 @@
+{
+  "_provenance": {
+    "repository": "ms-mfg-community/day-in-the-life-copilot-lab",
+    "commit": "2108ac9a1e9eff96e97b500117b0de4a546768c3",
+    "hashing": "sha256, first 16 hex chars, over LF-normalised bytes"
+  },
+  "lab01": {
+    "source": "labs/lab01.md",
+    "sourceHash": "5bd6aeca9bb32239",
+    "studio": "client/src/labs/lab01.tsx",
+    "studioExists": true
+  },
+  "lab02": {
+    "source": "labs/lab02.md",
+    "sourceHash": "d2cc394ff343ac8c",
+    "studio": "client/src/labs/lab02.tsx",
+    "studioExists": true
+  },
+  "lab03": {
+    "source": "labs/lab03.md",
+    "sourceHash": "d27c3dfb9bab3650",
+    "studio": "client/src/labs/lab03.tsx",
+    "studioExists": true
+  },
+  "lab04": {
+    "source": "labs/lab04.md",
+    "sourceHash": "98a7664850e11b78",
+    "studio": "client/src/labs/lab04.tsx",
+    "studioExists": true
+  },
+  "lab05": {
+    "source": "labs/lab05.md",
+    "sourceHash": "910464f80d074d5a",
+    "studio": "client/src/labs/lab05.tsx",
+    "studioExists": true
+  },
+  "lab06": {
+    "source": "labs/lab06.md",
+    "sourceHash": "84319825be70d409",
+    "studio": "client/src/labs/lab06.tsx",
+    "studioExists": true
+  },
+  "lab07": {
+    "source": "labs/lab07.md",
+    "sourceHash": "173996138866d415",
+    "studio": "client/src/labs/lab07.tsx",
+    "studioExists": true
+  },
+  "lab08": {
+    "source": "labs/lab08.md",
+    "sourceHash": "4de3f9766f3bc1b7",
+    "studio": "client/src/labs/lab08.tsx",
+    "studioExists": true
+  },
+  "lab09": {
+    "source": "labs/lab09.md",
+    "sourceHash": "8c8d644670e4d33b",
+    "studio": "client/src/labs/lab09.tsx",
+    "studioExists": true
+  },
+  "lab10": {
+    "source": "labs/lab10.md",
+    "sourceHash": "92dd3d2a61d32081",
+    "studio": "client/src/labs/lab10.tsx",
+    "studioExists": true
+  },
+  "lab11": {
+    "source": "labs/lab11.md",
+    "sourceHash": "957fe8b14e986973",
+    "studio": "client/src/labs/lab11.tsx",
+    "studioExists": true
+  },
+  "lab12": {
+    "source": "labs/lab12.md",
+    "sourceHash": "b316e77f614b57a9",
+    "studio": "client/src/labs/lab12.tsx",
+    "studioExists": true
+  },
+  "lab13": {
+    "source": "labs/lab13.md",
+    "sourceHash": "94344e821cc5494e",
+    "studio": "client/src/labs/lab13.tsx",
+    "studioExists": true
+  },
+  "lab14": {
+    "source": "labs/lab14.md",
+    "sourceHash": "e600f15506cd04ae",
+    "studio": "client/src/labs/lab14.tsx",
+    "studioExists": true
+  },
+  "lab15": {
+    "source": "labs/lab15.md",
+    "sourceHash": "24909f5d410c53a7",
+    "studio": "client/src/labs/lab15.tsx",
+    "studioExists": true
+  },
+  "lab16": {
+    "source": "labs/lab16.md",
+    "sourceHash": "99d479ab642d93d1",
+    "studio": "client/src/labs/lab16.tsx",
+    "studioExists": true
+  },
+  "lab17": {
+    "source": "labs/lab17.md",
+    "sourceHash": "ed54c037bfc69a78",
+    "studio": "client/src/labs/lab17.tsx",
+    "studioExists": true
+  },
+  "lab18": {
+    "source": "labs/lab18.md",
+    "sourceHash": "1fa902547b3a2191",
+    "studio": "client/src/labs/lab18.tsx",
+    "studioExists": true
+  },
+  "lab19": {
+    "source": "labs/lab19.md",
+    "sourceHash": "e02567745d563fe1",
+    "studio": "client/src/labs/lab19.tsx",
+    "studioExists": true
+  },
+  "lab20": {
+    "source": "labs/lab20.md",
+    "sourceHash": "e9a2368ad18805c4",
+    "studio": "client/src/labs/lab20.tsx",
+    "studioExists": true
+  }
+}
