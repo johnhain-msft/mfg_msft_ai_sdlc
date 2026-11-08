@@ -6,7 +6,10 @@ import { SdlcError } from "./errors.mjs";
 import { loadPermissionMap } from "./app-manifest.mjs";
 
 const RANK = { read: 1, write: 2, admin: 3 };
-const normalize = (key) => String(key).toLowerCase().replace(/-/g, "_");
+const normalize = (key) => {
+  const k = String(key).toLowerCase().replace(/-/g, "_");
+  return k === "actions_variables" ? "variables" : k;
+};
 const messageOf = (response) => (typeof response.json?.message === "string" ? ` (${response.json.message})` : "");
 
 /**

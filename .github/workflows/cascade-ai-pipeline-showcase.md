@@ -33,7 +33,7 @@ on:
         description: Empty, true or false; true forbids commits and pull requests
         type: string
   bots:
-    - fixture-app[bot]
+    - mfg-msft-ai-sdlc[bot]
 concurrency:
   group: sdlc-state-pipeline-showcase
   cancel-in-progress: false

@@ -44,7 +44,7 @@ jobs:
             provenanceFile: public/ghec-admin/source.json
             provenanceJsonPointer: /commit
             onBots:
-              - fixture-app[bot]
+              - mfg-msft-ai-sdlc[bot]
             branchName: sdlc/cascade-ghec-admin
             closeOlderKey: sdlc-cascade-ghec-admin
             reviewers:
@@ -75,7 +75,7 @@ jobs:
             provenanceFile: experiences/copilot-workshop/source-inputs.json
             provenanceJsonPointer: /commit
             onBots:
-              - fixture-app[bot]
+              - mfg-msft-ai-sdlc[bot]
             branchName: sdlc/cascade-copilot-lab
             closeOlderKey: sdlc-cascade-copilot-lab
             reviewers:
@@ -143,7 +143,7 @@ jobs:
             provenanceFile: experiences/pipeline-showcase/content/provenance.json
             provenanceJsonPointer: /commit
             onBots:
-              - fixture-app[bot]
+              - mfg-msft-ai-sdlc[bot]
             branchName: sdlc/cascade-pipeline-showcase
             closeOlderKey: sdlc-cascade-pipeline-showcase
             reviewers:
@@ -226,7 +226,7 @@ jobs:
             provenanceFile: experiences/github-intermediate-labs/provenance.json
             provenanceJsonPointer: /commit
             onBots:
-              - fixture-app[bot]
+              - mfg-msft-ai-sdlc[bot]
             branchName: sdlc/cascade-github-intermediate
             closeOlderKey: sdlc-cascade-github-intermediate
             reviewers:

@@ -27,7 +27,7 @@ on:
         description: Empty, true or false; true forbids commits and pull requests
         type: string
   bots:
-    - fixture-app[bot]
+    - mfg-msft-ai-sdlc[bot]
 concurrency:
   group: sdlc-state-gh-admin-msft
   cancel-in-progress: false

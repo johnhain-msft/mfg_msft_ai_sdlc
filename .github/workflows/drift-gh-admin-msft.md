@@ -18,7 +18,7 @@ on:
         type: boolean
         default: false
   bots:
-    - fixture-app[bot]
+    - mfg-msft-ai-sdlc[bot]
 concurrency:
   group: sdlc-drift-gh-admin-msft
   cancel-in-progress: false

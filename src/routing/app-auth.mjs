@@ -39,9 +39,14 @@ export async function mintRouterTokens({ client, clientId, privateKeyPem, centra
   const installationOf = (owner) => items.find((entry) => !entry?.suspended_at && same(entry?.account?.login ?? "", owner));
 
   const mint = async (installation, repositories, permissions, label) => {
+    const requestedPermissions = { ...permissions };
+    if ("variables" in requestedPermissions && installation?.permissions && "actions_variables" in installation.permissions && !("variables" in installation.permissions)) {
+      requestedPermissions.actions_variables = requestedPermissions.variables;
+      delete requestedPermissions.variables;
+    }
     const response = await client.requestJson("POST", `/app/installations/${installation.id}/access_tokens`, {
       bearer: jwt,
-      body: { repositories, permissions: { ...permissions } },
+      body: { repositories, permissions: requestedPermissions },
       expect: [201],
     });
     const token = response.json?.token;
