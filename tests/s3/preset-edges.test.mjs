@@ -7,7 +7,7 @@ import test from "node:test";
 import { fakePreflight } from "./helpers/fake-preflight.mjs";
 import { routerWorld } from "./helpers/harness.mjs";
 import { abs, presetEdges, readJson, routerMatrixEntries, sha, state } from "./helpers/fixtures.mjs";
-import { actionsRun, CHANGED_REPORT, IN_SYNC, NEWEST_RECORDED_RUN, SHOWCASE_SCRIPT } from "./helpers/preflight-world.mjs";
+import { actionsRun, CHANGED_REPORT, IN_SYNC, NEWEST_RECORDED_RUN, SHOWCASE_SCRIPT, showcaseUpstream } from "./helpers/preflight-world.mjs";
 import { fixture, readText } from "./helpers/fixtures.mjs";
 
 const matrix = routerMatrixEntries();
@@ -42,8 +42,8 @@ function world(key, { stored, upstream = {}, downstream = {} } = {}) {
     edge: entry,
     manifestEdges: manifest,
     state: stored ?? state({ portfolioMainSha: MAIN }, entry),
-    upstream: { head: headOf(key), ...(key === "pipeline-showcase" ? { runList: [actionsRun(NEWEST_RECORDED_RUN + 1)] } : {}), ...upstream },
-    downstream: { head: MAIN, ...(key === "pipeline-showcase" ? { files: { [SHOWCASE_SCRIPT]: script } } : {}), ...downstream },
+    upstream: { head: headOf(key), ...(key === "pipeline-showcase" ? showcaseUpstream([actionsRun(NEWEST_RECORDED_RUN + 1)]) : {}), ...upstream },
+    downstream: { head: MAIN, ...downstream, files: { ...(key === "pipeline-showcase" ? { [SHOWCASE_SCRIPT]: script } : {}), ...(downstream.files ?? {}) } },
   });
 }
 
@@ -106,7 +106,12 @@ for (const key of Object.keys(WORKFLOW_FILE)) {
     for (const [label, action, overrides] of TERMINAL) {
       const head = headOf(key);
       const stored = state({ portfolioMainSha: MAIN, ...overrides(head) }, entry);
-      const w = world(key, { stored, downstream: label === "open-pr-covers" ? { pulls: { 7: { number: 7, state: "open", merged: false, html_url: "https://github.com/x/y/pull/7", head: { ref: entry.branchName, sha: sha("pr-head") } } } } : {} });
+      const downstream = {
+        // a cursor that moved off the seed is a world in which a cascade pull request has merged: the downstream's main has the provenance file that records it (AC14)
+        ...(label === "already-merged" ? { files: { [entry.provenanceFile]: JSON.stringify({ commit: head }) } } : {}),
+        ...(label === "open-pr-covers" ? { pulls: { 7: { number: 7, state: "open", merged: false, html_url: "https://github.com/x/y/pull/7", head: { ref: entry.branchName, sha: sha("pr-head") } } } } : {}),
+      };
+      const w = world(key, { stored, downstream });
       t.after(() => w.cleanup());
       w.stub.repo(CENTRAL_OF_PRESET, { runs: { 4242: { id: 4242, status: "queued", conclusion: null } } });
       const fake = drifting(key);

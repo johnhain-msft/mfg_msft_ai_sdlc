@@ -31,7 +31,14 @@ export const TOKENS = Object.freeze({
   privateKeyMarker: "FIXTURE-PRIVATE-KEY-MARKER",
 });
 
-/** An edge as a router job receives it (EDGE_JSON): synthetic repositories, an upstream of its own owner and a downstream of the orchestrator's. */
+/**
+ * An edge as a router job receives it (EDGE_JSON): synthetic repositories, an upstream of its own owner and a downstream of the orchestrator's.
+ *
+ * `initialBaselineSha` is sha0, the commit that the worlds of the suite start from: the bootstrap seeds a state's merge cursor with the baseline of its edge
+ * (AC13), so a world whose `lastMergedUpstreamSha` is sha0 is a seeded one, and the router may fall back to that cursor when the provenance file is not on the
+ * downstream's main (AC14, before the first merged cascade pull request). A world whose cursor is anything else is a world in which the router has advanced it,
+ * and it has to carry the provenance file on main that records the cursor; a missing file is then an error.
+ */
 export function edge(overrides = {}) {
   return {
     edgeId: "widgets-to-portal",
@@ -39,7 +46,7 @@ export function edge(overrides = {}) {
     upstreamKey: "widgets",
     upstreamSlug: "WIDGETS",
     upstreamDefaultBranch: "trunk",
-    initialBaselineSha: sha("baseline"),
+    initialBaselineSha: sha("sha0"),
     downstreamRepo: "acme/portal",
     mode: "ai-adaptation",
     schedule: "0 */6 * * *",

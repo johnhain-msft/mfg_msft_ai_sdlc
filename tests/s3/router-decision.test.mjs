@@ -3,17 +3,21 @@
 // made, not only a status string.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { initialSyncState } from "../../bin/lib/actions-variables.mjs";
 import { decide } from "../../src/route-upstream.mjs";
+import { run as finalize } from "../../src/update-poll-state.mjs";
 import { pullRequest } from "./helpers/github-stub.mjs";
 import { routerWorld, writesOf } from "./helpers/harness.mjs";
-import { edge as edgeFixture, presetEdges, routerMatrixEntries, seedState, sha, state, TOKENS } from "./helpers/fixtures.mjs";
+import { edge as edgeFixture, mechanicalEdge, NOW_ISO, presetEdges, routerMatrixEntries, seedState, sha, state, TOKENS } from "./helpers/fixtures.mjs";
 
-const E = edgeFixture();
 const SHA0 = sha("sha0");
 const SHA1 = sha("sha1");
 const SHA2 = sha("sha2");
 const MAIN = sha("main-1");
 const MAIN2 = sha("main-2");
+// The bootstrap seeds lastMergedUpstreamSha with initialBaselineSha (SPEC-03 AC13), so a world whose merge cursor is sha0 is the seeded world of an edge whose
+// baseline is sha0. A test that moves the cursor off sha0 is a world in which the router has advanced it, and its downstream carries the provenance file.
+const E = edgeFixture({ initialBaselineSha: SHA0 });
 
 /** A quiet world: the upstream is at `head`, the stored state has `overrides` over the seed (merge cursor and last observation at sha0). */
 function world({ head = SHA1, stateOverrides = {}, edge = E, upstream = {}, ...rest } = {}) {
@@ -22,12 +26,14 @@ function world({ head = SHA1, stateOverrides = {}, edge = E, upstream = {}, ...r
 }
 
 const provenanceFile = (commit, file = E.provenanceFile) => ({ [file]: JSON.stringify({ commit }) });
+const FAILED = (target, attempts, blocked) => ({ failedTargetSha: target, failedAttempts: attempts, blockedTargetSha: blocked });
 
 async function routed(t, options) {
   const w = world(options);
   t.after(() => w.cleanup());
+  const before = w.stub.variables.get(E.stateVariable);
   const result = await w.go();
-  return { w, result };
+  return { w, result, before };
 }
 
 const dispatches = (w) => w.stub.world.dispatches;
@@ -46,11 +52,155 @@ test("AC14 provenance-present: the commit that the provenance file records at th
   assert.equal(read.pathAndSearch, `/repos/acme/portal/contents/docs/widgets/provenance.json?ref=${MAIN}`, "read on the head that was just read, not on a branch name");
 });
 
-test("AC14 provenance-404-falls-back-to-state: a provenance file that does not exist before the first merged cascade pull request leaves the cursor of the state", async (t) => {
+test("AC14 provenance-404-falls-back-to-state: a provenance file that does not exist before the first merged cascade pull request leaves the cursor of the state, which is still the seed", async (t) => {
   const { w, result } = await routed(t, {});
   assert.equal(result.code, 0, result.stderr);
-  assert.equal(w.decisions()[0].previousSha, SHA0);
+  assert.equal(E.initialBaselineSha, SHA0);
+  assert.equal(w.decisions()[0].previousSha, SHA0, "the cursor is the baseline that the bootstrap seeded (AC13)");
   assert.equal(w.state().lastMergedUpstreamSha, SHA0);
+  assert.equal(dispatches(w)[0].body.inputs.previous_sha, SHA0);
+});
+
+test("AC14 provenance-404-after-the-first-merge-is-fatal: once the router has advanced the merge cursor off the seed, a provenance file that is gone from main is an error and not the bootstrap fallback", async (t) => {
+  // a cascade pull request merged and the router advanced the cursor to sha1; somebody then deleted the provenance file on main, and the upstream advanced to sha2
+  const { w, result, before } = await routed(t, { head: SHA2, stateOverrides: { lastMergedUpstreamSha: SHA1, lastObservedHeadSha: SHA1 } });
+  assert.equal(result.code, 1, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stderr, new RegExp(`docs/widgets/provenance\\.json of acme/portal at ${MAIN} does not exist \\(404\\)`));
+  assert.match(result.stderr, new RegExp(`merge cursor ${SHA1} has moved off the seed ${SHA0}`));
+  assert.equal(w.stub.variables.get(E.stateVariable), before, "the variable is exactly as it was");
+  assert.equal(w.patches().length, 0);
+  assert.equal(dispatches(w).length, 0, "nothing is dispatched from a cursor that main no longer confirms");
+  assert.equal(w.decisions().length, 0, "no decision is logged for a run that cannot decide");
+  assert.deepEqual(writesOf(w.stub).filter((line) => !line.startsWith("POST /app/")), [`POST /repos/acme/orchestrator/issues`], "the only write is the failure issue");
+  assert.equal(w.stub.issues.length, 1);
+  assert.equal(w.stub.issues[0].title, "[sdlc-failure] cascade-router (initech/widgets)");
+  assert.match(w.stub.issues[0].body, /docs\/widgets\/provenance\.json/);
+  assert.match(w.stub.issues[0].body, /404/);
+});
+
+test("AC14 provenance-404-after-the-first-merge-is-fatal: whatever the target and the stored comparisons would have said, a cursor that main does not confirm decides nothing", async (t) => {
+  const moved = { lastMergedUpstreamSha: SHA1, lastObservedHeadSha: SHA1 };
+  const cases = [
+    ["a new target", { head: SHA2, stateOverrides: moved }],
+    ["the target is the merge cursor (nothing to route)", { head: SHA1, stateOverrides: moved }],
+    ["the target is the dismissed one", { head: SHA2, stateOverrides: { ...moved, dismissedTargetSha: SHA2 } }],
+    ["the target is the blocked one", { head: SHA2, stateOverrides: { ...moved, ...FAILED(SHA2, 2, SHA2), portfolioMainSha: MAIN } }],
+    ["a 304 on the stored ETag (the target is the last observed head)", { head: SHA1, stateOverrides: { ...moved, etag: 'W/"upstream-etag-1"' } }],
+    ["a manual run that resets the blocked target", { head: SHA2, stateOverrides: { ...moved, ...FAILED(SHA2, 2, SHA2) }, event: "workflow_dispatch", resetBlocked: true }],
+  ];
+  for (const [label, options] of cases) {
+    const { w, result, before } = await routed(t, options);
+    assert.equal(result.code, 1, `${label}: ${result.stdout}\n${result.stderr}`);
+    assert.equal(w.stub.variables.get(E.stateVariable), before, `${label}: the variable is exactly as it was`);
+    assert.equal(w.patches().length, 0, label);
+    assert.equal(dispatches(w).length, 0, label);
+    assert.equal(w.decisions().length, 0, label);
+    assert.equal(w.stub.issues.length, 1, label);
+  }
+});
+
+test("AC14 a pull request that is seen merged now ends the bootstrap time for the run after it: the cursor advances from the pull request, and the next run needs the file", async (t) => {
+  // the provenance read of this run is older than the observation of the merge, as the decision already treats it (a merged pull request is the newer information)
+  const first = await routed(t, {
+    head: SHA1,
+    stateOverrides: { openPrNumber: 5, openPrTargetSha: SHA1 },
+    downstream: { pulls: { 5: pullRequest({ number: 5, state: "closed", merged: true, headSha: sha("pr5") }) } },
+  });
+  assert.equal(first.result.code, 0, first.result.stderr);
+  assert.equal(first.w.state().lastMergedUpstreamSha, SHA1);
+  assert.equal(first.w.state().openPrNumber, null);
+  // the next run, on the state that the first persisted, finds no provenance file on main although a cascade pull request has merged
+  first.w.stub.repo("initech/widgets", { head: SHA2, etag: 'W/"upstream-etag-2"' });
+  const persisted = first.w.stub.variables.get(E.stateVariable);
+  const second = await first.w.go();
+  assert.equal(second.code, 1, `${second.stdout}\n${second.stderr}`);
+  assert.match(second.stderr, new RegExp(`merge cursor ${SHA1} has moved off the seed ${SHA0}`));
+  assert.equal(first.w.stub.variables.get(E.stateVariable), persisted, "the second run wrote nothing");
+  assert.equal(dispatches(first.w).length, 0);
+});
+
+test("AC14 a dismissed pull request is not a merge: the bootstrap fallback still holds while the cursor is the seed", async (t) => {
+  const { w, result } = await routed(t, {
+    head: SHA2,
+    stateOverrides: { openPrNumber: 5, openPrTargetSha: SHA1 },
+    downstream: { pulls: { 5: pullRequest({ number: 5, state: "closed", merged: false }) } },
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(w.state().dismissedTargetSha, SHA1);
+  assert.equal(w.state().lastMergedUpstreamSha, SHA0);
+  assert.equal(dispatches(w)[0].body.inputs.previous_sha, SHA0);
+});
+
+test("AC14 the rule is data of the edge: for every preset edge the fallback holds at the seed and a moved cursor makes a missing provenance file an error", async (t) => {
+  for (const entry of routerMatrixEntries()) {
+    // synthetic repositories (the engine names none), the preset's own keys, paths and baseline; no preflight, so that the decision alone is exercised
+    const edge = edgeFixture({ ...entry, upstreamRepo: "initech/up", downstreamRepo: "acme/portal", preflightCommands: [] });
+    const target = sha(`target-of-${entry.upstreamKey}`);
+    const seeded = routerWorld({ edge, state: seedState(edge), upstream: { head: target } });
+    t.after(() => seeded.cleanup());
+    const ok = await seeded.go();
+    assert.equal(ok.code, 0, `${entry.upstreamKey}: ${ok.stderr}`);
+    assert.equal(seeded.decisions()[0].previousSha, edge.initialBaselineSha, entry.upstreamKey);
+    assert.equal(seeded.stub.world.dispatches.length, 1, entry.upstreamKey);
+
+    const advanced = state({ lastMergedUpstreamSha: sha(`merged-${entry.upstreamKey}`), lastObservedHeadSha: sha(`merged-${entry.upstreamKey}`) }, edge);
+    const moved = routerWorld({ edge, state: advanced, upstream: { head: target } });
+    t.after(() => moved.cleanup());
+    const before = moved.stub.variables.get(edge.stateVariable);
+    const refused = await moved.go();
+    assert.equal(refused.code, 1, `${entry.upstreamKey}: ${refused.stdout}`);
+    assert.ok(refused.stderr.includes(`${edge.provenanceFile} of acme/portal`), `${entry.upstreamKey}: the file of the edge is named`);
+    assert.equal(moved.stub.variables.get(edge.stateVariable), before, entry.upstreamKey);
+    assert.equal(moved.stub.world.dispatches.length, 0, entry.upstreamKey);
+  }
+});
+
+test("AC14 the story end to end on the real seed: a verified pull request merges, the router advances the cursor, the provenance file is deleted, and the next upstream advance is refused", async (t) => {
+  // the seed is what the bootstrap writes (bin/lib/actions-variables.mjs), the verification is the real success path of src/update-poll-state.mjs
+  const e = mechanicalEdge({ initialBaselineSha: sha("bootstrap-baseline"), preflightCommands: [] });
+  const first = sha("first-import");
+  const prHead = sha("first-pr-head");
+  const w = routerWorld({ edge: e, state: initialSyncState(e.initialBaselineSha, NOW_ISO), upstream: { head: first }, stubOptions: { acceptTokens: [TOKENS.gh, TOKENS.issues] } });
+  t.after(() => w.cleanup());
+  assert.deepEqual(w.state(), initialSyncState(e.initialBaselineSha, NOW_ISO));
+
+  // run 1: the first cascade, before any merge, uses the bootstrap fallback and dispatches
+  let result = await w.go();
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(w.stub.world.dispatches.length, 1);
+  assert.equal(w.stub.world.dispatches[0].body.inputs.previous_sha, e.initialBaselineSha);
+
+  // the cascade's post-safe_outputs job verifies the pull request and records it
+  const pr = pullRequest({ number: 7, headSha: prHead, headRef: e.branchName });
+  w.stub.repo(e.downstreamRepo, { pulls: { 7: pr }, openPullsByHead: { [`acme:${e.branchName}`]: [pr] }, filesAtRef: { [prHead]: { [e.provenanceFile]: JSON.stringify({ commit: first }) } } });
+  let stdout = "";
+  let stderr = "";
+  const code = await finalize(
+    ["--slug", e.upstreamSlug, "--branch", e.branchName, "--provenance-file", e.provenanceFile, "--base-sha", w.downstreamHead, "--head-sha", prHead, "--target-sha", first, "--etag", 'W/"upstream-etag-1"'],
+    { env: { ...w.env, GH_TOKEN: TOKENS.gh, CORRELATION_ID: w.decisions()[0].correlationId }, fetch: w.stub.fetch, now: w.clock.now, sleep: w.clock.sleep, stdout: (text) => (stdout += text), stderr: (text) => (stderr += text) },
+  );
+  assert.equal(code, 0, `${stderr}\n${stdout}`);
+  assert.equal(w.state().openPrNumber, 7);
+
+  // a human merges it; main now has the provenance file, and the router itself advances the cursor
+  w.stub.repo(e.downstreamRepo, { head: sha("main-after-first-merge"), files: { [e.provenanceFile]: JSON.stringify({ commit: first }) }, pulls: { 7: { ...pr, merged: true, state: "closed", merged_at: NOW_ISO } }, openPullsByHead: {} });
+  result = await w.go();
+  assert.equal(result.code, 0, result.stderr);
+  assert.equal(w.state().lastMergedUpstreamSha, first);
+  assert.notEqual(w.state().lastMergedUpstreamSha, e.initialBaselineSha);
+
+  // a later commit on main deletes the provenance file, and the upstream advances: a real contents request now answers 404
+  w.stub.repo(e.downstreamRepo, { head: sha("main-with-provenance-deleted"), files: {} });
+  w.stub.repo(e.upstreamRepo, { head: sha("second-import"), etag: 'W/"second-import"' });
+  const stored = w.stub.variables.get(e.stateVariable);
+  const dispatched = w.stub.world.dispatches.length;
+  const patched = w.patches().length;
+  result = await w.go();
+  assert.equal(result.code, 1, `${result.stdout}\n${result.stderr}`);
+  assert.equal(w.stub.variables.get(e.stateVariable), stored, "the state is unchanged");
+  assert.equal(w.stub.world.dispatches.length, dispatched, "nothing is dispatched");
+  assert.equal(w.patches().length, patched, "nothing is written");
+  assert.equal(w.stub.issues.length, 1);
 });
 
 test("AC14 a provenance file that exists but records no commit is an error, not a fallback", async (t) => {
@@ -193,8 +343,6 @@ test("AC15 a pull request that cannot be read fails the job and writes nothing",
 });
 
 // ---- AC17: resets --------------------------------------------------------------------------------------------------------------------
-
-const FAILED = (target, attempts, blocked) => ({ failedTargetSha: target, failedAttempts: attempts, blockedTargetSha: blocked });
 
 test("AC17 reset-on-new-target: a target that is not the failed one clears the counters, so a blocked old target does not block it", async (t) => {
   const { w } = await routed(t, { head: SHA2, stateOverrides: FAILED(SHA1, 2, SHA1) });
@@ -503,11 +651,11 @@ test("decide: the reset runs before every terminal comparison and the cursor of 
   const noStatus = async () => {
     throw new Error("no run status is needed");
   };
-  const merged = await decide({ stored, targetSha: SHA1, mainSha: MAIN, provenanceCommit: SHA0, openPr: { merged: true, state: "closed" }, resetBlocked: true, runStatusOf: noStatus });
+  const merged = await decide({ stored, targetSha: SHA1, mainSha: MAIN, provenanceCommit: SHA0, baselineSha: SHA0, openPr: { merged: true, state: "closed" }, resetBlocked: true, runStatusOf: noStatus });
   assert.equal(merged.working.lastMergedUpstreamSha, SHA2, "the merged pull request is the newer information");
   assert.equal(merged.working.blockedTargetSha, null);
   assert.equal(merged.action, null);
-  const plain = await decide({ stored: { ...stored, openPrNumber: null, openPrTargetSha: null }, targetSha: SHA1, mainSha: MAIN, provenanceCommit: SHA2, openPr: null, resetBlocked: false, runStatusOf: noStatus });
+  const plain = await decide({ stored: { ...stored, openPrNumber: null, openPrTargetSha: null }, targetSha: SHA1, mainSha: MAIN, provenanceCommit: SHA2, baselineSha: SHA0, openPr: null, resetBlocked: false, runStatusOf: noStatus });
   assert.equal(plain.working.lastMergedUpstreamSha, SHA2, "the provenance file is authoritative");
   assert.equal(plain.action, "noop-blocked-sha", "same target, same main, no reset: blocked");
 });
@@ -519,6 +667,7 @@ test("decide never calls the run status when an earlier comparison already decid
     targetSha: SHA1,
     mainSha: MAIN,
     provenanceCommit: null,
+    baselineSha: SHA1,
     openPr: null,
     resetBlocked: false,
     runStatusOf: async () => {
@@ -528,6 +677,36 @@ test("decide never calls the run status when an earlier comparison already decid
   });
   assert.equal(outcome.action, "noop-304");
   assert.equal(calls, 0);
+});
+
+test("decide (AC14): a missing provenance file leaves the cursor of the state only while that cursor is the seed, and is an error after it, whatever else the state says", async () => {
+  const noStatus = async () => {
+    throw new Error("no run status is needed: the evidence is refused first");
+  };
+  const input = (stored, extra = {}) => ({ stored, targetSha: SHA2, mainSha: MAIN, provenanceCommit: null, provenanceLabel: "the provenance file", baselineSha: SHA0, openPr: null, resetBlocked: false, runStatusOf: noStatus, ...extra });
+  // at the seed: the fallback
+  const seeded = await decide(input(state({ lastMergedUpstreamSha: SHA0, portfolioMainSha: MAIN }, E)));
+  assert.equal(seeded.working.lastMergedUpstreamSha, SHA0);
+  assert.equal(seeded.action, null);
+  // off the seed: an error that names what was missing and why the fallback does not apply
+  for (const stored of [
+    state({ lastMergedUpstreamSha: SHA1, portfolioMainSha: MAIN }, E),
+    state({ lastMergedUpstreamSha: SHA1, portfolioMainSha: MAIN, ...FAILED(SHA2, 2, SHA2) }, E),
+    state({ lastMergedUpstreamSha: SHA1, portfolioMainSha: MAIN, inFlightRunId: 9, inFlightTargetSha: SHA2 }, E),
+    state({ lastMergedUpstreamSha: SHA1, portfolioMainSha: null, lastNoopHeadSha: SHA2 }, E),
+  ]) {
+    await assert.rejects(decide(input(stored)), (error) => {
+      assert.equal(error.name, "RoutingDataError");
+      assert.equal(error.code, "provenance-missing");
+      assert.match(error.message, new RegExp(`^the provenance file does not exist \\(404\\), but the merge cursor ${SHA1} has moved off the seed ${SHA0}`));
+      return true;
+    });
+  }
+  // a file that is there is authoritative wherever the cursor is
+  const present = await decide(input(state({ lastMergedUpstreamSha: SHA1, portfolioMainSha: MAIN }, E), { provenanceCommit: SHA1 }));
+  assert.equal(present.working.lastMergedUpstreamSha, SHA1);
+  // a caller that does not say what the seed is never gets the fallback
+  await assert.rejects(decide(input(state({ lastMergedUpstreamSha: SHA0, portfolioMainSha: MAIN }, E), { baselineSha: undefined })), /has moved off the seed/);
 });
 
 test("the preset's edges produce the preset decisions: every edge of sdlc.yaml routes from its own seed (AC66 data check)", () => {

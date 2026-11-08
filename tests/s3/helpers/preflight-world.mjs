@@ -52,10 +52,10 @@ export function helperScript(drift) {
  */
 export function createPreflightWorld(spec) {
   const git = createGitWorld();
-  const edge = spec.edge;
-  const upstreamShas = spec.upstreamCommits.map((files, index) => git.commit(edge.upstreamRepo, files, `upstream ${index}`));
+  const unseeded = spec.edge;
+  const upstreamShas = spec.upstreamCommits.map((files, index) => git.commit(unseeded.upstreamRepo, files, `upstream ${index}`));
   const upstreamHead = upstreamShas[spec.headIndex ?? upstreamShas.length - 1];
-  const downstreamSha = git.commit(edge.downstreamRepo, spec.downstreamFiles ?? { "README.md": "the downstream\n" }, "downstream main");
+  const downstreamSha = git.commit(unseeded.downstreamRepo, spec.downstreamFiles ?? { "README.md": "the downstream\n" }, "downstream main");
   const bin = createStubBin({
     npm: {
       rules: spec.npm ?? [
@@ -65,7 +65,12 @@ export function createPreflightWorld(spec) {
     },
   });
   const runnerTemp = fs.mkdtempSync(path.join(os.tmpdir(), "sdlc-s3-runner-temp-"));
-  const state0 = state({ lastMergedUpstreamSha: upstreamShas[0], lastObservedHeadSha: upstreamShas[0], portfolioMainSha: downstreamSha, ...(spec.stateOverrides?.(upstreamShas) ?? {}) }, edge);
+  const state0 = state({ lastMergedUpstreamSha: upstreamShas[0], lastObservedHeadSha: upstreamShas[0], portfolioMainSha: downstreamSha, ...(spec.stateOverrides?.(upstreamShas) ?? {}) }, unseeded);
+  // A seeded world (AC13, AC14): the bootstrap writes the merge cursor from the baseline of the edge, so the baseline of the edge is the commit that the cursor starts at.
+  // The downstream has no provenance file on main unless the world says so, which is the time before the first merged cascade pull request, when the router falls back
+  // to that cursor; a world whose cursor was advanced would have to carry the file.
+  const edge = { ...unseeded, initialBaselineSha: state0.lastMergedUpstreamSha };
+  const worldOptions = spec.worldOptions ?? {};
   const w = routerWorld({
     edge,
     state: state0,
@@ -73,7 +78,10 @@ export function createPreflightWorld(spec) {
     downstream: { head: downstreamSha, ...(spec.downstreamRest ?? {}) },
     workspacePrefix: spec.workspacePrefix,
     env: { ...hostEnvironment(), ...git.environment(), PATH: bin.path(), RUNNER_TEMP: runnerTemp },
-    ...(spec.worldOptions ?? {}),
+    ...worldOptions,
+    ...(worldOptions.manifestEdges === undefined
+      ? {}
+      : { manifestEdges: worldOptions.manifestEdges.map((entry) => (entry.upstreamKey === edge.upstreamKey ? { ...entry, initialBaselineSha: edge.initialBaselineSha } : entry)) }),
   });
   const driftDir = path.join(w.workspace.dir, "src");
   if (spec.drift !== null && spec.drift !== undefined) {
@@ -134,10 +142,45 @@ export const labFiles = (n) => ({ "labs/lab01.md": `lab 1 revision ${n}\n`, "REA
 export const SHOWCASE_SCRIPT = "experiences/pipeline-showcase/capture/fetch-run-data.mjs";
 export const SHOWCASE_ANSWER = "experiences/pipeline-showcase/capture/answer.json";
 export const SHOWCASE_DATA = "experiences/pipeline-showcase/content/run-data.json";
-/** The eleven run ids of the capture script (SPEC-03 F24); the largest is the newest that the downstream records. */
-export const RECORDED_RUN_IDS = [39781079785, 39781079636, 39780778851, 39780778886, 40446543496, 40573274820, 39443641702, 39440423127, 39445050929, 39449984245, 39781079595];
+/**
+ * The eleven runs of the capture script (SPEC-03 F24) with the workflow that each of them is a run of. The first six are one run each of six workflows; the five
+ * `cd` entries (the first deploy, a promotion, a rollback, a run that waits for a reviewer and one that is queued behind it) are runs of one workflow.
+ */
+export const RECORDED_RUNS = Object.freeze([
+  { key: "ci", id: 39781079785, workflow: "ci" },
+  { key: "codeql", id: 39781079636, workflow: "codeql" },
+  { key: "dependency-review", id: 39780778851, workflow: "dependency-review" },
+  { key: "container-scan", id: 39780778886, workflow: "container-scan" },
+  { key: "scorecard", id: 40446543496, workflow: "scorecard" },
+  { key: "dependabot", id: 40573274820, workflow: "dependabot" },
+  { key: "cd", id: 39443641702, workflow: "cd" },
+  { key: "cd-initial", id: 39440423127, workflow: "cd" },
+  { key: "rollback", id: 39445050929, workflow: "cd" },
+  { key: "cd-waiting", id: 39449984245, workflow: "cd" },
+  { key: "cd-queued", id: 39781079595, workflow: "cd" },
+]);
+/** The eleven run ids of the capture script, in its order. */
+export const RECORDED_RUN_IDS = RECORDED_RUNS.map((entry) => entry.id);
+/** The largest recorded id: the newest run of any workflow that the downstream records, which is NOT the bar that a run of another workflow has to pass. */
 export const NEWEST_RECORDED_RUN = Math.max(...RECORDED_RUN_IDS);
-export const actionsRun = (id, status = "completed") => ({ id, status, conclusion: status === "completed" ? "success" : null, name: "ci" });
+/** The ids that the REST API gives the workflows (`workflow_id`, an integer); `lint` is a workflow of the upstream that no recorded run is a run of. */
+export const WORKFLOW_IDS = Object.freeze({ ci: 7101, codeql: 7102, "dependency-review": 7103, "container-scan": 7104, scorecard: 7105, dependabot: 7106, cd: 7107, lint: 7199 });
+/** A run of the REST API (`GET /actions/runs`, `GET /actions/runs/{id}`): its status and the workflow that it is a run of (`workflow_id`, required by the 2022-11-28 schema). */
+export function actionsRun(id, status = "completed", workflow = "ci") {
+  if (!Object.hasOwn(WORKFLOW_IDS, workflow)) throw new Error(`no workflow '${workflow}' in the fixtures (${Object.keys(WORKFLOW_IDS).join(", ")})`);
+  return { id, status, conclusion: status === "completed" ? "success" : null, name: workflow, path: `.github/workflows/${workflow}.yml`, workflow_id: WORKFLOW_IDS[workflow] };
+}
+/** The eleven recorded runs as the upstream returns them. */
+export const recordedRuns = () => RECORDED_RUNS.map((entry) => actionsRun(entry.id, "completed", entry.workflow));
+/**
+ * The REST side of a showcase upstream: its listing of runs, and every run by id. The recorded runs exist upstream whatever the listing (a hundred newer runs can push
+ * them out of it), so they are always there to be read by id, beside the listed ones.
+ */
+export function showcaseUpstream(runList = recordedRuns()) {
+  const byId = {};
+  for (const run of [...recordedRuns(), ...runList]) byId[String(run.id)] = run;
+  return { runList, runs: byId };
+}
 
 export const showcaseEdge = (overrides = {}) =>
   preflightEdge({
@@ -180,7 +223,7 @@ export function createShowcaseWorld(spec = {}) {
     upstreamCommits: [{ "README.md": "showcase 1\n" }, { "README.md": "showcase 2\n" }],
     downstreamFiles: files,
     downstreamRest: { files: { [SHOWCASE_SCRIPT]: script } },
-    rest: { runList: spec.runList ?? RECORDED_RUN_IDS.map((id) => actionsRun(id)) },
+    rest: showcaseUpstream(spec.runList ?? recordedRuns()),
     worldOptions: { manifestEdges: [{ ...edge, syncScopes: ["showcase-runs"] }] },
     ...(spec.extra ?? {}),
   });

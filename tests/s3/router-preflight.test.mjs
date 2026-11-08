@@ -19,11 +19,16 @@ import {
   NEWEST_RECORDED_RUN,
   preflightEdge,
   RECORDED_RUN_IDS,
+  RECORDED_RUNS,
+  recordedRuns,
   samePath,
   SHOWCASE_ANSWER,
   SHOWCASE_DATA,
 } from "./helpers/preflight-world.mjs";
 import { fixture, readText, TOKENS } from "./helpers/fixtures.mjs";
+
+/** The recorded run of the capture script that has this key. */
+const recorded = (key) => RECORDED_RUNS.find((entry) => entry.key === key);
 
 const labWorld = (overrides = {}) =>
   createPreflightWorld({
@@ -350,8 +355,8 @@ test("AC22 showcase-only-snapshotAt-differs-is-noop: no newer completed run and 
   assert.equal(samePath(capture.cwd, world.portfolioDir), false, "not in the checkout of the router");
 });
 
-test("AC22 showcase-newer-run-dispatches: a completed run of the upstream that is newer than the eleven recorded ones is a change, and the capture is not needed to say so", async (t) => {
-  const world = createShowcaseWorld({ runList: [...RECORDED_RUN_IDS.map((id) => actionsRun(id)), actionsRun(NEWEST_RECORDED_RUN + 1)] });
+test("AC22 showcase-newer-run-dispatches: a completed run that is newer than every recorded one is a change, and the capture is not needed to say so", async (t) => {
+  const world = createShowcaseWorld({ runList: [...recordedRuns(), actionsRun(NEWEST_RECORDED_RUN + 1)] });
   t.after(() => world.cleanup());
   const spied = spy();
   const result = await world.go({ preflightDeps: spied.deps });
@@ -365,19 +370,144 @@ test("AC22 showcase-newer-run-dispatches: a completed run of the upstream that i
   assert.equal(world.w.state().lastNoopHeadSha, null);
 });
 
-test("AC22 showcase-newer-run-dispatches: only a completed run counts, and only one that is newer than the newest recorded", async (t) => {
+test("AC22 showcase-newer-run-dispatches: a run is compared with the recorded runs of its own workflow, so a CI run newer than the recorded CI run is new although another workflow's recorded run is newer still", async (t) => {
+  // the finding: recorded CI is 39781079785 and recorded Dependabot 40573274820; a CI run that completes in between is new for CI
+  const newerCi = actionsRun(40100000000, "completed", "ci");
+  assert.ok(newerCi.id > recorded("ci").id && newerCi.id < NEWEST_RECORDED_RUN);
+  const world = createShowcaseWorld({ runList: [...recordedRuns(), newerCi] });
+  t.after(() => world.cleanup());
+  const spied = spy();
+  const result = await world.go({ preflightDeps: spied.deps });
+  assert.equal(result.code, 0, `${result.stderr}\n${result.stdout}`);
+  assert.equal(world.w.decisions()[0].action, "dispatch-ai-adaptation");
+  assert.equal(world.w.stub.world.dispatches.length, 1);
+  assert.equal(world.w.stub.world.dispatches[0].body.inputs.sync_scope, "showcase-runs");
+  assert.equal(spied.captures().length, 0, "the newer run decides; the capture is not run");
+  const after = world.w.state();
+  assert.equal(after.inFlightTargetSha, world.upstreamShas[1]);
+  assert.equal(after.lastNoopHeadSha, null, "a change is never recorded as a no-op");
+  assert.equal(after.lastMergedUpstreamSha, world.upstreamShas[0]);
+  assert.match(result.stdout, /preflight: material change \(snapshot: 1 completed run\(s\) of initech\/showcase are newer than the newest recorded run of their workflow/);
+  assert.match(result.stdout, /run 40100000000 of workflow 7101 is newer than 39781079785/);
+});
+
+test("AC22 showcase-newer-run-dispatches: only a completed run counts, and only one that is newer than the newest recorded run of its own workflow", async (t) => {
   const quiet = [
-    ...RECORDED_RUN_IDS.map((id) => actionsRun(id)),
-    actionsRun(NEWEST_RECORDED_RUN + 5, "in_progress"),
-    actionsRun(NEWEST_RECORDED_RUN + 6, "queued"),
-    actionsRun(NEWEST_RECORDED_RUN - 1),
-    actionsRun(1),
+    ...recordedRuns(),
+    actionsRun(NEWEST_RECORDED_RUN + 5, "in_progress", "ci"),
+    actionsRun(NEWEST_RECORDED_RUN + 6, "queued", "cd"),
+    actionsRun(NEWEST_RECORDED_RUN + 7, "waiting", "dependabot"),
+    actionsRun(recorded("ci").id - 1, "completed", "ci"),
+    actionsRun(1, "completed", "dependabot"),
   ];
   const world = createShowcaseWorld({ runList: quiet });
   t.after(() => world.cleanup());
   const result = await world.go({ preflightDeps: spy().deps });
   assert.equal(result.code, 0, `${result.stderr}\n${result.stdout}`);
-  assert.equal(world.w.decisions()[0].action, "noop-unchanged-snapshot", "a running run, a queued run and older runs change nothing");
+  assert.equal(world.w.decisions()[0].action, "noop-unchanged-snapshot", "a running run, a queued run, a waiting run and older runs change nothing");
+});
+
+test("AC22 a run is compared with the recorded runs of its own workflow only: older than its own bar it is not new, whatever the other workflows recorded", async (t) => {
+  // each of these is newer than some recorded run of another workflow and older than the newest recorded run of its own
+  const older = [
+    actionsRun(recorded("ci").id - 1, "completed", "ci"),
+    actionsRun(recorded("codeql").id - 1, "completed", "codeql"),
+    actionsRun(recorded("dependabot").id - 1, "completed", "dependabot"),
+    actionsRun(recorded("scorecard").id - 1, "completed", "scorecard"),
+  ];
+  for (const run of older) assert.ok(run.id > recorded("cd-initial").id && run.id < NEWEST_RECORDED_RUN + 1);
+  const world = createShowcaseWorld({ runList: [...recordedRuns(), ...older] });
+  t.after(() => world.cleanup());
+  const result = await world.go({ preflightDeps: spy().deps });
+  assert.equal(result.code, 0, `${result.stderr}\n${result.stdout}`);
+  assert.equal(world.w.decisions()[0].action, "noop-unchanged-snapshot");
+  assert.equal(world.w.stub.world.dispatches.length, 0);
+});
+
+test("AC22 the five cd entries are one workflow: a cd run between the recorded ones is not new, one newer than the newest of them is", async (t) => {
+  const between = actionsRun(39600000000, "completed", "cd");
+  assert.ok(between.id > recorded("cd-waiting").id && between.id < recorded("cd-queued").id);
+  const quiet = createShowcaseWorld({ runList: [...recordedRuns(), between] });
+  t.after(() => quiet.cleanup());
+  assert.equal((await quiet.go({ preflightDeps: spy().deps })).code, 0);
+  assert.equal(quiet.w.decisions()[0].action, "noop-unchanged-snapshot", "newer than cd, rollback and cd-waiting, older than cd-queued: not new");
+
+  // newer than the newest cd entry, and older than the recorded CI and CodeQL runs
+  const newer = actionsRun(recorded("cd-queued").id + 1, "completed", "cd");
+  assert.ok(newer.id < recorded("codeql").id);
+  const loud = createShowcaseWorld({ runList: [...recordedRuns(), between, newer] });
+  t.after(() => loud.cleanup());
+  assert.equal((await loud.go({ preflightDeps: spy().deps })).code, 0);
+  assert.equal(loud.w.decisions()[0].action, "dispatch-ai-adaptation");
+  assert.equal(loud.w.stub.world.dispatches[0].body.inputs.sync_scope, "showcase-runs");
+});
+
+test("AC22 a run of a workflow that no recorded run belongs to is not one of the runs of the eleven keys: it changes nothing, and the capture still decides", async (t) => {
+  const stranger = actionsRun(NEWEST_RECORDED_RUN + 10, "completed", "lint");
+  const world = createShowcaseWorld({ runList: [...recordedRuns(), stranger] });
+  t.after(() => world.cleanup());
+  const spied = spy();
+  const result = await world.go({ preflightDeps: spied.deps });
+  assert.equal(result.code, 0, `${result.stderr}\n${result.stdout}`);
+  assert.equal(world.w.decisions()[0].action, "noop-unchanged-snapshot");
+  assert.equal(spied.captures().length, 1, "no newer run of a recorded workflow, so the capture is what decides");
+});
+
+test("AC22 the workflow of each recorded run is read from the run itself: one read per recorded run, in order, with the read token of the upstream, and nothing is written but the state", async (t) => {
+  const world = createShowcaseWorld();
+  t.after(() => world.cleanup());
+  const result = await world.go({ preflightDeps: spy().deps });
+  assert.equal(result.code, 0, `${result.stderr}\n${result.stdout}`);
+  const reads = world.w.stub.calls("GET", /\/repos\/initech\/showcase\/actions\/runs\/\d+$/);
+  assert.deepEqual(reads.map((request) => request.path), RECORDED_RUN_IDS.map((id) => `/repos/initech/showcase/actions/runs/${id}`), "each recorded run once, in the order of the capture script");
+  const minted = world.w.stub.world.minted;
+  const read = minted.find((entry) => entry.installation === "initech" && entry.permissions.actions === "read");
+  const write = minted.find((entry) => entry.permissions.variables === "write");
+  assert.ok(read && write, "the router minted a read token for the upstream's owner and the write token");
+  for (const request of reads) {
+    assert.equal(request.headers.authorization, `Bearer ${read.token}`, request.path);
+    assert.notEqual(request.headers.authorization, `Bearer ${write.token}`, request.path);
+    assert.notEqual(request.headers.authorization, `Bearer ${TOKENS.issues}`, request.path);
+  }
+  assert.equal(world.w.stub.fetch.state.maxInflight, 1, "serial");
+  assert.deepEqual(world.w.stub.calls().filter((request) => request.method !== "GET" && !request.path.startsWith("/app/")).map((request) => `${request.method} ${request.path}`), [`PATCH /repos/acme/orchestrator/actions/variables/${world.edge.stateVariable}`], "the one state write of the run");
+});
+
+test("AC22 a recorded run that cannot be read, or that names no workflow, fails the job: an error is never read as no newer run", async (t) => {
+  const bar = recorded("dependabot").id;
+  const cases = [
+    ["the run no longer exists (404: deleted, or not visible to the token)", { status: 404, body: { message: "Not Found" } }, /the run 40573274820 that the capture script records does not exist in initech\/showcase \(404\)/],
+    ["the read is refused (403)", { status: 403, body: { message: "Resource not accessible by integration" } }, /403/],
+    ["the server fails (500)", { status: 500, body: { message: "Server Error" } }, /500/],
+    ["the run has no workflow_id", { status: 200, body: { id: bar, status: "completed" } }, /the run 40573274820 of initech\/showcase has no workflow_id/],
+    ["the run answers as another run", { status: 200, body: { ...actionsRun(bar + 1) } }, /the run 40573274820 of initech\/showcase answered as another run/],
+  ];
+  for (const [label, answer, message] of cases) {
+    const world = createShowcaseWorld();
+    t.after(() => world.cleanup());
+    world.w.stub.inject("GET", (requestPath) => requestPath.endsWith(`/actions/runs/${bar}`), answer);
+    const spied = spy();
+    const result = await world.go({ preflightDeps: spied.deps });
+    assert.equal(result.code, 1, `${label}: ${result.stdout}`);
+    assert.match(result.stderr, message, label);
+    assert.equal(world.w.patches().length, 0, label);
+    assert.equal(world.w.stub.world.dispatches.length, 0, label);
+    assert.equal(spied.captures().length, 0, `${label}: the capture is not run`);
+    assert.deepEqual(world.leftoverClones(), [], label);
+    assert.equal(world.w.stub.issues.length, 1, label);
+  }
+});
+
+test("AC22 a completed run in the listing that names no workflow cannot be compared, so the job fails", async (t) => {
+  const nameless = { id: NEWEST_RECORDED_RUN + 1, status: "completed", conclusion: "success", name: "ci" };
+  const world = createShowcaseWorld({ runList: [...recordedRuns(), nameless] });
+  t.after(() => world.cleanup());
+  const result = await world.go({ preflightDeps: spy().deps });
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(result.stderr, /completed run \d+ of initech\/showcase .*workflow_id/);
+  assert.equal(world.w.patches().length, 0);
+  assert.equal(world.w.stub.world.dispatches.length, 0);
+  assert.equal(world.w.stub.issues.length, 1);
 });
 
 test("AC22 showcase-run-data-diff-dispatches: a capture that differs from the committed run-data.json in more than snapshotAt is a change", async (t) => {
@@ -454,25 +584,25 @@ test("AC22 a capture that writes no run-data.json, a listing that fails and a sc
       "the listing of the upstream's runs answers 500",
       () => {
         const world = createShowcaseWorld();
-        world.w.stub.inject("GET", "/actions/runs", () => ({ status: 500, body: { message: "Server Error" } }));
+        world.w.stub.inject("GET", (requestPath) => requestPath.endsWith("/actions/runs"), () => ({ status: 500, body: { message: "Server Error" } }));
         return world;
       },
-      /500/,
+      /GET \/repos\/initech\/showcase\/actions\/runs\?per_page=100 returned HTTP 500/,
     ],
     [
       "the listing is refused (403)",
       () => {
         const world = createShowcaseWorld();
-        world.w.stub.inject("GET", "/actions/runs", () => ({ status: 403, body: { message: "Resource not accessible by integration" } }));
+        world.w.stub.inject("GET", (requestPath) => requestPath.endsWith("/actions/runs"), () => ({ status: 403, body: { message: "Resource not accessible by integration" } }));
         return world;
       },
-      /403/,
+      /GET \/repos\/initech\/showcase\/actions\/runs\?per_page=100 returned HTTP 403/,
     ],
     [
       "the listing is not a list of runs",
       () => {
         const world = createShowcaseWorld();
-        world.w.stub.inject("GET", "/actions/runs", () => ({ status: 200, body: { total_count: 0 } }));
+        world.w.stub.inject("GET", (requestPath) => requestPath.endsWith("/actions/runs"), () => ({ status: 200, body: { total_count: 0 } }));
         return world;
       },
       /are not a list/,

@@ -180,10 +180,6 @@ export function createGitHubStub(options = {}) {
         }
         return reply(204, "");
       }
-      if (rest[0] === "actions" && rest[1] === "runs" && rest.length === 3 && method === "GET") {
-        const run = target?.runs?.[rest[2]];
-        return run ? reply(200, run) : notFound();
-      }
       if (rest[0] === "issues" && rest.length === 1 && method === "GET") return issuePage(entry);
       if (rest[0] === "issues" && rest.length === 1 && method === "POST") {
         const body = JSON.parse(entry.body ?? "{}");
@@ -204,6 +200,13 @@ export function createGitHubStub(options = {}) {
     if (target === undefined) return notFound();
 
     if (rest.length === 0 && method === "GET") return reply(200, { full_name: target.slug, default_branch: target.defaultBranch });
+
+    // one run by its id, in any repository: the run of the orchestrator that a state records as in flight, and the runs of an upstream that a capture script records
+    // (GET /repos/{owner}/{repo}/actions/runs/{run_id} answers the same object as the listing: it names its workflow_id)
+    if (rest[0] === "actions" && rest[1] === "runs" && rest.length === 3 && method === "GET") {
+      const run = target.runs?.[rest[2]];
+      return run ? reply(200, run) : notFound();
+    }
 
     if (rest[0] === "commits" && method === "GET") {
       const ref = rest.slice(1).join("/");

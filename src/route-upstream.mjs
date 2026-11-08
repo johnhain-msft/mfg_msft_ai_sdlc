@@ -13,7 +13,8 @@
 //      every other job exits 0 without a request, and a payload that names no edge fails every job. The target is never taken from the payload.
 //   2. the state is read (a missing variable is fatal; nothing here creates one) and the upstream is polled with If-None-Match: the commit of the default
 //      branch and the closed pull requests. 200: the target is the sha of the response, and the ETag is held in memory. 304: the target is lastObservedHeadSha.
-//   3. the downstream is read: the head of its default branch, and the commit that its provenance file records (404: the cursor of the state stands).
+//   3. the downstream is read: the head of its default branch, and the commit that its provenance file records (404: the cursor of the state stands, but only
+//      while it is still the seed that the bootstrap wrote; once it has moved, a cascade pull request has merged and a missing file is an error, AC14).
 //   4. an open pull request that the state records is reconciled (merged: the merge cursor advances; closed unmerged: the target is dismissed); the
 //      failure counters are reset when the target, the downstream head or the manual input changed; then the target is compared with the merge cursor,
 //      the last no-op, the dismissed and the blocked target, the run in flight and the open pull request, in that order.
@@ -153,9 +154,18 @@ async function readRunStatus({ client, central, runId }) {
 
 /**
  * Reconciliation, resets and terminal comparisons (AC15, AC17, AC18) as one function of what was read; it makes no request except through `runStatusOf`.
+ *
+ * The provenance file of the downstream decides the merge cursor (AC14). Its absence (`provenanceCommit` null, a 404 on main) is a fact about the time before
+ * the first cascade pull request merged: the file does not exist yet, so the cursor of the state, which the bootstrap seeded with `baselineSha` (the edge's
+ * initialBaselineSha, AC13), stands. Once the cursor has moved off its seed, the router has seen a cascade merge (or a provenance file that existed) and the
+ * file has to be there: a 404 then is a deleted or moved file, never the bootstrap, and nothing is decided from a cursor that main no longer confirms.
+ * @param {object} input
+ * @param {string} input.baselineSha the edge's initialBaselineSha, the seed of the merge cursor
+ * @param {string} [input.provenanceLabel] what was read, for the message of a refusal (the file, its repository and the commit it was read at)
  * @returns {Promise<{ working: object, action: string | null }>} `action` is a terminal noop, or null when the target has to be dispatched or checked
+ * @throws {RoutingDataError} `provenance-missing`, when the provenance file is absent and the merge cursor is not the seed
  */
-export async function decide({ stored, targetSha, mainSha, provenanceCommit, openPr, resetBlocked, runStatusOf }) {
+export async function decide({ stored, targetSha, mainSha, provenanceCommit, provenanceLabel = "the provenance file", baselineSha, openPr, resetBlocked, runStatusOf }) {
   const working = { ...stored };
   let merged = false;
   if (openPr !== null) {
@@ -168,7 +178,16 @@ export async function decide({ stored, targetSha, mainSha, provenanceCommit, ope
     }
   }
   // the provenance file of the downstream is authoritative for the merge cursor; a pull request that was seen merged is newer than any file read before it
-  if (provenanceCommit !== null) working.lastMergedUpstreamSha = provenanceCommit;
+  if (provenanceCommit !== null) {
+    working.lastMergedUpstreamSha = provenanceCommit;
+  } else if (stored.lastMergedUpstreamSha !== baselineSha) {
+    throw new RoutingDataError(
+      `${provenanceLabel} does not exist (404), but the merge cursor ${stored.lastMergedUpstreamSha} has moved off the seed ${baselineSha} (initialBaselineSha): either a cascade pull request has merged, ` +
+        "so the file has to be on the default branch, or initialBaselineSha changed after the variable was seeded. The fallback to the cursor of the state holds only before the first " +
+        "merged cascade pull request (SPEC-03 AC14). Nothing was routed and nothing was written. Restore the file on the default branch, or correct provenanceFile in sdlc.yaml if it moved.",
+      { code: "provenance-missing" },
+    );
+  }
   if (merged) {
     working.lastMergedUpstreamSha = stored.openPrTargetSha;
     working.openPrNumber = null;
@@ -327,6 +346,8 @@ async function route(ctx) {
     targetSha: poll.targetSha,
     mainSha: downstream.mainSha,
     provenanceCommit: downstream.provenanceCommit,
+    provenanceLabel: `${edge.provenanceFile} of ${edge.downstreamRepo} at ${downstream.mainSha}`,
+    baselineSha: edge.initialBaselineSha,
     openPr,
     resetBlocked,
     runStatusOf: (runId) => readRunStatus({ client: write, central, runId }),

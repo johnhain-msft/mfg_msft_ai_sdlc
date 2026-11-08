@@ -10,8 +10,9 @@
 //     exit 2 and anything else a failure, and a result that does not match the helper's JSON is a failure too. A missing helper is a failure, never
 //     a drift or a clean result.
 //   - a `gh api repos/<upstream>/actions/runs...` listing is the first half of the snapshot check: it is read by the router itself with the read
-//     token (a GET), and compared with the runs that the capture script of the downstream records. The second half runs the edge's capture command
-//     (fetch-run-data.mjs) in an isolated clone of the downstream checkout and compares what it wrote with the committed file, snapshotAt stripped.
+//     token (a GET), and compared, workflow by workflow, with the runs that the capture script of the downstream records: a completed run is new when
+//     it is newer than the newest recorded run of its own workflow, whose workflow_id is read from the recorded run itself (AC22). The second half runs the
+//     edge's capture command (fetch-run-data.mjs) in an isolated clone of the downstream checkout and compares what it wrote with the committed file, snapshotAt stripped.
 //   - any other command is a plain check by its exit status: 0 no difference, 1 a difference, anything else a failure (git diff --quiet).
 //
 // The router never changes the downstream checkout that it made: the capture runs in a temporary clone, and only the file that it owns is restored there.
@@ -288,7 +289,34 @@ export async function runPreflight(ctx) {
 }
 
 /**
+ * The workflow of each recorded run, and the newest recorded run of each workflow. The workflow of a run is the `workflow_id` of the run itself
+ * (`GET /repos/{owner}/{repo}/actions/runs/{run_id}`, readable with the Actions read permission [F27]; a required integer of the run object in the 2022-11-28
+ * description): the recorded runs are old, so the listing of the upstream's latest runs need not hold them. The five `cd` entries of the capture script are runs of
+ * one workflow, so the bar for a `cd` run is the newest of the five and not each of them.
+ * @returns {Promise<Map<number, number>>} workflow_id -> the largest recorded run id of that workflow
+ * @throws {PreflightError} when a recorded run cannot be read or names no workflow: an error is never read as "no newer run"
+ */
+async function newestRecordedByWorkflow({ client, upstream, recorded }) {
+  const newest = new Map();
+  for (const id of new Set(recorded)) {
+    const response = await client.requestJson("GET", `${repoPath(upstream)}/actions/runs/${id}`, { expect: [200, 404] });
+    if (response.status === 404) {
+      throw new PreflightError(`the run ${id} that the capture script records does not exist in ${upstream} (404), or the read token cannot see it, so the workflow that it belongs to is not known and newer runs cannot be told from older ones`);
+    }
+    const run = response.json;
+    if (Number(run?.id) !== id) throw new PreflightError(`the run ${id} of ${upstream} answered as another run (id ${run?.id ?? "none"})`);
+    if (!Number.isInteger(run.workflow_id)) throw new PreflightError(`the run ${id} of ${upstream} has no workflow_id, so the workflow that it belongs to is not known`);
+    newest.set(run.workflow_id, Math.max(newest.get(run.workflow_id) ?? 0, id));
+  }
+  return newest;
+}
+
+/**
  * The snapshot check of the showcase edge: newer completed runs than the ones that the capture script records, then the capture itself.
+ *
+ * A run is newer when it is completed and newer than the newest recorded run of ITS OWN workflow (SPEC-03 AC22, C6: "for the 11 RUNS keys"). Run ids grow with time across
+ * all workflows, so the largest recorded id of all workflows is the wrong bar: a CI run that completes after the recorded CI run is new even when the recorded Dependabot run
+ * is newer still. A run of a workflow that no recorded run belongs to is not one of the runs of the eleven keys and does not count; the capture decides what else changed.
  * @returns {Promise<{ drift: boolean, summary: string }>}
  */
 async function snapshotCheck({ ctx, deps, plan, downstreamDir, runShell, prepareDownstreamClone }) {
@@ -301,7 +329,7 @@ async function snapshotCheck({ ctx, deps, plan, downstreamDir, runShell, prepare
   const upstreamClient = ctx.readClientFor(edge.upstreamRepo);
   const downstreamClient = ctx.readClientFor(edge.downstreamRepo);
 
-  // (1) newer completed runs than the ones that the capture script records
+  // (1) newer completed runs than the ones that the capture script records, workflow by workflow
   if (plan.capture === null) throw new PreflightError("the edge lists a runs listing but no capture command (fetch-run-data.mjs), so the recorded runs are not known");
   const scriptResponse = await downstreamClient.requestJson("GET", `${repoPath(edge.downstreamRepo)}/contents/${encodePath(plan.capture.script)}?ref=${ctx.downstreamSha}`, { expect: [200, 404] });
   if (scriptResponse.status === 404) throw new PreflightError(`${plan.capture.script} does not exist in ${edge.downstreamRepo} at ${ctx.downstreamSha}`);
@@ -311,13 +339,21 @@ async function snapshotCheck({ ctx, deps, plan, downstreamDir, runShell, prepare
   }
   const recorded = parseRunIds(Buffer.from(scriptJson.content.replace(/\s+/g, ""), "base64").toString("utf8"));
   if (recorded.length === 0) throw new PreflightError(`${plan.capture.script} records no runs (a RUNS array with ids), so newer runs cannot be told from older ones`);
-  const newest = Math.max(...recorded);
+  const barOf = await newestRecordedByWorkflow({ client: upstreamClient, upstream: edge.upstreamRepo, recorded });
   const runsResponse = await upstreamClient.requestJson("GET", `/${listing.apiPath.replace(/^\//, "")}`, { expect: [200] });
   const runs = runsResponse.json?.workflow_runs;
   if (!Array.isArray(runs)) throw new PreflightError(`the runs of ${edge.upstreamRepo} are not a list`);
-  const newer = runs.filter((run) => run?.status === "completed" && Number(run?.id) > newest);
+  const newer = [];
+  for (const run of runs) {
+    if (run?.status !== "completed") continue;
+    if (!Number.isInteger(run.id)) throw new PreflightError(`a completed run in the listing of ${edge.upstreamRepo} has no integer id`);
+    if (!Number.isInteger(run.workflow_id)) throw new PreflightError(`a completed run ${run.id} of ${edge.upstreamRepo} has no workflow_id, so it cannot be compared with the recorded runs of its workflow`);
+    const bar = barOf.get(run.workflow_id);
+    if (bar !== undefined && run.id > bar) newer.push({ id: run.id, workflow: run.workflow_id, bar });
+  }
   if (newer.length > 0) {
-    return { drift: true, summary: `snapshot: ${newer.length} completed run(s) of ${edge.upstreamRepo} are newer than the ${recorded.length} recorded (newest recorded ${newest})` };
+    const examples = newer.slice(0, 3).map((entry) => `run ${entry.id} of workflow ${entry.workflow} is newer than ${entry.bar}`).join(", ");
+    return { drift: true, summary: `snapshot: ${newer.length} completed run(s) of ${edge.upstreamRepo} are newer than the newest recorded run of their workflow (${examples}${newer.length > 3 ? ", ..." : ""})` };
   }
 
   // (2) the capture, in an isolated clone: the downstream checkout of the router is never written
@@ -337,7 +373,7 @@ async function snapshotCheck({ ctx, deps, plan, downstreamDir, runShell, prepare
     if (committed === null || !isDeepStrictEqual(captured, committed)) {
       return { drift: true, summary: `snapshot: ${plan.capture.dataFile} differs from the committed file (snapshotAt aside)` };
     }
-    return { drift: false, summary: `snapshot: no newer completed run and ${plan.capture.dataFile} differs only in snapshotAt` };
+    return { drift: false, summary: `snapshot: no completed run is newer than the newest recorded run of its workflow, and ${plan.capture.dataFile} differs only in snapshotAt` };
   } finally {
     clone.remove();
   }

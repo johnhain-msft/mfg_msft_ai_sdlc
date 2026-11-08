@@ -65,7 +65,11 @@ test("AC35 the inputs are exactly the ten of the contract, all strings, and vali
 });
 
 test("AC36 previous-sha-is-last-merged: previous_sha is the merge cursor, never the observed head or the open pull request's target", async (t) => {
-  const w = world({ stateOverrides: { lastMergedUpstreamSha: sha("merged"), lastObservedHeadSha: sha("observed"), openPrNumber: 4, openPrTargetSha: sha("open-target") } });
+  // the cursor has moved off the seed (a cascade pull request merged), so main carries the provenance file that records it (AC14)
+  const w = world({
+    stateOverrides: { lastMergedUpstreamSha: sha("merged"), lastObservedHeadSha: sha("observed"), openPrNumber: 4, openPrTargetSha: sha("open-target") },
+    downstream: { files: { [E.provenanceFile]: JSON.stringify({ commit: sha("merged") }) } },
+  });
   t.after(() => w.cleanup());
   w.stub.repo("acme/portal").pulls = { 4: { number: 4, state: "open", merged: false, head: { sha: sha("x") }, html_url: "https://github.com/acme/portal/pull/4" } };
   await w.go();
