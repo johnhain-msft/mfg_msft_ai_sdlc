@@ -190,11 +190,11 @@ test("AC4: an edge carries every key of AC33 except onBots, plus the policy keys
   }
 });
 
-test("AC21: driftAudit has exactly the ten typed fields of contract C2, each of them required", () => {
+test("AC21: driftAudit has the ten typed fields of contract C2, each of them required, and the one optional field agentSandbox", () => {
   const audit = schema.definitions.driftAudit;
   const fields = ["enabled", "schedule", "upkeepStrategy", "instructions", "instructionsFile", "knowledgeSources", "buildCommands", "verifyCommands", "draft", "reviewers"];
   assert.deepEqual([...audit.required].sort(), [...fields].sort());
-  assert.deepEqual(Object.keys(audit.properties).sort(), [...fields].sort());
+  assert.deepEqual(Object.keys(audit.properties).sort(), [...fields, "agentSandbox"].sort());
   for (const field of fields) {
     rejectsNaming(mutate(base(), (copy) => delete firstProject(copy).driftAudit[field]), field);
   }
@@ -211,6 +211,22 @@ test("AC21: driftAudit has exactly the ten typed fields of contract C2, each of 
     "code-quality-and-improvement-scan",
     "custom",
   ]);
+});
+
+test("AC21: agentSandbox is optional; installDependencies is a boolean and bashCommands a list of distinct bare command names, and it has no other key", () => {
+  const withSandbox = (value) => mutate(base(), (copy) => (firstProject(copy).driftAudit.agentSandbox = value));
+  assert.ok(accepts(base()), "a project without it is valid");
+  for (const good of [{}, { installDependencies: true }, { installDependencies: false, bashCommands: [] }, { bashCommands: ["awk", "python3", "g++", "7z", "x.y", "a_b", "c-d"] }]) {
+    assert.ok(accepts(withSandbox(good)), JSON.stringify(good));
+  }
+  for (const bad of [
+    { installDependencies: "yes" }, { installDependencies: 1 }, { bashCommands: "awk" }, { bashCommands: [1] }, { bashCommands: [""] },
+    { bashCommands: ["*"] }, { bashCommands: ["awk -F"] }, { bashCommands: ["/usr/bin/awk"] }, { bashCommands: ["./awk"] }, { bashCommands: ["a;b"] }, { bashCommands: ["-x"] },
+    { bashCommands: ["awk", "awk"] }, { unexpectedKey: true },
+  ]) {
+    assert.ok(!accepts(withSandbox(bad)), JSON.stringify(bad));
+  }
+  rejectsNaming(withSandbox({ unexpectedKey: true }), "additionalProperties unexpectedKey");
 });
 
 test("AC21: watchUrls entries need url, label and a known kind; kind podcast is rejected", () => {

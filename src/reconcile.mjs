@@ -627,6 +627,13 @@ function validateSemantics(manifest, request, context) {
         if (command.trim() === "") errors.push(rule("command-blank", `${where}/${key}/${position}: commands must not be blank`));
       });
     }
+    (audit.agentSandbox?.bashCommands ?? []).forEach((command, position) => {
+      if (FORBIDDEN_AGENT_BASH.includes(command.toLowerCase())) {
+        errors.push(
+          rule("drift-bash-command-forbidden", `${where}/agentSandbox/bashCommands/${position}: '${command}' reaches the network or the GitHub API, and a drift agent publishes only through the create_pull_request safe output`),
+        );
+      }
+    });
     if (audit.instructionsFile !== null) {
       const result = readInstructionFile(context.cwd, audit.instructionsFile);
       if (result.error) {
@@ -674,6 +681,11 @@ const BASE_BASH = ["cat", "date", "find", "git", "grep", "head", "ls", "tail", "
  * checkout, which the base list does not allow, and a live run showed that the agent also inspects the result with `echo` and `node`.
  */
 const MECHANICAL_BASH = ["cd", "echo", "git", "node"];
+/**
+ * Executables that no manifest may add to the bash tool of a drift agent: each of them reaches the network or the GitHub API, and the only way for a drift
+ * agent to publish anything is its `create_pull_request` safe output (SPEC-02 AC28).
+ */
+const FORBIDDEN_AGENT_BASH = ["curl", "gh", "wget"];
 
 const stringifyYaml = (value) => YAML.stringify(value, YAML_OPTIONS);
 
@@ -935,6 +947,20 @@ function readStrategyFragment(cwd, strategy) {
 
 const driftCloseOlderKey = (projectKey) => `sdlc-drift-${projectKey}`;
 
+/**
+ * What the agent of a drift workflow has inside its sandbox besides what every drift workflow gives it (SPEC-01 AC21, AC25). Both settings are opt-in, so a
+ * project that does not ask for them renders what it always did.
+ */
+function agentSandboxOf(audit) {
+  return { installDependencies: audit.agentSandbox?.installDependencies === true, bashCommands: [...(audit.agentSandbox?.bashCommands ?? [])] };
+}
+
+/**
+ * The agent runs the validators of the target inside its sandbox, which has no route to the package registry: the packages are installed here, outside it,
+ * before the agent starts. The lifecycle scripts of the target stay off, because this step runs outside the sandbox.
+ */
+const INSTALL_TARGET_DEPENDENCIES_STEP = "Install target checkout dependencies for in-sandbox validation";
+
 function driftPreAgentSteps(ctx, project) {
   const key = project.projectKey;
   const credentials = {
@@ -942,7 +968,7 @@ function driftPreAgentSteps(ctx, project) {
     APP_PRIVATE_KEY: expr(`secrets.${ctx.request.appPrivateKeySecret}`),
   };
   const checkoutPath = repoName(project.repo);
-  return [
+  const steps = [
     {
       name: "Prepare run context",
       env: {
@@ -971,6 +997,10 @@ function driftPreAgentSteps(ctx, project) {
       run: `node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs" --out ${AGENT_DIR} --project ${shArg(key)} --checkout ${shArg(checkoutPath)}`,
     },
   ];
+  if (agentSandboxOf(project.driftAudit).installDependencies) {
+    steps.push({ name: INSTALL_TARGET_DEPENDENCIES_STEP, "working-directory": checkoutPath, run: "npm ci --ignore-scripts" });
+  }
+  return steps;
 }
 
 function driftEscalation(ctx, project, workflowId) {
@@ -1126,7 +1156,7 @@ function renderDrift(ctx, project) {
       },
     },
     engine: engineSection(ctx, { sdk: true }),
-    tools: { "web-fetch": {}, bash: bashTool(ctx, ["git", "node", ...audit.buildCommands]), edit: {} },
+    tools: { "web-fetch": {}, bash: bashTool(ctx, ["git", "node", ...audit.buildCommands, ...agentSandboxOf(audit).bashCommands]), edit: {} },
     jobs: { ...agentSuccessGuards({ drift: true }), escalate_failure: driftEscalation(ctx, project, workflowId) },
   };
   return { id: workflowId, kind: "drift", project, text: serializeWorkflow(frontmatter, driftBody(ctx, project)) };

@@ -1,7 +1,7 @@
 // The gates of the mechanical cascade, run for real (SPEC-03 AC56, AC57, AC62; the import -> commit -> pull request ordering is in mechanical-workflow.test.mjs).
 // Every run: step of the rendered workflow runs in its own bash process, in the order of the workflow, against a real git repository of the downstream built from
-// tests/s3/fixtures/gate/portfolio-history.json, with the lines that earlier steps appended to GITHUB_ENV as the only variables that carry over, a stub npm that records
-// what it was asked to run, and a stand-in for jq. A step that exits non-zero ends the job, as it does on the runner: no later step runs.
+// tests/s3/fixtures/gate/portfolio-history.json, with the lines that earlier steps appended to GITHUB_ENV as the only variables that carry over, a stub npm and a stub npx that
+// record what they were asked to run, and a stand-in for jq. A step that exits non-zero ends the job, as it does on the runner: no later step runs.
 //
 // A test builds one job and replays scenarios in it: `reset` puts the repository back to the base and runs the pre-agent step again; `rewind` only forgets what the
 // post-steps wrote, for scenarios that leave the repository as it is.
@@ -33,7 +33,12 @@ const EMPTY = { BASE_SHA: "", AGENT_HEAD_SHA: "", UPSTREAM_SHA: "", PREVIOUS_SHA
 // the workflow is Linux and does not. The variables of the edge's data are excluded from that conversion so that the host does not change what the step reads.
 const HOST = { MSYS2_ENV_CONV_EXCL: "PROVENANCE_POINTER;PROVENANCE_FILE" };
 const BUILD_AND_CHECKS = [...edge.buildCommands, ...edge.verifyCommands];
-const INVOCATIONS = [["run", "build"], ["run", "build:catalog"], ["run", "typecheck"], ["run", "lint"], ["test"], ["run", "test:studio"], ["run", "test:browser"]];
+// The seven commands as the stub tools see them: the tool and its arguments. The browser gate is the specification that covers the pages of the import, run by npx: the full suite
+// of the portfolio needs the Segoe UI font that the runner does not have (the manifest says why).
+const INVOCATIONS = [
+  ["npm", "run", "build"], ["npm", "run", "build:catalog"], ["npm", "run", "typecheck"], ["npm", "run", "lint"], ["npm", "test"], ["npm", "run", "test:studio"],
+  ["npx", "playwright", "test", "tests/browser/sites.spec.ts"],
+];
 
 const fill = (text) => text.replaceAll("{{PREVIOUS_SHA}}", PREVIOUS).replaceAll("{{UPSTREAM_SHA}}", UPSTREAM);
 const baseFiles = () => Object.fromEntries(Object.entries(recipe.base).map(([name, content]) => [name, fill(content)]));
@@ -42,7 +47,7 @@ const recorded = () => Object.fromEntries(Object.entries(recipe.recordedProvenan
 /** A job: the downstream and the upstream checkouts exist and the pre-agent step has run on them. */
 function job({ npmRules = [] } = {}) {
   const sandbox = new BashSandbox();
-  const bin = createStubBin({ npm: { rules: [...npmRules, { match: ".*", code: 0 }] } });
+  const bin = createStubBin({ npm: { rules: [...npmRules, { match: ".*", code: 0 }] }, npx: { rules: [{ match: ".*", code: 0 }] } });
   bin.shim("jq", fixture("..", "helpers", "jq-shim.mjs"));
   const base = sandbox.revision("portfolio", baseFiles());
   const upstreamHead = sandbox.revision(`upstream/${upstreamName}`, { "README.md": "the upstream\n" });
@@ -110,8 +115,10 @@ function job({ npmRules = [] } = {}) {
       }
       return outcomes;
     },
-    npmCalls: () => bin.calls("npm"),
-    buildCalls: () => bin.calls("npm").filter((call) => !(call.args[0] === "run" && call.args[1] === "import:ghec-admin")),
+    /** Every call of the stub npm and the stub npx, in the order in which they were made. */
+    toolCalls: () => bin.log().filter((call) => call.tool === "npm" || call.tool === "npx"),
+    /** The build and check commands as [tool, ...arguments]: every call but the import. */
+    buildCalls: () => j.toolCalls().filter((call) => !(call.tool === "npm" && call.args[0] === "run" && call.args[1] === "import:ghec-admin")),
   };
   return j;
 }
@@ -125,7 +132,7 @@ const withJob = (options, body) => async (t) => {
 
 // ---- AC56, AC57: the hand-off of the revisions, the gates ahead of the builds, the seven commands ---------------------------------------------------------------
 
-test("AC56 AC57 on a clean commit confined to public/ghec-admin the post-steps all exit 0, cascade-shas.json holds the base and the head, every later step sees the variables, and the stub npm saw exactly the seven commands in order", withJob({}, (j) => {
+test("AC56 AC57 on a clean commit confined to public/ghec-admin the post-steps all exit 0, cascade-shas.json holds the base and the head, every later step sees the variables, and the stub npm and npx saw exactly the seven commands in order", withJob({}, (j) => {
   const head = j.commit("clean-import");
   assert.equal(j.runImport().status, 0);
   const outcomes = j.runPostSteps();
@@ -152,7 +159,7 @@ test("AC56 AC57 on a clean commit confined to public/ghec-admin the post-steps a
 
   // AC57: the seven commands, in order, in the portfolio, after the gates
   const calls = j.buildCalls();
-  assert.deepEqual(calls.map((call) => call.args), INVOCATIONS);
+  assert.deepEqual(calls.map((call) => [call.tool, ...call.args]), INVOCATIONS);
   for (const call of calls) assert.ok(samePath(call.cwd, j.sandbox.path("portfolio")), `${call.args.join(" ")} runs in the portfolio`);
   assert.equal(calls[1].bound.STUDIO_ORIGIN, "https://studio.example.com", "build:catalog gets the origin of the command");
   assert.deepEqual(calls.filter((call, index) => index !== 1).map((call) => call.bound.STUDIO_ORIGIN), new Array(6).fill(null));
@@ -182,7 +189,7 @@ test("AC56 a base-sha.txt that is not 40 lowercase hexadecimal characters ends t
     assert.equal(later.length, 0, "the job ended at its first step");
     assert.equal(fs.readFileSync(j.sandbox.envFile, "utf8"), appended, `nothing was appended for ${JSON.stringify(damaged)}`);
     assert.equal(fs.existsSync(path.join(j.sandbox.artifacts, "cascade-shas.json")), false);
-    assert.equal(j.npmCalls().length, 0);
+    assert.equal(j.toolCalls().length, 0);
   }
 }));
 
@@ -200,7 +207,7 @@ test("AC56 an uncommitted change in the portfolio (modified, new, outside the al
     assert.equal(failed(outcomes)?.name, CLEAN_CHECK, label);
     assert.equal(failed(outcomes).status, 1, label);
     assert.match(failed(outcomes).stderr, /worktree is not clean/, label);
-    assert.equal(j.npmCalls().length, 0, `${label}: the stub npm was not called`);
+    assert.equal(j.toolCalls().length, 0, `${label}: neither the stub npm nor the stub npx was called`);
   }
 }));
 
@@ -212,7 +219,7 @@ test("AC56 a committed file outside public/ghec-admin exits 1 at the allowed-pat
     assert.equal(failed(outcomes)?.name, ALLOWED_CHECK, commit);
     assert.equal(failed(outcomes).status, 1, commit);
     assert.ok(failed(outcomes).stderr.includes(`path outside the allowed files: ${named}`), `${commit}: ${failed(outcomes).stderr}`);
-    assert.equal(j.npmCalls().length, 0, `${commit}: the stub npm was not called`);
+    assert.equal(j.toolCalls().length, 0, `${commit}: neither the stub npm nor the stub npx was called`);
   }
 }));
 
@@ -224,20 +231,23 @@ test("AC56 a file moved from outside the allowed paths into them is still a chan
   const outcomes = j.runPostSteps();
   assert.equal(failed(outcomes)?.name, ALLOWED_CHECK);
   assert.ok(failed(outcomes).stderr.includes("path outside the allowed files: keep.txt"), failed(outcomes).stderr);
-  assert.equal(j.npmCalls().length, 0);
+  assert.equal(j.toolCalls().length, 0);
 }));
 
 test("AC57 AC62 a build or check command that fails ends the post-steps with exit 1 at that command and no later command runs", withJob({}, (j) => {
-  // the first build command, a check in the middle and the last check: every step is its own process, so the mechanism is the same for each of the seven
+  // the first build command, a check in the middle and the last check (the one that npx runs): every step is its own process, so the mechanism is the same for each of the seven
   for (const index of [0, 3, 6]) {
-    const invocation = INVOCATIONS[index];
+    const [tool, ...args] = INVOCATIONS[index];
+    const invocation = INVOCATIONS[index].join(" ");
     j.reset();
-    j.bin.set("npm", [{ match: `^${invocation.join(" ")}$`, code: 1, stderr: "the command failed\n" }, { match: ".*", code: 0 }]);
+    // a tool that an earlier iteration made fail answers 0 again: only this command fails
+    for (const name of ["npm", "npx"]) j.bin.set(name, [{ match: ".*", code: 0 }]);
+    j.bin.set(tool, [{ match: `^${args.join(" ")}$`, code: 1, stderr: "the command failed\n" }, { match: ".*", code: 0 }]);
     j.commit("clean-import");
     const outcomes = j.runPostSteps();
-    assert.equal(failed(outcomes)?.name, BUILD_AND_CHECKS[index], invocation.join(" "));
+    assert.equal(failed(outcomes)?.name, BUILD_AND_CHECKS[index], invocation);
     assert.equal(failed(outcomes).status, 1);
-    assert.deepEqual(j.buildCalls().map((call) => call.args), INVOCATIONS.slice(0, index + 1), `${invocation.join(" ")}: nothing runs after it`);
+    assert.deepEqual(j.buildCalls().map((call) => [call.tool, ...call.args]), INVOCATIONS.slice(0, index + 1), `${invocation}: nothing runs after it`);
   }
 }));
 

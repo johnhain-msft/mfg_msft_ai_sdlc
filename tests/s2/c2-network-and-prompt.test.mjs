@@ -1,6 +1,7 @@
 // AC3: contract C2 request, derived configuration. The literal hostnames of knowledgeSources.watchUrls are in network.allowed
 // (no wildcard), the prompt body carries the instruction text and the upkeepStrategy value, the frontmatter has exactly the
-// twelve keys, and pre-agent-steps holds exactly the three S2 scripts in order.
+// twelve keys, and pre-agent-steps holds exactly the three S2 scripts in order, followed by the install of the dependencies of the
+// target only for a project whose agentSandbox asks for it.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { abs, customJobsOf, DRIFT_KEYS, driftPreset, driftWorkflow, readText } from "./helpers/fixtures.mjs";
@@ -28,15 +29,20 @@ for (const key of DRIFT_KEYS) {
     for (const pattern of audit.knowledgeSources.packageManifests) assert.ok(body.includes(`\`${pattern}\``), `the prompt lists the pattern ${pattern}`);
   });
 
-  test(`AC3: drift-${key}.md has exactly the twelve top-level keys and the three pre-agent-steps in order`, () => {
+  test(`AC3: drift-${key}.md has exactly the twelve top-level keys and the three S2 pre-agent-steps in order, and after them the dependency install only when its project asks for it`, () => {
     const { frontmatter } = driftWorkflow(key);
     assert.deepEqual(Object.keys(frontmatter).sort(), TWELVE_KEYS);
     const steps = frontmatter["pre-agent-steps"];
-    assert.equal(steps.length, 3, "exactly three pre-agent steps");
+    const project = driftPreset(key);
+    const installs = project.driftAudit.agentSandbox?.installDependencies === true;
+    assert.equal(steps.length, installs ? 4 : 3, installs ? "the three S2 scripts and the install" : "exactly three pre-agent steps");
     assert.ok(steps[0].run.startsWith('node "$GITHUB_WORKSPACE/src/drift/prepare-run.mjs"'), steps[0].run);
     assert.ok(steps[1].run.startsWith('node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs"'), steps[1].run);
     assert.ok(steps[2].run.startsWith('node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs"'), steps[2].run);
     assert.equal(steps.filter((step) => step.run.includes("snapshot-watch-sources.mjs")).length, 1, "one snapshot invocation covers every watchUrls and packageManifests entry");
+    if (installs) {
+      assert.deepEqual(steps[3], { name: "Install target checkout dependencies for in-sandbox validation", "working-directory": project.repo.split("/")[1], run: "npm ci --ignore-scripts" });
+    }
     assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure"], "jobs holds only escalate_failure besides the built-in guards");
   });
 

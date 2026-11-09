@@ -40,7 +40,13 @@ for (const key of DRIFT_KEYS) {
     assert.equal(nameOf(prepare.env.CONFIGURED_TARGET_REPO), checkoutPath, "from the configured repository, which names the same directory");
     assert.equal(named(deduplicate), undefined, "the deduplication reads the target through the API, not the checkout");
     assert.equal(deduplicate.env.CONFIGURED_TARGET_REPO, repository);
-    for (const step of frontmatter["pre-agent-steps"]) assert.equal(step.env.CONFIGURED_TARGET_REPO, repository, `${step.name}: one target`);
+    for (const step of [prepare, deduplicate, snapshot]) assert.equal(step.env.CONFIGURED_TARGET_REPO, repository, `${step.name}: one target`);
+    // a step after the three S2 scripts is the install of the dependencies of this very target: it runs in its checkout and is given no variable or credential
+    for (const step of frontmatter["pre-agent-steps"].slice(3)) {
+      assert.equal(step["working-directory"], checkoutPath, `${step.name}: runs in the checkout of the target`);
+      assert.equal("env" in step, false, `${step.name}: holds no variable or credential`);
+      assert.equal(step.run, "npm ci --ignore-scripts", `${step.name}: installs without running the lifecycle scripts of the target`);
+    }
   });
 
   test(`AC9: the compiled drift-${key}.lock.yml checks the target out with an App installation token, into that path, and writes no personal credential into a step`, () => {

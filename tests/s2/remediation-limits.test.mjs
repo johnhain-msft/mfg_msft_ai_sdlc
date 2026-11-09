@@ -50,9 +50,10 @@ test("AC17: the bounds reach the rendered prompts of the two lab workflows, and 
   assert.deepEqual(driftWorkflow("copilot-lab").frontmatter["safe-outputs"]["create-pull-request"].reviewers, []);
 });
 
-test("AC17: every preset driftAudit block has exactly the keys of AC1 and no remediationPolicy key", () => {
+test("AC17: every preset driftAudit block has exactly the keys of AC1 (and the optional agentSandbox of the one project that asks for it) and no remediationPolicy key", () => {
   for (const project of presetManifest().projects) {
-    assert.deepEqual(Object.keys(project.driftAudit).sort(), AUDIT_KEYS, project.projectKey);
+    assert.deepEqual(Object.keys(project.driftAudit).filter((key) => key !== "agentSandbox").sort(), AUDIT_KEYS, project.projectKey);
+    assert.equal("agentSandbox" in project.driftAudit, project.projectKey === "gh-admin-msft", project.projectKey);
     assert.equal("remediationPolicy" in project.driftAudit, false, project.projectKey);
     assert.equal("remediationPolicy" in project, false, project.projectKey);
   }

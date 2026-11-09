@@ -61,7 +61,7 @@ jobs:
               - npm run lint
               - npm test
               - npm run test:studio
-              - npm run test:browser
+              - npx playwright test tests/browser/sites.spec.ts
           - edgeId: copilot-lab
             upstreamRepo: ms-mfg-community/day-in-the-life-copilot-lab
             upstreamKey: copilot-lab
@@ -303,7 +303,7 @@ jobs:
               - npm run lint
               - npm test
               - npm run test:studio
-              - npm run test:browser
+              - npx playwright test tests/browser/sites.spec.ts
     concurrency:
       group: sdlc-state-${{ matrix.upstreamKey }}
       cancel-in-progress: false

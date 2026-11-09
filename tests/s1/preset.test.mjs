@@ -11,6 +11,10 @@ const trackedFiles = (pathspec) =>
   spawnSync("git", ["ls-files", pathspec], { cwd: REPO_ROOT, encoding: "utf8" }).stdout.split("\n").filter((line) => line !== "");
 
 const FIVE_GATES = ["npm run typecheck", "npm run lint", "npm test", "npm run test:studio", "npm run test:browser"];
+// The fifth gate of the two mechanical edges is the specification that covers the pages that they import (SPEC-01 AC7, SPEC-03 AC57). The full browser suite
+// of the portfolio needs the Segoe UI font, which the ubuntu-latest runner of the cascade does not have: the ghec-admin cascade failed there until it was narrowed.
+const NARROWED_BROWSER_GATE = "npx playwright test tests/browser/sites.spec.ts";
+const gatesOf = (edge) => (edge.mode === "mechanical" ? [...FIVE_GATES.slice(0, 4), NARROWED_BROWSER_GATE] : FIVE_GATES);
 const AI_REBUILD = [
   "npm run build:workshop",
   "npm run build:experiences",
@@ -57,6 +61,17 @@ test("AC5: seven project entries with the named keys and repositories", () => {
 test("AC5: driftAudit.enabled is true for exactly gh-admin-msft, copilot-lab and self-improving-agents", () => {
   const enabled = manifest.projects.filter((project) => project.driftAudit.enabled).map((project) => project.projectKey);
   assert.deepEqual(enabled, ["gh-admin-msft", "copilot-lab", "self-improving-agents"]);
+});
+
+// Two live runs of drift-gh-admin-msft failed until these were set by hand in the generated workflow (ae32bf1: the dependencies of the target were missing from
+// the sandbox; 61f0678: the allowlist refused the text tools of the validators). They are data of the manifest, so that no reconcile can take them out again.
+const GH_ADMIN_MSFT_BASH_COMMANDS = ["awk", "cd", "cut", "diff", "echo", "jq", "mkdir", "npm", "python3", "rg", "sed", "sort", "tr", "uniq", "xargs"];
+
+test("AC5: the gh-admin-msft agent has its dependencies installed before it starts and the text tools of its validators, and no other project asks for either", () => {
+  assert.deepEqual(projectOf(manifest, "gh-admin-msft").driftAudit.agentSandbox, { installDependencies: true, bashCommands: GH_ADMIN_MSFT_BASH_COMMANDS });
+  for (const project of manifest.projects.filter((candidate) => candidate.projectKey !== "gh-admin-msft")) {
+    assert.equal(project.driftAudit.agentSandbox, undefined, `${project.projectKey} asks for nothing extra`);
+  }
 });
 
 test("AC5: each drift-enabled project has an https watchUrl, runnable verifyCommands and instructions", () => {
@@ -175,19 +190,28 @@ test("AC7: the ai-sdlc edge imports through <checkout> and records its provenanc
   assert.deepEqual(edge.importCommands, ["npm run import:ai-sdlc -- <checkout>"]);
   assert.equal(edge.provenanceFile, "public/ai-sdlc/source.json");
   assert.equal(edge.provenanceJsonPointer, "/commit");
-  assert.deepEqual(edge.verifyCommands, FIVE_GATES, "the gates of the portfolio, in order, and nothing after them");
+  assert.deepEqual(edge.verifyCommands, gatesOf(edge), "the gates of the portfolio, in order, and nothing after them");
 });
 
 test("AC7: every edge's verifyCommands list the five portfolio gates in order", () => {
   for (const edge of manifest.dependencyEdges) {
-    assert.notEqual(indexOfSequence(edge.verifyCommands, FIVE_GATES), null, `${edge.edgeId} lists the five gates in order`);
+    assert.notEqual(indexOfSequence(edge.verifyCommands, gatesOf(edge)), null, `${edge.edgeId} lists the five gates in order`);
+  }
+});
+
+test("AC7: the mechanical edges run the browser gate as the specification that covers their pages, the AI edges the full suite, and no edge runs both", () => {
+  assert.deepEqual(manifest.dependencyEdges.filter((edge) => edge.mode === "mechanical").map((edge) => edge.edgeId), ["ghec-admin", "ai-sdlc"]);
+  for (const edge of manifest.dependencyEdges) {
+    const mechanical = edge.mode === "mechanical";
+    assert.equal(edge.verifyCommands.includes(NARROWED_BROWSER_GATE), mechanical, `${edge.edgeId}: the narrowed gate`);
+    assert.equal(edge.verifyCommands.includes("npm run test:browser"), !mechanical, `${edge.edgeId}: the full suite`);
   }
 });
 
 test("AC7: the verifyCommands of each AI edge begin with the five rebuild and catalog commands, then the gates", () => {
   for (const edge of manifest.dependencyEdges.filter((candidate) => candidate.mode === "ai-adaptation")) {
     assert.deepEqual(edge.verifyCommands.slice(0, 5), AI_REBUILD, `${edge.edgeId} rebuild commands`);
-    assert.deepEqual(edge.verifyCommands.slice(5, 10), FIVE_GATES, `${edge.edgeId} gates`);
+    assert.deepEqual(edge.verifyCommands.slice(5, 10), gatesOf(edge), `${edge.edgeId} gates`);
     for (const extra of edge.verifyCommands.slice(10)) assert.ok(extra.trimStart().startsWith("#"), `${edge.edgeId}: post-run checks start with a comment`);
   }
 });

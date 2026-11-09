@@ -72,7 +72,8 @@ test("AC1: disabling one project of the preset removes its workflow and its lock
 test("AC1: every driftAudit block of the preset has exactly the keys of the C2 configuration, and its enums hold", () => {
   for (const project of presetManifest().projects) {
     const audit = project.driftAudit;
-    assert.deepEqual(Object.keys(audit).sort(), [...DRIFT_AUDIT_KEYS].sort(), `${project.projectKey}: the driftAudit keys`);
+    assert.deepEqual(Object.keys(audit).filter((key) => key !== "agentSandbox").sort(), [...DRIFT_AUDIT_KEYS].sort(), `${project.projectKey}: the driftAudit keys`);
+    assert.equal("agentSandbox" in audit, project.projectKey === "gh-admin-msft", `${project.projectKey}: the one optional key, agentSandbox, is the one of the project that asks for it`);
     assert.deepEqual(Object.keys(audit.knowledgeSources).sort(), ["mcpServers", "packageManifests", "watchUrls"], `${project.projectKey}: the knowledgeSources keys`);
     assert.ok(STRATEGIES.includes(audit.upkeepStrategy), `${project.projectKey}: upkeepStrategy ${audit.upkeepStrategy}`);
     assert.equal(typeof audit.enabled, "boolean");

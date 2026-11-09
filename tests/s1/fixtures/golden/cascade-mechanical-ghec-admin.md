@@ -159,8 +159,8 @@ post-steps:
   - name: npm run test:studio
     run: npm run test:studio
     working-directory: portfolio
-  - name: npm run test:browser
-    run: npm run test:browser
+  - name: npx playwright test tests/browser/sites.spec.ts
+    run: npx playwright test tests/browser/sites.spec.ts
     working-directory: portfolio
 safe-outputs:
   github-app:

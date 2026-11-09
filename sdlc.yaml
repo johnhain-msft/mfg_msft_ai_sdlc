@@ -72,6 +72,26 @@ projects:
       draft: false
       reviewers:
         - johnhain-msft
+      # What the agent has inside its sandbox besides git, node and the build command. It runs the validators of the target there, which need the packages of the
+      # target (installed before it starts: the sandbox has no route to the package registry) and the read-only text tools that it uses to compare the snapshots.
+      agentSandbox:
+        installDependencies: true
+        bashCommands:
+          - awk
+          - cd
+          - cut
+          - diff
+          - echo
+          - jq
+          - mkdir
+          - npm
+          - python3
+          - rg
+          - sed
+          - sort
+          - tr
+          - uniq
+          - xargs
 
   - projectKey: copilot-lab
     repo: ms-mfg-community/day-in-the-life-copilot-lab
@@ -267,12 +287,14 @@ dependencyEdges:
     buildCommands:
       - npm run build
       - STUDIO_ORIGIN=https://studio.example.com npm run build:catalog
+    # The browser gate is the specification that covers the pages that this edge imports: the full suite of the portfolio needs the Segoe UI font, which the
+    # ubuntu-latest runner does not have, and its cascade failed there until the gate was narrowed.
     verifyCommands:
       - npm run typecheck
       - npm run lint
       - npm test
       - npm run test:studio
-      - npm run test:browser
+      - npx playwright test tests/browser/sites.spec.ts
     adaptationInstructions: ""
     allowedFiles:
       - public/ghec-admin/**
@@ -778,12 +800,13 @@ dependencyEdges:
     buildCommands:
       - npm run build
       - STUDIO_ORIGIN=https://studio.example.com npm run build:catalog
+    # Narrowed like the ghec-admin edge, for the same reason: the specification that covers the pages that this edge imports, not the full suite of the portfolio.
     verifyCommands:
       - npm run typecheck
       - npm run lint
       - npm test
       - npm run test:studio
-      - npm run test:browser
+      - npx playwright test tests/browser/sites.spec.ts
     adaptationInstructions: ""
     allowedFiles:
       - public/ai-sdlc/**

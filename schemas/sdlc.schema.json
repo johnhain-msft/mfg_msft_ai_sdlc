@@ -141,7 +141,21 @@
         "buildCommands": { "$ref": "#/definitions/commandList" },
         "verifyCommands": { "$ref": "#/definitions/commandList" },
         "draft": { "type": "boolean" },
-        "reviewers": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+        "reviewers": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "agentSandbox": {
+          "description": "Optional: what the agent of the project's drift workflow has inside its sandbox besides what every drift workflow gives it (git, node and the executables of the build commands). installDependencies runs npm ci --ignore-scripts in the target checkout before the agent starts, so that the validators that the agent runs find their packages although the sandbox has no route to the package registry. bashCommands adds executables, each one a bare command name, to the bash allowlist of the agent.",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "installDependencies": { "type": "boolean", "default": false },
+            "bashCommands": {
+              "type": "array",
+              "uniqueItems": true,
+              "default": [],
+              "items": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.+-]*$" }
+            }
+          }
+        }
       }
     },
     "edge": {

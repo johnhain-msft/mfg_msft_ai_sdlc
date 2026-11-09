@@ -20,6 +20,7 @@ import {
   referenceRequest,
   REPO_ROOT,
   toYaml,
+  withRequest,
 } from "./helpers/fixtures.mjs";
 import { createWorkspace } from "./helpers/workspace.mjs";
 
@@ -228,6 +229,63 @@ test("AC25: pre-agent-steps holds exactly the three S2 scripts in order, with on
   assert.ok(steps[1].run.startsWith('node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs"'));
   assert.ok(steps[2].run.startsWith('node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs"'));
   assert.equal(steps.filter((step) => String(step.run).includes("snapshot-watch-sources.mjs")).length, 1);
+});
+
+/** The minimal manifest with an agentSandbox on its drift project, rendered: the drift workflow of alpha-service, parsed, or the refusal. */
+function renderSandbox(agentSandbox, renderRequest = request, change = () => undefined) {
+  const manifest = mutate(minimalManifest(), (copy) => {
+    if (agentSandbox !== undefined) projectOf(copy, "alpha-service").driftAudit.agentSandbox = agentSandbox;
+    change(copy);
+  });
+  const workspace = createWorkspace({ manifestText: toYaml(manifest) });
+  try {
+    const result = renderFleet(renderRequest, { cwd: workspace.dir });
+    return result.ok ? { ok: true, ...parseWorkflow(result.files.get(`${W}/drift-alpha-service.md`)) } : { ok: false, result: result.result };
+  } finally {
+    workspace.cleanup();
+  }
+}
+
+test("AC25: agentSandbox.installDependencies adds one fourth pre-agent step, after the three S2 scripts, that installs the dependencies of the target without running their scripts; without it there are exactly three", () => {
+  const plain = renderSandbox(undefined).frontmatter["pre-agent-steps"];
+  assert.equal(plain.length, 3);
+  for (const agentSandbox of [{}, { installDependencies: false }, { bashCommands: ["awk"] }]) {
+    assert.deepEqual(renderSandbox(agentSandbox).frontmatter["pre-agent-steps"], plain, `${JSON.stringify(agentSandbox)} asks for no step`);
+  }
+  const steps = renderSandbox({ installDependencies: true }).frontmatter["pre-agent-steps"];
+  assert.equal(steps.length, 4);
+  assert.deepEqual(steps.slice(0, 3), plain, "the three S2 steps are what they were");
+  assert.deepEqual(steps[3], { name: "Install target checkout dependencies for in-sandbox validation", "working-directory": "alpha-service", run: "npm ci --ignore-scripts" });
+});
+
+test("AC22: agentSandbox.bashCommands extend the bash allowlist with the words that they name, sorted and once each, and nothing else of the workflow changes", () => {
+  const plain = renderSandbox(undefined);
+  const extended = renderSandbox({ bashCommands: ["xargs", "awk", "git", "rg", "python3"] });
+  assert.deepEqual(extended.frontmatter.tools.bash, [...new Set([...plain.frontmatter.tools.bash, "awk", "python3", "rg", "xargs"])].sort());
+  assert.ok(extended.frontmatter.tools.bash.length > plain.frontmatter.tools.bash.length);
+  for (const word of ["gh", "curl", "wget", "*"]) assert.equal(extended.frontmatter.tools.bash.includes(word), false, word);
+  const without = (workflow) => ({ ...workflow.frontmatter, tools: { ...workflow.frontmatter.tools, bash: null } });
+  assert.deepEqual(without(extended), without(plain));
+  assert.equal(extended.body, plain.body);
+});
+
+test("AC22: a manifest cannot give a drift agent gh, curl or wget, in any case, and the refusal names the entry", () => {
+  for (const word of ["gh", "curl", "wget", "GH", "Curl"]) {
+    const refused = renderSandbox({ bashCommands: ["awk", word] });
+    assert.equal(refused.ok, false, word);
+    assert.match(JSON.stringify(refused.result), /drift-bash-command-forbidden/, word);
+    assert.match(JSON.stringify(refused.result), new RegExp(`agentSandbox/bashCommands/1: '${word}'`), word);
+  }
+});
+
+test("AC71: an engine that cannot enforce an allowlist keeps the wildcard that the compiler accepts, whatever agentSandbox adds", () => {
+  const codex = renderSandbox({ bashCommands: ["awk"], installDependencies: true }, withRequest({ engineAuthMode: "api-key" }), (copy) => {
+    copy.engineApiKeySecret = "OPENAI_API_KEY";
+  });
+  assert.equal(codex.ok, true, JSON.stringify(codex.result));
+  assert.equal(codex.frontmatter.engine.id, "codex");
+  assert.deepEqual(codex.frontmatter.tools.bash, ["*"]);
+  assert.equal(codex.frontmatter["pre-agent-steps"].length, 4, "the install step does not depend on the engine");
 });
 
 test("AC25: the deduplication step names its workflow: the close-older key that its pull requests carry and its upkeepStrategy (SPEC-02 AC10)", () => {
