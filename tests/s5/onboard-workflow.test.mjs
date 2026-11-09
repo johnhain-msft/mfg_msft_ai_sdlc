@@ -228,7 +228,7 @@ test("AC53: running the command with every input that the workflow offers succee
 
 // --- the real compiler (opt-in) --------------------------------------------------------------------------------------------
 
-test("AC53: gh aw compile --strict --purge --json exits 0 with no error for sdlc-onboard.md and reproduces the committed sdlc-onboard.lock.yml", { skip: process.env.SDLC_REAL_GH_AW === "1" ? false : "set SDLC_REAL_GH_AW=1 to run the real gh-aw compiler (it needs the gh-aw CLI, version 1.0.1 or newer)" }, () => {
+test("AC53: gh aw compile --strict --purge --json exits 0 for sdlc-onboard.md and reproduces its committed lock after the documented Checks-permission adaptation", { skip: process.env.SDLC_REAL_GH_AW === "1" ? false : "set SDLC_REAL_GH_AW=1 to run the real gh-aw compiler (it needs the gh-aw CLI, version 1.0.1 or newer)" }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "sdlc-s5-compile-"));
   try {
     execFileSync("git", ["init", "-q"], { cwd: root });
@@ -242,7 +242,11 @@ test("AC53: gh aw compile --strict --purge --json exits 0 with no error for sdlc
     const own = results.filter((entry) => /sdlc-onboard\.md$/.test(entry.workflow ?? entry.file ?? ""));
     assert.ok(own.length >= 1, "the compiler reported on sdlc-onboard.md");
     for (const entry of own) assert.deepEqual(entry.errors ?? [], []);
-    assert.equal(fs.readFileSync(path.join(root, LOCK), "utf8"), lockText, "the compiler reproduces the committed lock file byte for byte");
+    const compiled = fs.readFileSync(path.join(root, LOCK), "utf8").replace(/\r\n/g, "\n");
+    // Raw gh-aw output requests Checks; reconcile deliberately removes only that ungranted permission.
+    const adapted = compiled.replace(/^[ \t]*permission-checks: read\n/gm, "");
+    assert.equal(adapted, lockText.replace(/\r\n/g, "\n"), "only permission-checks: read may differ from the committed lock");
+    fs.writeFileSync(path.join(root, LOCK), adapted);
     assert.doesNotThrow(() => execFileSync("git", ["diff", "--exit-code", "--", LOCK], { cwd: root }));
   } finally {
     fs.rmSync(root, { recursive: true, force: true });

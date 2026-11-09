@@ -34,7 +34,7 @@ function scratchRepository() {
 
 const workflowFiles = (root) => listFiles(root, ".github").filter((file) => !/agentics-maintenance/.test(file));
 
-test("the committed workflows compile under gh aw compile --strict --purge --json with no error and no change", { skip }, () => {
+test("the committed workflows compile under gh aw compile --strict --purge --json with no error and only the documented Checks-permission adaptation", { skip }, () => {
   const directory = scratchRepository();
   try {
     fs.cpSync(abs(".github"), path.join(directory, ".github"), { recursive: true });
@@ -42,13 +42,16 @@ test("the committed workflows compile under gh aw compile --strict --purge --jso
     const outcome = spawnSync("gh", ["aw", "compile", "--strict", "--purge", "--json"], { cwd: directory, env, encoding: "utf8", timeout: 600000 });
     assert.equal(outcome.status, 0, outcome.stderr);
     const elements = JSON.parse(outcome.stdout);
-    assert.equal(elements.length, 8);
+    assert.equal(elements.length, 9);
     for (const element of elements) {
       assert.equal(element.valid, true, `${element.workflow}: ${JSON.stringify(element.errors)}`);
       assert.deepEqual(element.errors, []);
     }
     for (const file of workflowFiles(REPO_ROOT)) {
-      assert.equal(fs.readFileSync(path.join(directory, file), "utf8").replace(/\r\n/g, "\n"), readText(abs(file)).replace(/\r\n/g, "\n"), `${file} is what the compiler produces`);
+      // The raw compiler adds a Checks permission that this six-permission App does not hold; reconcile removes exactly that line.
+      const compiled = fs.readFileSync(path.join(directory, file), "utf8").replace(/\r\n/g, "\n");
+      const adapted = file.endsWith(".lock.yml") ? compiled.replace(/^[ \t]*permission-checks: read\n/gm, "") : compiled;
+      assert.equal(adapted, readText(abs(file)).replace(/\r\n/g, "\n"), `${file} is what the compiler produces, with only permission-checks: read removed`);
     }
     assert.deepEqual(workflowFiles(directory), workflowFiles(REPO_ROOT), "the compiler adds and removes no file of the fleet");
   } finally {
@@ -80,7 +83,7 @@ test("reconcile() with the real compiler regenerates exactly the committed fleet
     fs.copyFileSync(abs(".github", "aw", "actions-lock.json"), path.join(directory, ".github", "aw", "actions-lock.json"));
     const first = await reconcile(referenceRequest(), { cwd: directory, env: process.env });
     assert.equal(first.status, "ok", JSON.stringify(first.validationResults));
-    assert.equal(first.generatedWorkflows.length, 8);
+    assert.equal(first.generatedWorkflows.length, 9);
     const snapshot = workflowFiles(directory).map((file) => [file, fs.readFileSync(path.join(directory, file), "utf8")]);
     for (const [file, text] of snapshot) {
       if (file === ".github/workflows/aw.json") continue;
@@ -103,7 +106,7 @@ test("reconcile() with the real compiler reconciles a non-empty protectedFilesEx
     const notes = [];
     const result = await reconcile(referenceRequest(), { cwd: directory, env: process.env, log: (line) => notes.push(line) });
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
-    assert.equal(result.generatedWorkflows.length, 8);
+    assert.equal(result.generatedWorkflows.length, 9);
     assert.equal(notes.length, 1, "the rejected key is reported");
     assert.equal(fs.readFileSync(path.join(directory, ".github", "workflows", "aw.json"), "utf8"), '{\n  "strict": true\n}\n');
     for (const name of ["drift-gh-admin-msft", "drift-copilot-lab", "drift-self-improving-agents", "sdlc-onboard"]) {
