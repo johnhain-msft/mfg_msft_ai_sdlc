@@ -41,7 +41,7 @@ jobs:
             provenanceFile: docs/source.json
             provenanceJsonPointer: /commit
             onBots:
-              - fixture-app[bot]
+              - mfg-msft-ai-sdlc[bot]
             branchName: sdlc/cascade-alpha-to-beta
             closeOlderKey: sdlc-cascade-alpha-to-beta
             reviewers:

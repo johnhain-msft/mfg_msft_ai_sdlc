@@ -90,7 +90,7 @@ test("AC55: with a non-empty list a compiler that rejects protected_files still 
   try {
     const result = await workspace.reconcile(request);
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
-    assert.equal(result.generatedWorkflows.length, 8);
+    assert.equal(result.generatedWorkflows.length, 9);
     assert.equal(result.repoConfigPath, AW);
     assert.equal(workspace.read(AW), '{\n  "strict": true\n}\n', "the key the compiler rejects is not written");
     const compiles = workspace.shims.compileCalls();

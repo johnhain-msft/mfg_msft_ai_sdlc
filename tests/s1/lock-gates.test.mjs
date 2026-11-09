@@ -6,13 +6,13 @@ import test from "node:test";
 import YAML from "yaml";
 import { renderFleet } from "../../src/reconcile.mjs";
 import { evaluateExpression, simulateJobs } from "./helpers/actions-if.mjs";
-import { abs, AGENT_SUCCESS_GUARD, BUILT_IN_JOB_SECTIONS, fixture, listFiles, parseWorkflow, readText, readWorkflow, referenceRequest, REPO_ROOT } from "./helpers/fixtures.mjs";
+import { abs, AGENT_SUCCESS_GUARD, BUILT_IN_JOB_SECTIONS, fixture, listFiles, mutate, parseWorkflow, presetManifest, readText, readWorkflow, referenceRequest, REPO_ROOT, toYaml } from "./helpers/fixtures.mjs";
 import { createWorkspace } from "./helpers/workspace.mjs";
 
 const W = ".github/workflows";
 const request = referenceRequest();
 const ids = [
-  "drift-gh-admin-msft", "drift-copilot-lab", "drift-self-improving-agents", "cascade-mechanical-ghec-admin",
+  "drift-gh-admin-msft", "drift-copilot-lab", "drift-self-improving-agents", "cascade-mechanical-ghec-admin", "cascade-mechanical-ai-sdlc",
   "cascade-ai-copilot-lab", "cascade-ai-pipeline-showcase", "cascade-ai-github-intermediate", "sdlc-onboard",
 ];
 const lockOf = (id) => YAML.parse(readText(abs(W, `${id}.lock.yml`)));
@@ -233,9 +233,22 @@ test("AC29: no rendered gh-aw source or the router contains continue-on-error: t
   }
 });
 
-test("AC29: the engine never names the repository that runs the workflows (it comes from the Actions context)", () => {
+test("AC29: the engine never names the repository that runs the workflows (it comes from the Actions context); only the manifest names it, as the upstream of the self-cascade edge", () => {
   assert.equal(/mfg_msft_ai_sdlc/.test(readText(abs("src", "reconcile.mjs"))), false);
-  for (const [name, text] of renderFleet(request).files) assert.equal(/mfg_msft_ai_sdlc/.test(text), false, name);
+  const withoutSelfCascade = mutate(presetManifest(), (copy) => {
+    copy.projects = copy.projects.filter((project) => project.projectKey !== "ai-sdlc");
+    copy.dependencyEdges = copy.dependencyEdges.filter((edge) => edge.edgeId !== "ai-sdlc");
+  });
+  const workspace = createWorkspace({ manifestText: toYaml(withoutSelfCascade), instructions: true });
+  try {
+    const result = renderFleet(request, { cwd: workspace.dir });
+    assert.ok(result.ok, JSON.stringify(result.result));
+    for (const [name, text] of result.files) assert.equal(/mfg_msft_ai_sdlc/.test(text), false, name);
+  } finally {
+    workspace.cleanup();
+  }
+  const named = [...renderFleet(request).files].filter(([, text]) => /mfg_msft_ai_sdlc/.test(text)).map(([name]) => name);
+  assert.deepEqual(named, [`${W}/cascade-mechanical-ai-sdlc.md`, `${W}/cascade-router.yml`], "the edge's workflow and the router carry it as data of the edge");
 });
 
 test("AC29: failure escalation stays in the repository that runs the workflow: escalate_failure runs after a failed agent", () => {

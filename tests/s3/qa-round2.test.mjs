@@ -30,12 +30,12 @@ test("QA2 token floor: each cascade job rejects every omitted permission and Var
   assert.equal(rendered.ok, true);
   assert.deepEqual(checkRendered(rendered.files, request, manifest).filter((entry) => !entry.valid), []);
   const files = [...rendered.files].filter(([file]) => /\/cascade-(?:ai|mechanical)-.*\.md$/.test(file));
-  assert.equal(files.length, 4);
+  assert.equal(files.length, 5);
   for (const [file, text] of files) {
     for (const job of ["finalize_poll_state", "escalate_failure"]) {
       for (const [permission, replacement] of [
-        ["permission-variables", undefined],
-        ["permission-variables", "read"],
+        ["permission-actions-variables", undefined],
+        ["permission-actions-variables", "read"],
         ["permission-contents", undefined],
         ["permission-pull-requests", undefined],
       ]) {
@@ -46,7 +46,8 @@ test("QA2 token floor: each cascade job rejects every omitted permission and Var
         const changed = new Map(rendered.files);
         changed.set(file, `---\n${YAML.stringify(frontmatter, { lineWidth: 0 })}---\n${body}`);
         const errors = checkRendered(changed, request, manifest).flatMap((entry) => entry.errors);
-        const required = permission.slice("permission-".length);
+        // the check names the Variables permission by the name of the baseline and the manifest, whichever name the token input uses
+        const required = permission === "permission-actions-variables" ? "variables" : permission.slice("permission-".length);
         assert.ok(
           errors.some((error) => error.startsWith("app-token-permission-missing:") && error.includes(`job '${job}'`) && error.includes(`'${required}:`)),
           `${file} ${job} ${permission}=${replacement}: ${errors.join("\n")}`,

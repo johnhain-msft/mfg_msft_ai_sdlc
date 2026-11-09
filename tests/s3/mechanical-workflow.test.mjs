@@ -34,8 +34,8 @@ const APP_TOKEN_INPUTS = {
   "permission-contents": "read",
   "permission-pull-requests": "read",
   // naming any permission-* input stops the token from inheriting the installation's permissions (actions/create-github-app-token, lib/get-permissions-from-inputs.js),
-  // so the Variables permission that the state read and write need has to be named too
-  "permission-variables": "write",
+  // so the Variables permission that the state read and write need has to be named too, under the name that the token endpoint gives it: actions_variables
+  "permission-actions-variables": "write",
 };
 const FINALIZE_RUN = `node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --slug ${SLUG} --branch ${edge.branchName} --provenance-file ${edge.provenanceFile} --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG"`;
 const FAILURE_RUN = `node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --record-failure --slug ${SLUG} --target-sha "$UPSTREAM_SHA" --workflow-id cascade-mechanical-ghec-admin`;
@@ -99,7 +99,7 @@ test("AC62 the pull request is only reachable from a successful agent: detection
 
 // ---- AC4, AC58, AC70: the pull request ----------------------------------------------------------------------------------------------------------------
 
-test("AC4 AC58 the create-pull-request handler is exactly the shape of the spec, plus the two settings of SPEC-01 AC34 (exclude-lock-yml and a blocking protected-files policy)", () => {
+test("AC4 AC58 the create-pull-request handler is exactly the shape of the spec, plus the settings of SPEC-01 AC34 (exclude-lock-yml and a blocking protected-files policy) and the patch size limit that a mechanical import needs", () => {
   assert.deepEqual(authored["safe-outputs"]["create-pull-request"], {
     "target-repo": edge.downstreamRepo,
     "title-prefix": "chore(cascade): ",
@@ -117,6 +117,8 @@ test("AC4 AC58 the create-pull-request handler is exactly the shape of the spec,
     "exclude-lock-yml": true,
     "protected-files": { policy: "blocked", exclude: [] },
     max: 1,
+    // a mechanical import commits whole generated bundles, some of them single lines of several megabytes (the limit is in KB)
+    "max-patch-size": 10240,
   });
   const handler = authored["safe-outputs"]["create-pull-request"];
   assert.ok(handler.reviewers.length > 0 && handler["allowed-files"].length > 0);
@@ -171,7 +173,7 @@ test("AC46 AC59 finalize_poll_state: token, sparse checkout of src and schemas, 
 test("AC46 AC59 the compiled finalize_poll_state keeps the order, names the Variables permission, and pins every action to a commit", () => {
   const steps = authoredSteps(lock.jobs.finalize_poll_state);
   assert.deepEqual(steps.slice(0, 4).map((step) => step.id ?? step.run ?? step.uses.replace(/@.*/, "")), ["app_token", "actions/checkout", "npm ci --ignore-scripts", "actions/download-artifact"]);
-  assert.equal(steps[0].with["permission-variables"], "write");
+  assert.equal(steps[0].with["permission-actions-variables"], "write");
   assert.equal(steps[0].with["permission-contents"], "read");
   assert.equal(steps[0].with["permission-pull-requests"], "read");
   assert.equal(steps[0].with.repositories, APP_TOKEN_INPUTS.repositories);
@@ -200,7 +202,7 @@ test("AC49 AC63 escalate_failure: token, checkout, npm ci, then the --record-fai
   assert.equal(record.run, FAILURE_RUN);
 
   const compiled = authoredSteps(lock.jobs.escalate_failure);
-  assert.equal(compiled[0].with["permission-variables"], "write");
+  assert.equal(compiled[0].with["permission-actions-variables"], "write");
   assert.equal(compiled[1].with["sparse-checkout"], "src\nschemas");
   assert.equal(compiled[2].run, "npm ci --ignore-scripts");
   assert.equal(compiled[3].run, FAILURE_RUN);
@@ -211,8 +213,9 @@ test("AC49 AC63 escalate_failure: token, checkout, npm ci, then the --record-fai
 test("AC46 AC49 the token of both custom jobs names the three permissions of the state path, because naming any permission-* input drops the inheritance of the others", () => {
   for (const [label, steps] of [["finalize (source)", authored.jobs.finalize_poll_state.steps], ["escalate (source)", authored.jobs.escalate_failure.steps], ["finalize (lock)", authoredSteps(lock.jobs.finalize_poll_state)], ["escalate (lock)", authoredSteps(lock.jobs.escalate_failure)]]) {
     const inputs = Object.keys(steps[0].with).filter((name) => name.startsWith("permission-")).sort();
-    assert.deepEqual(inputs, ["permission-contents", "permission-pull-requests", "permission-variables"], label);
-    assert.equal(steps[0].with["permission-variables"], "write", label);
+    assert.deepEqual(inputs, ["permission-actions-variables", "permission-contents", "permission-pull-requests"], label);
+    assert.equal(steps[0].with["permission-actions-variables"], "write", label);
+    assert.equal("permission-variables" in steps[0].with, false, `${label}: the token endpoint knows the Variables permission as actions_variables`);
   }
 });
 

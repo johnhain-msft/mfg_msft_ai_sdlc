@@ -47,7 +47,7 @@ test("AC44: on is workflow_dispatch with the ten string inputs of contract C7, p
   for (const identity of IDENTITIES) {
     const { frontmatter } = workflowOf(identity);
     assert.deepEqual(Object.keys(frontmatter.on).sort(), ["bots", "workflow_dispatch"]);
-    assert.deepEqual(frontmatter.on.bots, ["fixture-app[bot]"]);
+    assert.deepEqual(frontmatter.on.bots, ["mfg-msft-ai-sdlc[bot]"]);
     const inputs = frontmatter.on.workflow_dispatch.inputs;
     assert.deepEqual(Object.keys(inputs).sort(), [
       "correlation_id", "downstream_repo", "dry_run", "on_commit_only_advance", "previous_sha", "sync_scope", "upstream_etag", "upstream_pr_number", "upstream_repo", "upstream_sha",
@@ -64,8 +64,8 @@ test("AC44: concurrency, engine, permissions and the two checkouts (one current,
     assert.deepEqual(frontmatter.permissions, { contents: "read", issues: "read", "pull-requests": "read" });
     const edge = edgeOf(preset, identity.edgeId);
     assert.deepEqual(frontmatter.checkout, [
-      { repository: "johnhain-msft/portfolio", path: "portfolio", current: true, "github-app": APP },
-      { repository: edge.upstreamRepo, path: `upstream/${identity.repo}`, ref: "${{ inputs.upstream_sha }}", "fetch-depth": 0, "github-app": APP },
+      { repository: "johnhain-msft/portfolio", path: "portfolio", current: true, "github-app": { ...APP, repositories: ["portfolio"] } },
+      { repository: edge.upstreamRepo, path: `upstream/${identity.repo}`, ref: "${{ inputs.upstream_sha }}", "fetch-depth": 0, "github-app": { ...APP, repositories: [identity.repo] } },
     ]);
     assert.equal(frontmatter.checkout.filter((entry) => entry.current === true).length, 1);
   }
@@ -133,7 +133,7 @@ test("AC45: the create-pull-request handler equals the AI shape for the three pr
     };
     const outputs = workflowOf(identity).frontmatter["safe-outputs"];
     assert.deepEqual(outputs["create-pull-request"], expected, identity.edgeId);
-    assert.deepEqual(outputs["github-app"], APP);
+    assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", "portfolio"] });
     assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
   }
 });

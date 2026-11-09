@@ -11,6 +11,7 @@ const request = referenceRequest();
 const preset = presetManifest();
 const edge = edgeOf(preset, "ghec-admin");
 const APP = { "client-id": "${{ vars.APP_CLIENT_ID }}", "private-key": "${{ secrets.APP_PRIVATE_KEY }}" };
+const scoped = (...repositories) => ({ ...APP, repositories });
 
 const committed = readWorkflow(NAME);
 const fresh = parseWorkflow(renderFleet(request).files.get(`${W}/${NAME}`));
@@ -22,13 +23,26 @@ test("AC32: the committed file and the golden file equal the fresh render byte f
   assert.equal(readText(fixture("golden", NAME)), text);
 });
 
+test("AC32: the second mechanical workflow of the preset, the self-cascade of this repository into the portfolio, equals its golden file and its fresh render", () => {
+  const name = "cascade-mechanical-ai-sdlc.md";
+  const text = renderFleet(request).files.get(`${W}/${name}`);
+  assert.equal(readText(abs(W, name)), text);
+  assert.equal(readText(fixture("golden", name)), text);
+  const self = readWorkflow(name);
+  assert.equal(self.frontmatter.concurrency.group, "sdlc-state-ai-sdlc");
+  assert.deepEqual(self.frontmatter.checkout.map((entry) => entry.repository), ["johnhain-msft/portfolio", "johnhain-msft/mfg_msft_ai_sdlc"]);
+  assert.deepEqual(self.frontmatter["safe-outputs"]["create-pull-request"]["allowed-files"], ["public/ai-sdlc/**"]);
+  assert.ok(self.body.includes('npm run import:ai-sdlc -- "$UPSTREAM_DIR"'));
+  assert.ok(self.body.includes("sdlc/cascade-ai-sdlc"));
+});
+
 test("AC32: concurrency is the workflow-level sdlc-state group of the upstream key", () => {
   assert.deepEqual(frontmatter.concurrency, { group: "sdlc-state-gh-admin-msft", "cancel-in-progress": false });
 });
 
 test("AC32: on carries on.bots and exactly the eight string workflow_dispatch inputs of the mechanical dispatch", () => {
   assert.deepEqual(Object.keys(frontmatter.on).sort(), ["bots", "workflow_dispatch"]);
-  assert.deepEqual(frontmatter.on.bots, ["fixture-app[bot]"]);
+  assert.deepEqual(frontmatter.on.bots, ["mfg-msft-ai-sdlc[bot]"]);
   const inputs = frontmatter.on.workflow_dispatch.inputs;
   assert.deepEqual(Object.keys(inputs).sort(), [
     "correlation_id", "downstream_repo", "dry_run", "previous_sha", "upstream_etag", "upstream_pr_number", "upstream_repo", "upstream_sha",
@@ -42,10 +56,10 @@ test("AC32: permissions are the read-only set of AC22 and an engine key is rende
   assert.deepEqual(frontmatter.network, { allowed: [] });
 });
 
-test("AC32: checkout holds the downstream (current) and the upstream pinned to upstream_sha, each with github-app credentials", () => {
+test("AC32: checkout holds the downstream (current) and the upstream pinned to upstream_sha, each with github-app credentials scoped to its own repository", () => {
   assert.deepEqual(frontmatter.checkout, [
-    { repository: "johnhain-msft/portfolio", path: "portfolio", current: true, "github-app": APP },
-    { repository: "johnhain-msft/gh-admin-msft", path: "upstream/gh-admin-msft", ref: "${{ inputs.upstream_sha }}", "github-app": APP },
+    { repository: "johnhain-msft/portfolio", path: "portfolio", current: true, "github-app": scoped("portfolio") },
+    { repository: "johnhain-msft/gh-admin-msft", path: "upstream/gh-admin-msft", ref: "${{ inputs.upstream_sha }}", "github-app": scoped("gh-admin-msft") },
   ]);
   assert.equal(frontmatter.checkout.filter((entry) => entry.current === true).length, 1);
 });
@@ -187,10 +201,11 @@ test("AC34: the create-pull-request handler equals the mechanical shape, deep eq
     "exclude-lock-yml": true,
     "protected-files": { policy: "blocked", exclude: [] },
     max: 1,
+    "max-patch-size": 10240,
   };
   for (const { frontmatter: candidate } of [committed, fresh]) {
     assert.deepEqual(candidate["safe-outputs"]["create-pull-request"], expected);
-    assert.deepEqual(candidate["safe-outputs"]["github-app"], APP);
+    assert.deepEqual(candidate["safe-outputs"]["github-app"], scoped("${{ github.event.repository.name }}", "portfolio"));
     assert.deepEqual(candidate["safe-outputs"]["threat-detection"], { "continue-on-error": false });
     assert.deepEqual(Object.keys(candidate["safe-outputs"]).sort(), ["create-pull-request", "github-app", "threat-detection"]);
   }
@@ -216,4 +231,21 @@ test("AC34: target-repo, reviewers, close-older-key and allowed-files come from 
   } finally {
     workspace.cleanup();
   }
+});
+
+test("AC34: a mechanical handler raises the patch size limit to 10240 KB for the generated bundles that an import commits; an AI adaptation handler keeps the default", () => {
+  for (const { frontmatter: candidate } of [committed, fresh]) {
+    assert.equal(candidate["safe-outputs"]["create-pull-request"]["max-patch-size"], 10240);
+  }
+  const rendered = renderFleet(request).files;
+  for (const edgeId of ["copilot-lab", "pipeline-showcase", "github-intermediate"]) {
+    const handler = parseWorkflow(rendered.get(`${W}/cascade-ai-${edgeId}.md`)).frontmatter["safe-outputs"]["create-pull-request"];
+    assert.equal(Object.hasOwn(handler, "max-patch-size"), false, edgeId);
+  }
+});
+
+test("AC32: the agent may cd into the downstream checkout, as the prompt tells it to, and run echo, git, node and the first word of every import and build command", () => {
+  assert.deepEqual(frontmatter.tools.bash, ["cat", "cd", "date", "echo", "find", "git", "grep", "head", "ls", "node", "npm", "tail", "wc"]);
+  assert.ok(committed.body.includes('cd "$GITHUB_WORKSPACE/portfolio"'), "the prompt begins with the cd that the allowlist has to permit");
+  for (const tool of ["gh", "curl", "wget"]) assert.equal(frontmatter.tools.bash.includes(tool), false, tool);
 });

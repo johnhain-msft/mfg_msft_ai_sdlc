@@ -18,7 +18,7 @@ on:
         type: boolean
         default: false
   bots:
-    - fixture-app[bot]
+    - mfg-msft-ai-sdlc[bot]
 concurrency:
   group: sdlc-drift-alpha-service
   cancel-in-progress: false
@@ -36,6 +36,8 @@ checkout:
     github-app:
       client-id: ${{ vars.APP_CLIENT_ID }}
       private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      repositories:
+        - alpha-service
 mcp-servers: {}
 pre-agent-steps:
   - name: Prepare run context
@@ -51,7 +53,7 @@ pre-agent-steps:
       CONFIGURED_TARGET_REPO: acme-labs/alpha-service
       APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO"
+    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --close-older-key sdlc-drift-alpha-service --upkeep-strategy dependency-and-pattern-modernization
   - name: Snapshot watched sources and package manifests
     env:
       CONFIGURED_TARGET_REPO: acme-labs/alpha-service
@@ -67,6 +69,9 @@ safe-outputs:
   github-app:
     client-id: ${{ vars.APP_CLIENT_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
+    repositories:
+      - ${{ github.event.repository.name }}
+      - alpha-service
   threat-detection:
     continue-on-error: false
   create-pull-request:
@@ -112,6 +117,12 @@ tools:
     - wc
   edit: {}
 jobs:
+  detection:
+    if: needs.agent.result == 'success'
+  safe_outputs:
+    if: needs.agent.result == 'success' && inputs.dry_run != true
+  conclusion:
+    if: inputs.dry_run != true
   escalate_failure:
     needs:
       - agent
@@ -120,6 +131,7 @@ jobs:
     if: failure() && inputs.dry_run != true
     detection-gate: status-only
     permissions:
+      actions: read
       contents: read
       issues: write
     steps:
@@ -174,7 +186,7 @@ npm run build
 
 ## Operating rules
 
-- Read `/tmp/gh-aw/agent/open-pr-dedup.json` before you call `create_pull_request`; skip the upkeep when it lists a matching open pull request.
+- Read `/tmp/gh-aw/agent/open-pr-dedup.json` before you call `create_pull_request`; skip the upkeep when it lists a matching open pull request that you must not duplicate (`duplicate` is `true`: a match whose `decision` is `skip`). A match whose `decision` is `supersede` is an earlier pull request of this same workflow, which your new pull request replaces (`close-older-pull-requests: true`), and a match whose `decision` is `ignore` is the pull request of another upkeep: neither is a reason to skip. Never open a duplicate.
 - Corroborate every proposed change through the Microsoft Learn and Context7 servers or by fetching the cited page.
 - Commit rebuilt outputs and source edits to the working branch before you call `create_pull_request`.
 - Never run `git push`, `gh pr` or a write-method `gh api` call and never merge: the pull request is created only through the `create_pull_request` safe output.

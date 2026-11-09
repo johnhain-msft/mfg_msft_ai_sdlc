@@ -669,6 +669,11 @@ function validateSemantics(manifest, request, context) {
 
 const YAML_OPTIONS = { lineWidth: 0, indent: 2, aliasDuplicateObjects: false, minContentWidth: 0 };
 const BASE_BASH = ["cat", "date", "find", "git", "grep", "head", "ls", "tail", "wc"];
+/**
+ * What the agent of a mechanical cascade may run besides the executables of its import commands. Its prompt opens with `cd` into the downstream
+ * checkout, which the base list does not allow, and a live run showed that the agent also inspects the result with `echo` and `node`.
+ */
+const MECHANICAL_BASH = ["cd", "echo", "git", "node"];
 
 const stringifyYaml = (value) => YAML.stringify(value, YAML_OPTIONS);
 
@@ -715,7 +720,19 @@ function makeContext(request, manifest, instructionFiles, strategyFragments) {
   };
 }
 
-const appBlock = (ctx) => clone(ctx.githubApp);
+/**
+ * The credentials of the GitHub App. `repositories` names the repositories (by name, without the owner) that the token is minted for; a checkout
+ * or a safe-outputs handler that reaches a repository other than the central one has to name it, because the compiler's default scope is the
+ * central repository only. Without `repositories` the block is the bare credentials.
+ */
+function appBlock(ctx, repositories) {
+  const block = clone(ctx.githubApp);
+  if (repositories !== undefined) block.repositories = [...repositories];
+  return block;
+}
+
+/** The repository whose workflow runs (the central one): the token of a safe-outputs handler reaches it and the repository that it writes to. */
+const CENTRAL_REPOSITORY = expr("github.event.repository.name");
 
 function permissionsSection(ctx) {
   const permissions = { contents: "read", issues: "read", "pull-requests": "read" };
@@ -1083,12 +1100,12 @@ function renderDrift(ctx, project) {
     concurrency: { group: `sdlc-drift-${key}`, "cancel-in-progress": false },
     permissions: permissionsSection(ctx),
     network: { allowed: watchHostnames(audit.knowledgeSources.watchUrls) },
-    checkout: [{ repository: project.repo, path: checkoutPath, current: true, "github-app": appBlock(ctx) }],
+    checkout: [{ repository: project.repo, path: checkoutPath, current: true, "github-app": appBlock(ctx, [checkoutPath]) }],
     "mcp-servers": sortKeysDeep(audit.knowledgeSources.mcpServers),
     "pre-agent-steps": driftPreAgentSteps(ctx, project),
     "post-steps": audit.verifyCommands.map((command) => verifyStep(command, checkoutPath)),
     "safe-outputs": {
-      "github-app": appBlock(ctx),
+      "github-app": appBlock(ctx, [CENTRAL_REPOSITORY, checkoutPath]),
       "threat-detection": { "continue-on-error": false },
       "create-pull-request": {
         "target-repo": project.repo,
@@ -1130,9 +1147,9 @@ function cascadeCheckout(ctx, edge) {
     ref: expr("inputs.upstream_sha"),
   };
   if (edge.mode === "ai-adaptation") upstream["fetch-depth"] = 0;
-  upstream["github-app"] = appBlock(ctx);
+  upstream["github-app"] = appBlock(ctx, [upstreamName(edge)]);
   return [
-    { repository: edge.downstreamRepo, path: downstreamName(edge), current: true, "github-app": appBlock(ctx) },
+    { repository: edge.downstreamRepo, path: downstreamName(edge), current: true, "github-app": appBlock(ctx, [downstreamName(edge)]) },
     upstream,
   ];
 }
@@ -1410,6 +1427,8 @@ function pollStateEnv(edge, kind) {
 // An actions/create-github-app-token step that sets any permission-* input requests exactly those permissions and inherits nothing from the
 // installation (getPermissionsFromInputs returns undefined, which means "inherit", only when no such input is set), so the token that S3's
 // script reads from GH_TOKEN carries variables: write (the SDLC_SYNC_STATE_<SLUG> read and write, SPEC-03 AC12) only because the step names it.
+// The input that grants it is permission-actions-variables: an installation reports the Variables permission as actions_variables, and that is
+// the name the token request has to use (a live run needed it; the baseline and the manifest still call the permission `variables`).
 function appTokenStep(ctx, edge) {
   return {
     id: "app_token",
@@ -1421,7 +1440,7 @@ function appTokenStep(ctx, edge) {
       repositories: expr("github.event.repository.name") + "," + downstreamName(edge),
       "permission-contents": "read",
       "permission-pull-requests": "read",
-      "permission-variables": "write",
+      "permission-actions-variables": "write",
     },
   };
 }
@@ -1722,6 +1741,9 @@ function renderCascade(ctx, edge) {
     "protected-files": { policy: "blocked", exclude: [...edge.protectedFilesExclude] },
     max: 1,
   };
+  // A mechanical import commits whole generated bundles, some of them single lines of several megabytes, and the handler refuses a patch over its
+  // size limit (in KB); 10 MB leaves room for them.
+  if (mechanical) handler["max-patch-size"] = 10240;
   const frontmatter = {
     on: {
       workflow_dispatch: { inputs: inputsOf(mechanical ? MECHANICAL_INPUTS : AI_INPUTS, DISPATCH_DESCRIPTIONS) },
@@ -1756,11 +1778,11 @@ function renderCascade(ctx, edge) {
     ];
   }
   frontmatter["safe-outputs"] = {
-    "github-app": appBlock(ctx),
+    "github-app": appBlock(ctx, [CENTRAL_REPOSITORY, down]),
     "threat-detection": { "continue-on-error": false },
     "create-pull-request": handler,
   };
-  const bash = bashTool(ctx, ["git", ...importWords]);
+  const bash = bashTool(ctx, [...(mechanical ? MECHANICAL_BASH : ["git"]), ...importWords]);
   frontmatter.tools = mechanical ? { bash } : { bash, edit: {} };
   frontmatter.jobs = { ...agentSuccessGuards(), ...cascadeJobs(ctx, edge) };
   return {
@@ -1959,7 +1981,14 @@ function deepFindKeys(value, wanted, pointer = "", found = []) {
   return found;
 }
 
-const permissionKey = (name) => String(name).toLowerCase().replace(/-/g, "_");
+/**
+ * The key under which an App permission is compared. `actions_variables` is the name that the token endpoint (and so the `permission-actions-variables`
+ * input of actions/create-github-app-token) uses for the Variables permission, which the baseline and the manifest call `variables`: one key for both.
+ */
+const permissionKey = (name) => {
+  const key = String(name).toLowerCase().replace(/-/g, "_");
+  return key === "actions_variables" ? "variables" : key;
+};
 const permissionRank = { read: 1, write: 2 };
 
 function requestedAppPermissions(file, kind, fm, parsed) {
@@ -2454,6 +2483,22 @@ function dropCompilerSideRepoWorkflows(cwd, snapshot) {
   }
 }
 
+/**
+ * The compiler adds `permission-checks: read` to the token step of the safe-outputs job. The App holds six permissions (contents, pull requests,
+ * issues, actions, variables and metadata) and no Checks permission, so a token that asks for it cannot be minted and the job fails. The line is
+ * removed from the lock of every workflow that this run compiled; the next run compiles the lock again and removes it again.
+ */
+const UNGRANTED_PERMISSION_LINE = /^[ \t]*permission-checks: read\r?\n/gm;
+
+function stripUngrantedPermissions(cwd, workflows) {
+  for (const workflow of workflows) {
+    const absolute = path.join(cwd, workflow.lockYml);
+    const text = fs.readFileSync(absolute, "utf8");
+    const stripped = text.replace(UNGRANTED_PERMISSION_LINE, "");
+    if (stripped !== text) fs.writeFileSync(absolute, stripped);
+  }
+}
+
 // ---------------------------------------------------------------------------------------
 // Running the compiler
 // ---------------------------------------------------------------------------------------
@@ -2630,6 +2675,7 @@ async function emitFleet(prepared, options) {
         missing.map((workflow) => ({ file: workflow.sourceMd, valid: false, errors: [rule("lock-missing", `${workflow.lockYml} was not produced by the compiler`)] })),
       );
     }
+    stripUngrantedPermissions(cwd, prepared.workflows);
     dropCompilerSideRepoWorkflows(cwd, snapshot);
     return finish(prepared, results);
   } catch (error) {

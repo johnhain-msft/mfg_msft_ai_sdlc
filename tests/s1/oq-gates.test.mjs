@@ -149,7 +149,7 @@ test("OQ32", async (t) => {
 
 test("OQ38", async (t) => {
   t.diagnostic("AC64: every create-pull-request handler carries an explicit protected-files policy of blocked");
-  assert.equal(handlerFiles.length, 8);
+  assert.equal(handlerFiles.length, 9);
   const manifest = mutate(preset, (copy) => {
     copy.protectedFilesExclude = ["notes.md", "/docs/changelog.md"];
     copy.dependencyEdges[0].protectedFilesExclude = ["/public/ghec-admin/keep.md"];
@@ -163,7 +163,7 @@ test("OQ38", async (t) => {
       const base = mdNameOf(name);
       if (base.startsWith("drift-") || base.startsWith("sdlc-onboard")) assert.deepEqual(policy.exclude, ["/docs/changelog.md", "notes.md"], `${base}: the manifest's list`);
       else if (base === "cascade-mechanical-ghec-admin.md") assert.deepEqual(policy.exclude, ["/public/ghec-admin/keep.md"], `${base}: the edge's list`);
-      else assert.deepEqual(policy.exclude, preset.dependencyEdges.find((edge) => base === `cascade-ai-${edge.edgeId}.md`).protectedFilesExclude, `${base}: the edge's list`);
+      else assert.deepEqual(policy.exclude, preset.dependencyEdges.find((edge) => base === `cascade-${edge.mode === "mechanical" ? "mechanical" : "ai"}-${edge.edgeId}.md`).protectedFilesExclude, `${base}: the edge's list`);
     }
   } finally {
     workspace.cleanup();
@@ -228,7 +228,7 @@ test("OQ40", async (t) => {
     else if (/cascade-(mechanical|ai)-/.test(name)) assert.equal(input.type, "string", name);
   }
   assert.equal(mdFiles.filter((name) => mdNameOf(name).startsWith("drift-")).length, 3);
-  assert.equal(mdFiles.filter((name) => /cascade-(mechanical|ai)-/.test(name)).length, 4);
+  assert.equal(mdFiles.filter((name) => /cascade-(mechanical|ai)-/.test(name)).length, 5);
   for (const key of ["staged", "safeOutputs"]) {
     const workspace = createWorkspace({ manifestText: toYaml(mutate(preset, (copy) => (copy[key] = key === "staged" ? true : { staged: true }))), instructions: true });
     try {
@@ -255,12 +255,16 @@ test("OQ40", async (t) => {
 });
 
 test("OQ41", async (t) => {
-  t.diagnostic("AC67: every checkout entry carries explicit github-app credentials built from the request");
+  t.diagnostic("AC67: every checkout entry carries explicit github-app credentials built from the request, scoped to the repository that it checks out");
   let entries = 0;
   for (const name of mdFiles) {
     const { frontmatter } = parseWorkflow(rendered.files.get(name));
     for (const entry of frontmatter.checkout ?? []) {
-      assert.deepEqual(entry["github-app"], APP, `${name}: ${entry.repository ?? "current"}`);
+      const { repositories, ...credentials } = entry["github-app"];
+      assert.deepEqual(credentials, APP, `${name}: ${entry.repository ?? "current"}`);
+      // A token for the central repository (the default scope) is enough for the onboarding workflow's own checkout; every other checkout names its repository.
+      if (entry.repository.startsWith("${{")) assert.equal(repositories, undefined, `${name}: the checkout of the central repository`);
+      else assert.deepEqual(repositories, [entry.repository.split("/")[1]], `${name}: ${entry.repository}`);
       entries += 1;
     }
   }
@@ -305,7 +309,11 @@ test("OQ43", async (t) => {
   for (const name of [...committedMd(), ...mdFiles]) assert.equal((rendered.files.get(name) ?? readText(abs(name))).includes("github-token"), false, name);
   for (const name of mdFiles) {
     const outputs = parseWorkflow(rendered.files.get(name)).frontmatter["safe-outputs"];
-    assert.deepEqual(outputs["github-app"], APP, name);
+    const { repositories, ...credentials } = outputs["github-app"];
+    assert.deepEqual(credentials, APP, name);
+    // The handler writes to its target repository, so its token reaches that one and the central repository; the onboarding workflow writes to the central one only.
+    const target = outputs["create-pull-request"]["target-repo"];
+    assert.deepEqual(repositories, target === undefined ? undefined : ["${{ github.event.repository.name }}", target.split("/")[1]], name);
     assert.equal("github-token" in outputs, false, name);
     for (const handler of Object.values(outputs)) if (handler && typeof handler === "object") assert.equal("github-token" in handler, false, name);
   }
@@ -342,7 +350,7 @@ test("AC19, AC42 and AC54: this file holds one test for each of OQ30, OQ31, OQ32
 });
 
 test("AC30, AC42 and AC54: the gated behaviours hold against every generated workflow at once (router, mechanical, AI, drift, onboarding)", () => {
-  assert.equal(mdFiles.length, 8);
+  assert.equal(mdFiles.length, 9);
   assert.ok(rendered.files.has(`${W}/cascade-router.yml`));
   const router = rendered.files.get(`${W}/cascade-router.yml`);
   assert.equal(/staged|allow-workflows|github-token|allow_workflows/.test(router), false);

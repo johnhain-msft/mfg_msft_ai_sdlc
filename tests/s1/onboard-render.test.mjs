@@ -26,7 +26,7 @@ test("AC56: on.workflow_dispatch.inputs are exactly the eight options of the bin
 
 test("AC56: it is rendered under the policy of AC22: on.bots, threat-detection, an explicit protected-files policy, no auto-merge", () => {
   const { frontmatter } = readWorkflow(NAME);
-  assert.deepEqual(frontmatter.on.bots, ["fixture-app[bot]"]);
+  assert.deepEqual(frontmatter.on.bots, ["mfg-msft-ai-sdlc[bot]"]);
   assert.deepEqual(frontmatter["safe-outputs"]["github-app"], APP);
   assert.deepEqual(frontmatter["safe-outputs"]["threat-detection"], { "continue-on-error": false });
   const handler = frontmatter["safe-outputs"]["create-pull-request"];

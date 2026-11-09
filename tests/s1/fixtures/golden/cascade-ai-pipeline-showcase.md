@@ -33,7 +33,7 @@ on:
         description: Empty, true or false; true forbids commits and pull requests
         type: string
   bots:
-    - fixture-app[bot]
+    - mfg-msft-ai-sdlc[bot]
 concurrency:
   group: sdlc-state-pipeline-showcase
   cancel-in-progress: false
@@ -55,6 +55,8 @@ checkout:
     github-app:
       client-id: ${{ vars.APP_CLIENT_ID }}
       private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      repositories:
+        - portfolio
   - repository: ms-mfg-community/github-pipeline-showcase
     path: upstream/github-pipeline-showcase
     ref: ${{ inputs.upstream_sha }}
@@ -62,6 +64,8 @@ checkout:
     github-app:
       client-id: ${{ vars.APP_CLIENT_ID }}
       private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      repositories:
+        - github-pipeline-showcase
 steps:
   - name: Set up Node.js 24
     uses: actions/setup-node@v4
@@ -270,6 +274,9 @@ safe-outputs:
   github-app:
     client-id: ${{ vars.APP_CLIENT_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
+    repositories:
+      - ${{ github.event.repository.name }}
+      - portfolio
   threat-detection:
     continue-on-error: false
   create-pull-request:
@@ -338,7 +345,7 @@ jobs:
           repositories: ${{ github.event.repository.name }},portfolio
           permission-contents: read
           permission-pull-requests: read
-          permission-variables: write
+          permission-actions-variables: write
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.app_token.outputs.token }}
@@ -396,7 +403,7 @@ jobs:
           repositories: ${{ github.event.repository.name }},portfolio
           permission-contents: read
           permission-pull-requests: read
-          permission-variables: write
+          permission-actions-variables: write
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.app_token.outputs.token }}

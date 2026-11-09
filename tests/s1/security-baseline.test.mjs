@@ -185,7 +185,8 @@ test("AC16: the app_token step of the cascade jobs requests variables: write, co
     assert.equal(step.with["permission-contents"], "read");
     assert.equal(step.with["permission-pull-requests"], "read");
     // an explicit permission-* input disables the inheritance of the installation's permissions, so the token holds variables: write only because the step asks for it
-    assert.equal(step.with["permission-variables"], "write", `${job}: the Variables write permission is requested explicitly`);
+    assert.equal(step.with["permission-actions-variables"], "write", `${job}: the Variables write permission is requested explicitly`);
+    assert.equal("permission-variables" in step.with, false, `${job}: under the name that the token endpoint knows`);
   }
   const granted = (permissions) => withRequest({ securityBaseline: { ...request.securityBaseline, grantedAppPermissions: permissions } });
   const messages = (permissions) =>
@@ -196,6 +197,44 @@ test("AC16: the app_token step of the cascade jobs requests variables: write, co
   assert.ok(messages({ variables: "read", contents: "read", pull_requests: "read" }).includes("'variables:"), "variables: read is not enough");
   assert.ok(messages({ variables: "write", pull_requests: "read" }).includes("'contents:"), "fails naming contents");
   assert.ok(messages({ variables: "write", contents: "read" }).includes("'pull_requests:"), "fails naming pull_requests");
+});
+
+test("AC16: permission-actions-variables and permission-variables name one permission, `variables`, and a baseline may grant it under either name", () => {
+  const files = cascadeWithoutRouter();
+  const renamed = (key) => withFrontmatter(files, CASCADE, (fm) => {
+    for (const job of ["finalize_poll_state", "escalate_failure"]) {
+      const withInputs = fm.jobs[job].steps[0].with;
+      const level = withInputs["permission-actions-variables"];
+      delete withInputs["permission-actions-variables"];
+      withInputs[key] = level;
+    }
+  });
+  const granted = (permissions) => withRequest({ securityBaseline: { ...request.securityBaseline, grantedAppPermissions: permissions } });
+  const errors = (candidate, permissions) => invalidEntries(checkRendered(candidate, granted(permissions), manifest)).flatMap((entry) => entry.errors);
+  const required = { contents: "read", pull_requests: "read" };
+  for (const key of ["permission-actions-variables", "permission-variables"]) {
+    const candidate = renamed(key);
+    assert.deepEqual(errors(candidate, { ...required, variables: "write" }), [], `${key} against variables: write`);
+    assert.deepEqual(errors(candidate, { ...required, actions_variables: "write" }), [], `${key} against actions_variables: write`);
+    assert.deepEqual(errors(candidate, { ...required, "actions-variables": "write" }), [], `${key} against actions-variables: write`);
+    for (const permissions of [{ ...required }, { ...required, variables: "read" }, { ...required, actions_variables: "read" }]) {
+      const text = errors(candidate, permissions).join("\n");
+      assert.match(text, /^app-permission-exceeded: .*'variables: write'/m, `${key} against ${JSON.stringify(permissions)}: ${text}`);
+    }
+    // the step itself names the permission, whichever input it uses, so the job that runs the poll-state script is not told that its token cannot hold it
+    assert.equal(errors(candidate, { ...required, variables: "write" }).some((error) => error.startsWith("app-token-permission-missing: ")), false, key);
+  }
+  for (const level of [undefined, "read"]) {
+    const weakened = withFrontmatter(files, CASCADE, (fm) => {
+      for (const job of ["finalize_poll_state", "escalate_failure"]) {
+        const withInputs = fm.jobs[job].steps[0].with;
+        delete withInputs["permission-actions-variables"];
+        if (level !== undefined) withInputs["permission-actions-variables"] = level;
+      }
+    });
+    const text = errors(weakened, { ...required, variables: "write" }).join("\n");
+    assert.match(text, /^app-token-permission-missing: .* 'variables: write'/m, `permission-actions-variables ${level}: ${text}`);
+  }
 });
 
 test("AC16: permissions blocks of the workflow and of custom jobs scope GITHUB_TOKEN and are not compared; copilot-requests is exempt", () => {

@@ -39,7 +39,7 @@ test("AC5: git ls-files lists sdlc.yaml", () => {
   assert.deepEqual(trackedFiles("sdlc.yaml"), ["sdlc.yaml"]);
 });
 
-test("AC5: six project entries with the named keys and repositories", () => {
+test("AC5: seven project entries with the named keys and repositories", () => {
   assert.deepEqual(
     manifest.projects.map((project) => [project.projectKey, project.repo]),
     [
@@ -49,6 +49,7 @@ test("AC5: six project entries with the named keys and repositories", () => {
       ["pipeline-showcase", "ms-mfg-community/github-pipeline-showcase"],
       ["github-intermediate", "githubschool/gh-github-intermediate-template"],
       ["portfolio", "johnhain-msft/portfolio"],
+      ["ai-sdlc", "johnhain-msft/mfg_msft_ai_sdlc"],
     ],
   );
 });
@@ -76,23 +77,46 @@ test("AC5: reviewers are non-empty for gh-admin-msft and every project defaults 
   }
 });
 
-test("AC6: exactly four edges, all into the portfolio, with the named modes, slugs, state variables and files", () => {
+test("AC6: exactly five edges, all into the portfolio, with the named modes, slugs, state variables and files", () => {
   const edges = manifest.dependencyEdges;
-  assert.deepEqual(edges.map((edge) => edge.edgeId), ["ghec-admin", "copilot-lab", "pipeline-showcase", "github-intermediate"]);
+  assert.deepEqual(edges.map((edge) => edge.edgeId), ["ghec-admin", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc"]);
   for (const edge of edges) assert.equal(edge.downstreamRepo, "johnhain-msft/portfolio");
-  const ghec = edgeOf(manifest, "ghec-admin");
-  assert.equal(ghec.mode, "mechanical");
-  assert.equal(ghec.upstreamRepo, "johnhain-msft/gh-admin-msft");
-  assert.equal(ghec.upstreamKey, "gh-admin-msft");
-  assert.equal(ghec.upstreamSlug, "GH_ADMIN_MSFT");
-  assert.equal(ghec.stateVariable, "SDLC_SYNC_STATE_GH_ADMIN_MSFT");
-  assert.deepEqual(ghec.allowedFiles, ["public/ghec-admin/**"]);
+  for (const [edgeId, repo, key, slug] of [
+    ["ghec-admin", "johnhain-msft/gh-admin-msft", "gh-admin-msft", "GH_ADMIN_MSFT"],
+    ["ai-sdlc", "johnhain-msft/mfg_msft_ai_sdlc", "ai-sdlc", "AI_SDLC"],
+  ]) {
+    const edge = edgeOf(manifest, edgeId);
+    assert.equal(edge.mode, "mechanical", edgeId);
+    assert.equal(edge.upstreamRepo, repo, edgeId);
+    assert.equal(edge.upstreamKey, key, edgeId);
+    assert.equal(edge.upstreamSlug, slug, edgeId);
+    assert.equal(edge.stateVariable, `SDLC_SYNC_STATE_${slug}`, edgeId);
+    assert.equal(edge.upstreamDefaultBranch, "main", edgeId);
+  }
+  assert.deepEqual(edgeOf(manifest, "ghec-admin").allowedFiles, ["public/ghec-admin/**"]);
+  assert.deepEqual(edgeOf(manifest, "ai-sdlc").allowedFiles, ["public/ai-sdlc/**"]);
   for (const [edgeId, slug] of [["copilot-lab", "COPILOT_LAB"], ["pipeline-showcase", "PIPELINE_SHOWCASE"], ["github-intermediate", "GITHUB_INTERMEDIATE"]]) {
     const edge = edgeOf(manifest, edgeId);
     assert.equal(edge.mode, "ai-adaptation", edgeId);
     assert.equal(edge.upstreamSlug, slug, edgeId);
     assert.equal(edge.stateVariable, `SDLC_SYNC_STATE_${slug}`, edgeId);
   }
+});
+
+test("AC6: the ai-sdlc edge is the self-cascade: this repository is its upstream and the portfolio its downstream, with no drift audit of its own", () => {
+  const edge = edgeOf(manifest, "ai-sdlc");
+  const project = projectOf(manifest, "ai-sdlc");
+  assert.equal(project.repo, edge.upstreamRepo);
+  assert.equal(project.defaultBranch, "main");
+  assert.equal(project.driftAudit.enabled, false);
+  assert.equal(edge.initialBaselineSha, "6ad036d3a23eb17dbf46dacbcdd61f1a5d47b307");
+  assert.equal(edge.schedule, "0 */6 * * *");
+  assert.equal(edge.onCommitOnlyAdvance, "noop");
+  assert.deepEqual(edge.reviewers, ["johnhain-msft"]);
+  assert.deepEqual(edge.installDirectories, [".", "apps/lab-studio"]);
+  assert.deepEqual([edge.preflightCommands, edge.acceptCommands, edge.protectedFilesExclude, edge.immutableGates], [[], [], [], { zeroDiffPaths: [] }]);
+  assert.equal(edge.adaptationInstructions, "");
+  assert.deepEqual(edge.buildCommands, ["npm run build", "STUDIO_ORIGIN=https://studio.example.com npm run build:catalog"]);
 });
 
 test("AC6: per-edge derived values, baselines and reviewers", () => {
@@ -144,6 +168,14 @@ test("AC7: the pipeline-showcase edge references fetch-run-data.mjs in one of it
 
 test("AC7: the github-intermediate edge has its own provenance file", () => {
   assert.equal(edgeOf(manifest, "github-intermediate").provenanceFile, "experiences/github-intermediate-labs/provenance.json");
+});
+
+test("AC7: the ai-sdlc edge imports through <checkout> and records its provenance in public/ai-sdlc/source.json", () => {
+  const edge = edgeOf(manifest, "ai-sdlc");
+  assert.deepEqual(edge.importCommands, ["npm run import:ai-sdlc -- <checkout>"]);
+  assert.equal(edge.provenanceFile, "public/ai-sdlc/source.json");
+  assert.equal(edge.provenanceJsonPointer, "/commit");
+  assert.deepEqual(edge.verifyCommands, FIVE_GATES, "the gates of the portfolio, in order, and nothing after them");
 });
 
 test("AC7: every edge's verifyCommands list the five portfolio gates in order", () => {

@@ -59,6 +59,7 @@ test("AC31: on.schedule holds one cron per distinct non-null edge schedule, sort
     copy.dependencyEdges[1].schedule = "0 */2 * * *";
     copy.dependencyEdges[2].schedule = null;
     copy.dependencyEdges[3].schedule = "30 8 * * *";
+    copy.dependencyEdges[4].schedule = "30 8 * * *";
   });
   assert.deepEqual(routerFor(varied).on.schedule, [{ cron: "0 */2 * * *" }, { cron: "30 8 * * *" }]);
   const unscheduled = mutate(preset, (copy) => copy.dependencyEdges.forEach((edge) => (edge.schedule = null)));
@@ -77,7 +78,7 @@ test("AC31: a workflow-level permissions block exists and lists contents: read",
 
 test("AC31: matrix.upstreamKey equals the edges' upstreamKey values in manifest order", () => {
   const expected = preset.dependencyEdges.map((edge) => edge.upstreamKey);
-  assert.deepEqual(expected, ["gh-admin-msft", "copilot-lab", "pipeline-showcase", "github-intermediate"]);
+  assert.deepEqual(expected, ["gh-admin-msft", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc"]);
   for (const router of [committed, rendered]) assert.deepEqual(jobOf(router).strategy.matrix.upstreamKey, expected);
 });
 
@@ -149,7 +150,7 @@ test("AC33: every matrix entry carries the 19 keys of contract C3 plus edgeId an
       assert.match(entry.initialBaselineSha, /^[0-9a-f]{40}$/);
       assert.ok(["mechanical", "ai-adaptation"].includes(entry.mode));
       assert.ok(["noop", "bump-provenance"].includes(entry.onCommitOnlyAdvance));
-      assert.deepEqual(entry.onBots, ["fixture-app[bot]"], "onBots is derived from appSlug and never authored");
+      assert.deepEqual(entry.onBots, ["mfg-msft-ai-sdlc[bot]"], "onBots is derived from appSlug and never authored");
     });
     assert.equal(Object.keys(EDGE_KEYS).length, 21);
   }

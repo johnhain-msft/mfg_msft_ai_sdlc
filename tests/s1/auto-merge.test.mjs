@@ -17,7 +17,7 @@ test("AC60: scanning every generated file of the reference render finds only aut
   try {
     assert.equal((await workspace.reconcile(request)).status, "ok");
     const files = workspace.list(W);
-    assert.ok(files.length >= 18);
+    assert.ok(files.length >= 20);
     let handlers = 0;
     for (const file of files) {
       const text = workspace.read(file);
@@ -29,7 +29,7 @@ test("AC60: scanning every generated file of the reference render finds only aut
       assert.equal(MERGE_COMMAND.test(text), false, `${file}: a merge command`);
       if (!file.endsWith(".lock.yml")) assert.equal(AUTO_FLAG.test(text), false, `${file}: --auto`);
     }
-    assert.equal(handlers, 8, "one auto-merge key per create-pull-request handler: three drift, one mechanical, three AI and the onboarding workflow");
+    assert.equal(handlers, 9, "one auto-merge key per create-pull-request handler: three drift, two mechanical, three AI and the onboarding workflow");
   } finally {
     workspace.cleanup();
   }
@@ -55,7 +55,7 @@ test("AC60: every create-pull-request handler of every generated workflow has au
       assert.strictEqual(handler["auto-merge"], false, file);
       checked.push(file);
     }
-    assert.equal(checked.length, 8);
+    assert.equal(checked.length, 9);
     const router = YAML.parse(workspace.read(`${W}/cascade-router.yml`));
     assert.equal(JSON.stringify(router).includes("auto-merge"), false);
   } finally {

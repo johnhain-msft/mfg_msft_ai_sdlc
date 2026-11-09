@@ -1461,7 +1461,6 @@ jobs:
           owner: ${{ steps.safe-outputs-app-token-owner.outputs.owner }}
           repositories: ${{ github.event.repository.name }}
           github-api-url: ${{ github.api_url }}
-          permission-checks: read
           permission-contents: write
           permission-issues: write
           permission-pull-requests: write

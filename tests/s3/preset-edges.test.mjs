@@ -1,5 +1,5 @@
-// The four preset edges of sdlc.yaml, routed as the committed router hands them to the script (the entries of its matrix) against fixtures (SPEC-03 AC66, AC18, AC24, AC34):
-// gh-admin-msft dispatches the mechanical workflow, the other three dispatch their AI workflow with previous_sha at the merge cursor, and every terminal comparison of
+// The five preset edges of sdlc.yaml, routed as the committed router hands them to the script (the entries of its matrix) against fixtures (SPEC-03 AC66, AC18, AC24, AC34):
+// gh-admin-msft and the repository itself (ai-sdlc) dispatch a mechanical workflow, the other three dispatch their AI workflow with previous_sha at the merge cursor, and every terminal comparison of
 // AC18 ends in the noop that it names, for each edge, with nothing dispatched and nothing but the specified fields written.
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -18,6 +18,7 @@ const WORKFLOW_FILE = {
   "copilot-lab": "cascade-ai-copilot-lab.lock.yml",
   "pipeline-showcase": "cascade-ai-pipeline-showcase.lock.yml",
   "github-intermediate": "cascade-ai-github-intermediate.lock.yml",
+  "ai-sdlc": "cascade-mechanical-ai-sdlc.lock.yml",
 };
 const MAIN = sha("downstream-main");
 const headOf = (key) => sha(`head-of-${key}`);
@@ -30,6 +31,7 @@ const drifting = (key) => ({
   "copilot-lab": fakePreflight([workshop, studio]),
   "pipeline-showcase": fakePreflight([]),
   "github-intermediate": fakePreflight([{ match: /diff --quiet/, code: 1 }]),
+  "ai-sdlc": fakePreflight([]),
 })[key];
 
 const CENTRAL_OF_PRESET = "johnhain-msft/mfg_msft_ai_sdlc";
@@ -47,8 +49,8 @@ function world(key, { stored, upstream = {}, downstream = {} } = {}) {
   });
 }
 
-test("AC66 the committed router has the four preset edges, and the workflow file of each dispatch exists on disk", () => {
-  assert.deepEqual(matrix.map((entry) => entry.upstreamKey), ["gh-admin-msft", "copilot-lab", "pipeline-showcase", "github-intermediate"]);
+test("AC66 the committed router has the five preset edges, and the workflow file of each dispatch exists on disk", () => {
+  assert.deepEqual(matrix.map((entry) => entry.upstreamKey), ["gh-admin-msft", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc"]);
   assert.deepEqual(matrix.map((entry) => entry.upstreamKey), manifest.map((entry) => entry.upstreamKey));
   for (const [key, file] of Object.entries(WORKFLOW_FILE)) assert.equal(fs.existsSync(abs(".github", "workflows", file)), true, `${key}: ${file}`);
 });

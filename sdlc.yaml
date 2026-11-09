@@ -217,6 +217,28 @@ projects:
       draft: false
       reviewers: []
 
+  # The orchestrator as an upstream: the ai-sdlc edge below cascades this repository's briefing, specifications and manifest into the portfolio.
+  # It has no drift audit of its own, so the reconciler renders no drift workflow for it.
+  - projectKey: ai-sdlc
+    repo: johnhain-msft/mfg_msft_ai_sdlc
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+
 dependencyEdges:
   - edgeId: ghec-admin
     upstreamRepo: johnhain-msft/gh-admin-msft
@@ -726,3 +748,46 @@ dependencyEdges:
         customerTerms:
           module: tests/support/customer-terms.ts
           export: findCustomerTerms
+
+  # Self-cascade: the orchestrator is the upstream and the portfolio the downstream. The portfolio's importer (npm run import:ai-sdlc) pins the
+  # briefing SPA, the specification reader and a copy of this manifest to the revision that the cascade delivers, in public/ai-sdlc/source.json.
+  - edgeId: ai-sdlc
+    upstreamRepo: johnhain-msft/mfg_msft_ai_sdlc
+    upstreamKey: ai-sdlc
+    upstreamSlug: AI_SDLC
+    upstreamDefaultBranch: main
+    initialBaselineSha: 6ad036d3a23eb17dbf46dacbcdd61f1a5d47b307
+    downstreamRepo: johnhain-msft/portfolio
+    mode: mechanical
+    schedule: "0 */6 * * *"
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_AI_SDLC
+    provenanceFile: public/ai-sdlc/source.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-ai-sdlc
+    closeOlderKey: sdlc-cascade-ai-sdlc
+    reviewers:
+      - johnhain-msft
+    installDirectories:
+      - .
+      - apps/lab-studio
+    importCommands:
+      - npm run import:ai-sdlc -- <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands:
+      - npm run build
+      - STUDIO_ORIGIN=https://studio.example.com npm run build:catalog
+    verifyCommands:
+      - npm run typecheck
+      - npm run lint
+      - npm test
+      - npm run test:studio
+      - npm run test:browser
+    adaptationInstructions: ""
+    allowedFiles:
+      - public/ai-sdlc/**
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []

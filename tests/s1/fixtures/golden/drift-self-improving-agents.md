@@ -18,7 +18,7 @@ on:
         type: boolean
         default: false
   bots:
-    - fixture-app[bot]
+    - mfg-msft-ai-sdlc[bot]
 concurrency:
   group: sdlc-drift-self-improving-agents
   cancel-in-progress: false
@@ -38,6 +38,8 @@ checkout:
     github-app:
       client-id: ${{ vars.APP_CLIENT_ID }}
       private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      repositories:
+        - day-in-the-life-copilot-lab
 mcp-servers:
   context7:
     args:
@@ -79,6 +81,9 @@ safe-outputs:
   github-app:
     client-id: ${{ vars.APP_CLIENT_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
+    repositories:
+      - ${{ github.event.repository.name }}
+      - day-in-the-life-copilot-lab
   threat-detection:
     continue-on-error: false
   create-pull-request:

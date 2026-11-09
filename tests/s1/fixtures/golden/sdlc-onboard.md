@@ -27,7 +27,7 @@ on:
         description: Manifest path (defaults to sdlc.yaml)
         type: string
   bots:
-    - fixture-app[bot]
+    - mfg-msft-ai-sdlc[bot]
 concurrency:
   group: sdlc-onboard
   cancel-in-progress: false

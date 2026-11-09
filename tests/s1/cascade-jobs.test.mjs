@@ -8,7 +8,7 @@ import { createWorkspace } from "./helpers/workspace.mjs";
 const W = ".github/workflows";
 const request = referenceRequest();
 const preset = presetManifest();
-const CASCADE = ["cascade-mechanical-ghec-admin", "cascade-ai-copilot-lab", "cascade-ai-pipeline-showcase", "cascade-ai-github-intermediate"];
+const CASCADE = ["cascade-mechanical-ghec-admin", "cascade-mechanical-ai-sdlc", "cascade-ai-copilot-lab", "cascade-ai-pipeline-showcase", "cascade-ai-github-intermediate"];
 const AI = CASCADE.filter((name) => name.startsWith("cascade-ai-"));
 const DRIFT = ["drift-gh-admin-msft", "drift-copilot-lab", "drift-self-improving-agents"];
 const NEEDS = ["agent", "detection", "safe_outputs"];
@@ -46,7 +46,7 @@ test("AC35: in both jobs the first step mints the App token, the second checks o
         repositories: "${{ github.event.repository.name }},portfolio",
         "permission-contents": "read",
         "permission-pull-requests": "read",
-        "permission-variables": "write",
+        "permission-actions-variables": "write",
       });
       assert.equal(checkout.uses, "actions/checkout@v4");
       assert.deepEqual(checkout.with, { token: TOKEN, "sparse-checkout": "src\nschemas", "persist-credentials": false });

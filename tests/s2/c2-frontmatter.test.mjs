@@ -49,7 +49,7 @@ function assertContract(frontmatter, project) {
   assert.equal(typeof checkout.repository, "string");
   assert.equal(typeof checkout.path, "string");
   assert.equal(checkout.current, true);
-  assert.deepEqual(checkout["github-app"], APP);
+  assert.deepEqual(checkout["github-app"], { ...APP, repositories: [checkout.path] }, "the token of the checkout is scoped to the target repository");
 
   // the other contract keys
   assert.equal(typeof frontmatter["mcp-servers"], "object");
@@ -59,7 +59,7 @@ function assertContract(frontmatter, project) {
   // safe-outputs
   const outputs = frontmatter["safe-outputs"];
   assert.deepEqual(Object.keys(outputs).sort(), ["create-pull-request", "github-app", "threat-detection"]);
-  assert.deepEqual(outputs["github-app"], APP);
+  assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", checkout.path] }, "the token of the safe outputs reaches the central repository and the target repository");
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
   const handler = outputs["create-pull-request"];
   assert.deepEqual(Object.keys(handler).sort(), [

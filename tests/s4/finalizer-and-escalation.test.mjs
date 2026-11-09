@@ -25,7 +25,7 @@ test("AC51: finalize_poll_state is the App token, the checkout of src and schema
     const [mint, checkout, install, download, exportStep, update] = job.steps;
     assert.equal(job.steps.length, 6, spec.id);
     assert.equal(mint.id, "app_token");
-    assert.equal(mint.with["permission-variables"], "write");
+    assert.equal(mint.with["permission-actions-variables"], "write");
     assert.deepEqual(checkout, { uses: "actions/checkout@v4", with: { token: TOKEN_EXPRESSION, "sparse-checkout": "src\nschemas", "persist-credentials": false } });
     assert.deepEqual(install, { run: "npm ci --ignore-scripts" });
     assert.deepEqual(download, { uses: "actions/download-artifact@v4", with: { name: "sdlc-cascade-shas-${{ github.run_id }}", path: "/tmp/gh-aw" } });

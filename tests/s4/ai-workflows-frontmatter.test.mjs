@@ -71,12 +71,12 @@ test("AC7: the workflow-level concurrency group is sdlc-state-<upstreamKey> and 
   }
 });
 
-test("AC8: two checkouts, the downstream as the current repository and the upstream at upstream/<repo-name> with App credentials and full history", () => {
+test("AC8: two checkouts, the downstream as the current repository and the upstream at upstream/<repo-name> with App credentials, each token scoped to its own repository, and full history", () => {
   for (const spec of AI) {
     const { checkout } = workflowOf(spec).frontmatter;
     assert.deepEqual(checkout, [
-      { repository: DOWNSTREAM, path: "portfolio", current: true, "github-app": APP },
-      { repository: spec.upstreamRepo, path: `upstream/${spec.repo}`, ref: "${{ inputs.upstream_sha }}", "fetch-depth": 0, "github-app": APP },
+      { repository: DOWNSTREAM, path: "portfolio", current: true, "github-app": { ...APP, repositories: ["portfolio"] } },
+      { repository: spec.upstreamRepo, path: `upstream/${spec.repo}`, ref: "${{ inputs.upstream_sha }}", "fetch-depth": 0, "github-app": { ...APP, repositories: [spec.repo] } },
     ], spec.id);
   }
 });
@@ -184,7 +184,7 @@ test("AC17: the custom jobs, in the source and in the compiled lock: finalize_po
         repositories: "${{ github.event.repository.name }},portfolio",
         "permission-contents": "read",
         "permission-pull-requests": "read",
-        "permission-variables": "write",
+        "permission-actions-variables": "write",
       });
       assert.equal(checkout.uses, "actions/checkout@v4");
       assert.equal(checkout.with["persist-credentials"], false);

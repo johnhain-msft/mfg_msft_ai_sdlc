@@ -12,6 +12,7 @@ const PRESET_PAIRS = [
   "cascade-ai-copilot-lab",
   "cascade-ai-github-intermediate",
   "cascade-ai-pipeline-showcase",
+  "cascade-mechanical-ai-sdlc",
   "cascade-mechanical-ghec-admin",
   "drift-copilot-lab",
   "drift-gh-admin-msft",
@@ -63,7 +64,7 @@ test("AC12: an error result has the same four keys", async () => {
   });
 });
 
-test("AC13: generatedWorkflows holds the eight pairs sorted by path and not the router; repoConfigPath is aw.json", async () => {
+test("AC13: generatedWorkflows holds the nine pairs sorted by path and not the router; repoConfigPath is aw.json", async () => {
   await withWorkspace({}, async (workspace) => {
     const result = await workspace.reconcile(referenceRequest());
     assert.deepEqual(result.generatedWorkflows, PRESET_PAIRS);
@@ -206,7 +207,7 @@ test("AC12: `node src/reconcile.mjs --request <file>` prints the result as JSON 
     assert.equal(outcome.code, 0, outcome.stderr);
     assert.equal(outcome.json?.status, "ok");
     assertResultShape(outcome.json);
-    assert.equal(outcome.json.generatedWorkflows.length, 8);
+    assert.equal(outcome.json.generatedWorkflows.length, 9);
     assert.equal(outcome.stdout.trim().startsWith("{"), true, "stdout holds only the JSON object");
   });
 });

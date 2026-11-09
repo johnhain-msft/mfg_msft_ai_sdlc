@@ -27,7 +27,7 @@ on:
         description: Empty, true or false; true forbids commits and pull requests
         type: string
   bots:
-    - fixture-app[bot]
+    - mfg-msft-ai-sdlc[bot]
 concurrency:
   group: sdlc-state-alpha-service
   cancel-in-progress: false
@@ -48,12 +48,16 @@ checkout:
     github-app:
       client-id: ${{ vars.APP_CLIENT_ID }}
       private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      repositories:
+        - beta-docs
   - repository: acme-labs/alpha-service
     path: upstream/alpha-service
     ref: ${{ inputs.upstream_sha }}
     github-app:
       client-id: ${{ vars.APP_CLIENT_ID }}
       private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      repositories:
+        - alpha-service
 steps:
   - name: Set up Node.js 24
     uses: actions/setup-node@v4
@@ -144,6 +148,9 @@ safe-outputs:
   github-app:
     client-id: ${{ vars.APP_CLIENT_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
+    repositories:
+      - ${{ github.event.repository.name }}
+      - beta-docs
   threat-detection:
     continue-on-error: false
   create-pull-request:
@@ -170,10 +177,13 @@ safe-outputs:
       policy: blocked
       exclude: []
     max: 1
+    max-patch-size: 10240
 tools:
   bash:
     - cat
+    - cd
     - date
+    - echo
     - find
     - git
     - grep
@@ -184,6 +194,10 @@ tools:
     - tail
     - wc
 jobs:
+  detection:
+    if: needs.agent.result == 'success'
+  safe_outputs:
+    if: needs.agent.result == 'success'
   finalize_poll_state:
     needs:
       - agent
@@ -202,7 +216,7 @@ jobs:
           repositories: ${{ github.event.repository.name }},beta-docs
           permission-contents: read
           permission-pull-requests: read
-          permission-variables: write
+          permission-actions-variables: write
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.app_token.outputs.token }}
@@ -252,7 +266,7 @@ jobs:
           repositories: ${{ github.event.repository.name }},beta-docs
           permission-contents: read
           permission-pull-requests: read
-          permission-variables: write
+          permission-actions-variables: write
       - uses: actions/checkout@v4
         with:
           token: ${{ steps.app_token.outputs.token }}

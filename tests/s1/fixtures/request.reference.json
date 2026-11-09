@@ -1,6 +1,6 @@
 {
   "manifestPath": "sdlc.yaml",
-  "appSlug": "fixture-app",
+  "appSlug": "mfg-msft-ai-sdlc",
   "appClientIdVar": "APP_CLIENT_ID",
   "appPrivateKeySecret": "APP_PRIVATE_KEY",
   "pollStateVarPrefix": "SDLC_SYNC_STATE_",

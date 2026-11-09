@@ -5,7 +5,7 @@
 // The cascade that it dispatches is another run with another run id, so the id can reach the issue that src/update-poll-state.mjs opens from
 // finalize_poll_state or escalate_failure only through the dispatch input `correlation_id`: the rendered step binds CORRELATION_ID to it, and the script
 // writes what it is given. The first half drives the script with that variable on each of its three paths to an issue; the second half runs every link of the
-// chain for each of the four committed cascade workflows: the real router and the inputs it dispatched, the committed step's env and command line (real bash),
+// chain for each of the five committed cascade workflows: the real router and the inputs it dispatched, the committed step's env and command line (real bash),
 // and the real script against the stub.
 import assert from "node:assert/strict";
 import fs from "node:fs";
@@ -119,7 +119,7 @@ const JOBS = ["finalize_poll_state", "escalate_failure"];
 const edges = presetEdges();
 
 test("AC52 every cascade workflow binds CORRELATION_ID to the dispatch input in the step that runs update-poll-state.mjs: both custom jobs, source and compiled lock", () => {
-  assert.equal(edges.length, 4, "the preset has four edges");
+  assert.equal(edges.length, 5, "the preset has five edges");
   for (const entry of edges) {
     const workflowId = cascadeId(entry);
     for (const [label, workflow] of [["source", authoredOf(workflowId)], ["lock", lockOf(workflowId)]]) {

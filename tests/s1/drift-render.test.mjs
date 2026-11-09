@@ -77,7 +77,7 @@ function assertContract(frontmatter, project) {
   ]);
   assert.deepEqual(Object.keys(frontmatter.on).sort(), ["bots", "schedule", "workflow_dispatch"]);
   assert.deepEqual(frontmatter.on.schedule, [{ cron: audit.schedule }]);
-  assert.deepEqual(frontmatter.on.bots, ["fixture-app[bot]"]);
+  assert.deepEqual(frontmatter.on.bots, ["mfg-msft-ai-sdlc[bot]"]);
   assert.deepEqual(Object.keys(frontmatter.on.workflow_dispatch), ["inputs"]);
   const inputs = frontmatter.on.workflow_dispatch.inputs;
   assert.deepEqual(Object.keys(inputs).sort(), ["correlation_id", "dry_run", "extra_instructions", "target_repo"]);
@@ -87,12 +87,12 @@ function assertContract(frontmatter, project) {
   assert.deepEqual(frontmatter.permissions, { contents: "read", issues: "read", "pull-requests": "read" });
   assert.deepEqual(Object.keys(frontmatter.network), ["allowed"]);
   assert.ok(Array.isArray(frontmatter.network.allowed) && frontmatter.network.allowed.every((host) => typeof host === "string"));
-  assert.deepEqual(frontmatter.checkout, [{ repository: project.repo, path: repoName, current: true, "github-app": APP }]);
+  assert.deepEqual(frontmatter.checkout, [{ repository: project.repo, path: repoName, current: true, "github-app": { ...APP, repositories: [repoName] } }]);
   assert.deepEqual(frontmatter["mcp-servers"], audit.knowledgeSources.mcpServers);
   assert.ok(Array.isArray(frontmatter["pre-agent-steps"]) && Array.isArray(frontmatter["post-steps"]));
   const outputs = frontmatter["safe-outputs"];
   assert.deepEqual(Object.keys(outputs).sort(), ["create-pull-request", "github-app", "threat-detection"]);
-  assert.deepEqual(outputs["github-app"], APP);
+  assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", repoName] });
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
   const handler = outputs["create-pull-request"];
   assert.deepEqual(Object.keys(handler).sort(), [

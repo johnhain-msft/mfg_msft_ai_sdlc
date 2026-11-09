@@ -124,12 +124,16 @@ test("AC9: every generated workflow allowlists the App sender and references the
     const result = await workspace.reconcile(referenceRequest());
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
     const workflows = readAll(workspace);
-    assert.equal(workflows.length, 8);
+    assert.equal(workflows.length, 9);
     for (const { name, frontmatter } of workflows) {
-      assert.deepEqual(frontmatter.on.bots, ["fixture-app[bot]"], `${name} on.bots`);
+      assert.deepEqual(frontmatter.on.bots, ["mfg-msft-ai-sdlc[bot]"], `${name} on.bots`);
       const blocks = collectKey(frontmatter, "github-app");
       assert.ok(blocks.length >= 2, `${name} has github-app blocks`);
-      for (const block of blocks) assert.deepEqual(block, { "client-id": CLIENT_ID, "private-key": PRIVATE_KEY }, `${name} github-app`);
+      for (const block of blocks) {
+        const { repositories, ...credentials } = block;
+        assert.deepEqual(credentials, { "client-id": CLIENT_ID, "private-key": PRIVATE_KEY }, `${name} github-app`);
+        assert.ok(repositories === undefined || (Array.isArray(repositories) && repositories.length > 0 && repositories.every((entry) => typeof entry === "string")), `${name} github-app repositories`);
+      }
     }
   } finally {
     workspace.cleanup();
@@ -144,7 +148,9 @@ test("AC9: the App credential names come from the request", async () => {
     for (const { name, frontmatter } of readAll(workspace)) {
       assert.deepEqual(frontmatter.on.bots, ["Other-App-2[bot]"], name);
       for (const block of collectKey(frontmatter, "github-app")) {
-        assert.deepEqual(block, { "client-id": "${{ vars.MY_CLIENT_ID }}", "private-key": "${{ secrets.MY_PRIVATE_KEY }}" }, name);
+        const { repositories, ...credentials } = block;
+        assert.deepEqual(credentials, { "client-id": "${{ vars.MY_CLIENT_ID }}", "private-key": "${{ secrets.MY_PRIVATE_KEY }}" }, name);
+        assert.ok(repositories === undefined || Array.isArray(repositories), `${name}: the repositories are names and never credentials`);
       }
     }
     for (const file of workspace.list(".github/workflows").filter((name) => name.endsWith(".md"))) {
@@ -236,7 +242,7 @@ test("AC10: with dryRun true no file of the working tree changes, generatedWorkf
       result = await workspace.reconcile(withRequest({ dryRun: true }));
     });
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
-    assert.equal(result.generatedWorkflows.length, 8);
+    assert.equal(result.generatedWorkflows.length, 9);
     assert.equal(workspace.hash(), hashBefore, ".github/workflows is identical");
     assert.equal(workspace.hash(["."]), treeBefore, "the whole working tree is identical");
     assert.equal(workspace.status(), statusBefore);

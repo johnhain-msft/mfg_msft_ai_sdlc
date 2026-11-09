@@ -8,6 +8,8 @@ import { createWorkspace } from "./helpers/workspace.mjs";
 
 const W = ".github/workflows";
 const request = referenceRequest();
+/** Workflows that live beside the generated ones but are written by hand, so the reconciler neither renders nor removes them. */
+const OPERATOR_WORKFLOWS = [`${W}/sdlc-bridge-dispatch.yml`];
 
 /** A copy of a value in which every object's keys come in reverse order (arrays keep manifest order). */
 function reverseKeys(value) {
@@ -106,8 +108,9 @@ test("AC58: the committed .md sources, router and aw.json equal the regenerated 
   const { protected_files: protectedFiles, ...acceptedByCompiler } = JSON.parse(rendered.get(`${W}/aw.json`));
   assert.deepEqual(protectedFiles, { exclude: [] });
   assert.deepEqual(JSON.parse(readText(abs(W, "aw.json"))), acceptedByCompiler);
-  // Files that the compiler leaves behind for cross-repository targets are ignored by git and are not part of the fleet.
-  const committed = listFiles(REPO_ROOT, W).filter((name) => /\.(md|yml)$/.test(name) && !name.endsWith(".lock.yml") && !/\/agentics-maintenance[^/]*\.yml$/.test(name));
+  // Files that the compiler leaves behind for cross-repository targets are ignored by git and are not part of the fleet; a workflow that the operator
+  // wrote by hand is neither rendered nor removed (AC57): the merge bridge forwards a merged pull request of this repository to its own router.
+  const committed = listFiles(REPO_ROOT, W).filter((name) => /\.(md|yml)$/.test(name) && !name.endsWith(".lock.yml") && !/\/agentics-maintenance[^/]*\.yml$/.test(name) && !OPERATOR_WORKFLOWS.includes(name));
   assert.deepEqual(committed, [...rendered.keys()].filter((name) => /\.(md|yml)$/.test(name)).sort());
 });
 

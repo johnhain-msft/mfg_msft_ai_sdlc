@@ -5,11 +5,14 @@ import fs from "node:fs";
 import test from "node:test";
 import { routerWorld } from "../s3/helpers/harness.mjs";
 import { edge as edgeFixture, presetEdges, routerMatrixEntries, seedState, sha } from "../s3/helpers/fixtures.mjs";
+import { referenceRequest } from "../s1/helpers/fixtures.mjs";
 import { abs } from "./helpers/fixtures.mjs";
 import { AI, WORKFLOW_DIR, lockOf, lockTextOf, workflowOf } from "./helpers/workflows.mjs";
 
 const FILES = ["cascade-ai-copilot-lab.lock.yml", "cascade-ai-pipeline-showcase.lock.yml", "cascade-ai-github-intermediate.lock.yml"];
 const TEN = ["correlation_id", "upstream_repo", "previous_sha", "upstream_sha", "upstream_etag", "upstream_pr_number", "downstream_repo", "sync_scope", "on_commit_only_advance", "dry_run"];
+/** The sender that every workflow allows: the App of the request that the committed workflows were rendered from. */
+const BOT = `${referenceRequest().appSlug}[bot]`;
 
 /** One routed event for a preset edge, as the router dispatches it. */
 async function dispatched(spec, t) {
@@ -32,8 +35,8 @@ test("AC22: the three compiled workflows exist under exactly the names that the 
     const lock = lockOf(spec);
     assert.ok("workflow_dispatch" in lock.on, `${spec.id}: workflow_dispatch`);
     const text = lockTextOf(spec);
-    assert.ok(text.includes('GH_AW_ALLOWED_BOTS: "fixture-app[bot]"'), `${spec.id}: the activation job checks the bots`);
-    assert.deepEqual(workflowOf(spec).frontmatter.on.bots, ["fixture-app[bot]"], `${spec.id}: on.bots in the source`);
+    assert.ok(text.includes(`GH_AW_ALLOWED_BOTS: "${BOT}"`), `${spec.id}: the activation job checks the bots`);
+    assert.deepEqual(workflowOf(spec).frontmatter.on.bots, [BOT], `${spec.id}: on.bots in the source`);
   }
 });
 

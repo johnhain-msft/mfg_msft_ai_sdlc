@@ -24,8 +24,9 @@ test("AC6 routerWorkflowPath is .github/workflows/cascade-router.yml and the fil
   assert.equal(fs.existsSync(abs(...ack.routerWorkflowPath.split("/"))), true);
 });
 
-test("AC6 every mechanicalWorkflowPaths entry exists on disk with its compiled lock, and the preset has .github/workflows/cascade-mechanical-ghec-admin.md", () => {
+test("AC6 every mechanicalWorkflowPaths entry exists on disk with its compiled lock, and the preset has the workflows of both mechanical edges", () => {
   assert.ok(ack.mechanicalWorkflowPaths.includes(".github/workflows/cascade-mechanical-ghec-admin.md"));
+  assert.ok(ack.mechanicalWorkflowPaths.includes(".github/workflows/cascade-mechanical-ai-sdlc.md"), "the self-cascade of this repository into the portfolio");
   for (const entry of ack.mechanicalWorkflowPaths) {
     assert.equal(fs.existsSync(abs(...entry.split("/"))), true, entry);
     assert.equal(fs.existsSync(abs(...entry.replace(/\.md$/, ".lock.yml").split("/"))), true, `${entry}: its lock`);
@@ -39,7 +40,7 @@ test("AC6 dependencyEdgesCount equals the length of the router matrix and the nu
   assert.equal(ack.dependencyEdgesCount, matrix.upstreamKey.length);
   assert.equal(ack.dependencyEdgesCount, matrix.include.length);
   assert.equal(ack.dependencyEdgesCount, manifest.dependencyEdges.length);
-  assert.equal(ack.dependencyEdgesCount, 4, "the default preset");
+  assert.equal(ack.dependencyEdgesCount, 5, "the default preset");
 });
 
 test("AC6 the acknowledgement is derived without writing: asking for it leaves the committed workflows as they are", () => {

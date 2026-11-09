@@ -160,7 +160,7 @@ post-steps:
     run: npm run test:studio
     working-directory: portfolio
   - name: npm run test:browser
-    run: npx playwright test tests/browser/sites.spec.ts
+    run: npm run test:browser
     working-directory: portfolio
 safe-outputs:
   github-app:

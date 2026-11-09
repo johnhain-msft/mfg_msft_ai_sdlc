@@ -29,6 +29,7 @@ jobs:
           - copilot-lab
           - pipeline-showcase
           - github-intermediate
+          - ai-sdlc
         include:
           - edgeId: ghec-admin
             upstreamRepo: johnhain-msft/gh-admin-msft
@@ -44,7 +45,7 @@ jobs:
             provenanceFile: public/ghec-admin/source.json
             provenanceJsonPointer: /commit
             onBots:
-              - fixture-app[bot]
+              - mfg-msft-ai-sdlc[bot]
             branchName: sdlc/cascade-ghec-admin
             closeOlderKey: sdlc-cascade-ghec-admin
             reviewers:
@@ -75,7 +76,7 @@ jobs:
             provenanceFile: experiences/copilot-workshop/source-inputs.json
             provenanceJsonPointer: /commit
             onBots:
-              - fixture-app[bot]
+              - mfg-msft-ai-sdlc[bot]
             branchName: sdlc/cascade-copilot-lab
             closeOlderKey: sdlc-cascade-copilot-lab
             reviewers:
@@ -143,7 +144,7 @@ jobs:
             provenanceFile: experiences/pipeline-showcase/content/provenance.json
             provenanceJsonPointer: /commit
             onBots:
-              - fixture-app[bot]
+              - mfg-msft-ai-sdlc[bot]
             branchName: sdlc/cascade-pipeline-showcase
             closeOlderKey: sdlc-cascade-pipeline-showcase
             reviewers:
@@ -226,7 +227,7 @@ jobs:
             provenanceFile: experiences/github-intermediate-labs/provenance.json
             provenanceJsonPointer: /commit
             onBots:
-              - fixture-app[bot]
+              - mfg-msft-ai-sdlc[bot]
             branchName: sdlc/cascade-github-intermediate
             closeOlderKey: sdlc-cascade-github-intermediate
             reviewers:
@@ -272,6 +273,37 @@ jobs:
               - |
                 # post-run check: the upstream checkout stays read-only
                 test -z "$(git -C <checkout> status --porcelain)"
+          - edgeId: ai-sdlc
+            upstreamRepo: johnhain-msft/mfg_msft_ai_sdlc
+            upstreamKey: ai-sdlc
+            upstreamSlug: AI_SDLC
+            upstreamDefaultBranch: main
+            initialBaselineSha: 6ad036d3a23eb17dbf46dacbcdd61f1a5d47b307
+            downstreamRepo: johnhain-msft/portfolio
+            mode: mechanical
+            schedule: 0 */6 * * *
+            onCommitOnlyAdvance: noop
+            stateVariable: SDLC_SYNC_STATE_AI_SDLC
+            provenanceFile: public/ai-sdlc/source.json
+            provenanceJsonPointer: /commit
+            onBots:
+              - mfg-msft-ai-sdlc[bot]
+            branchName: sdlc/cascade-ai-sdlc
+            closeOlderKey: sdlc-cascade-ai-sdlc
+            reviewers:
+              - johnhain-msft
+            importCommands:
+              - npm run import:ai-sdlc -- <checkout>
+            preflightCommands: []
+            buildCommands:
+              - npm run build
+              - STUDIO_ORIGIN=https://studio.example.com npm run build:catalog
+            verifyCommands:
+              - npm run typecheck
+              - npm run lint
+              - npm test
+              - npm run test:studio
+              - npm run test:browser
     concurrency:
       group: sdlc-state-${{ matrix.upstreamKey }}
       cancel-in-progress: false

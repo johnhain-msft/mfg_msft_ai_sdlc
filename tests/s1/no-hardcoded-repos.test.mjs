@@ -38,7 +38,7 @@ test("AC59: the engine and its imports are exactly the files this test inspects"
 });
 
 test("AC59: no repo, upstreamRepo or downstreamRepo value of sdlc.yaml appears in the engine files", () => {
-  assert.equal(new Set(repositories).size, 5, "five distinct repositories in the preset");
+  assert.equal(new Set(repositories).size, 6, "six distinct repositories in the preset");
   for (const file of engineFiles()) {
     const text = readText(abs(file));
     for (const repository of new Set(repositories)) {
@@ -61,7 +61,7 @@ test("AC59: none of the preset's file paths appears in the engine", () => {
   for (const file of engineFiles()) {
     const text = readText(abs(file));
     for (const entry of new Set(presetPaths)) assert.equal(text.includes(entry), false, `${file} contains ${entry}`);
-    for (const fragment of ["experiences/copilot-workshop", "experiences/pipeline-showcase", "experiences/github-intermediate", "public/ghec-admin", "apps/lab-studio", "dist-catalog"]) {
+    for (const fragment of ["experiences/copilot-workshop", "experiences/pipeline-showcase", "experiences/github-intermediate", "public/ghec-admin", "public/ai-sdlc", "apps/lab-studio", "dist-catalog"]) {
       assert.equal(text.includes(fragment), false, `${file} contains ${fragment}`);
     }
   }
@@ -69,7 +69,7 @@ test("AC59: none of the preset's file paths appears in the engine", () => {
 
 test("AC59: no command of the preset is hard-coded either", () => {
   const source = readText(abs("src", "reconcile.mjs"));
-  for (const command of ["import:ghec-admin", "sync:workshop-source", "build:workshop", "build:experiences", "build:catalog", "test:studio", "test:browser", "fetch-run-data"]) {
+  for (const command of ["import:ghec-admin", "import:ai-sdlc", "sync:workshop-source", "build:workshop", "build:experiences", "build:catalog", "test:studio", "test:browser", "fetch-run-data"]) {
     assert.equal(source.includes(command), false, command);
   }
 });
