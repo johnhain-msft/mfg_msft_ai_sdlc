@@ -1,0 +1,24 @@
+<div class="decision" data-decision>
+  <div class="decision-panel" aria-live="polite">
+    <div class="decision-steps" aria-hidden="true"><span class="dstep-dot is-on"></span><span class="dstep-dot"></span></div>
+    <h3 class="decision-q" data-dq>Does a deterministic import script rebuild this edge's bundle?</h3>
+    <div class="decision-actions" data-dactions><button type="button" class="btn">Yes</button><button type="button" class="btn">No</button></div>
+  </div>
+  <div class="decision-outcomes">
+    <div class="outcome outcome-mechanical" data-outcome="mechanical">
+      <h3>Mechanical</h3>
+      <p>Runs the import script, then the 7-leg portfolio gate.</p>
+    </div>
+    <div class="outcome outcome-ai" data-outcome="ai">
+      <h3>AI-Adaptation</h3>
+      <p>Agent edits only allowedFiles, then immutable gates verify.</p>
+    </div>
+  </div>
+  <script type="application/json">{
+    "start": { "q": "Does a deterministic import script rebuild this edge's bundle?", "yes": "mechanical", "no": "q2", "step": 1 },
+    "q2": { "q": "Does the upstream change need cross-file prose or component edits?", "yes": "ai", "no": "none", "step": 2 },
+    "mechanical": { "result": "mechanical", "say": "Mechanical: one import script rebuilds the bundle.", "step": 1 },
+    "ai": { "result": "ai", "say": "AI-Adaptation: an agent must edit across files.", "step": 2 },
+    "none": { "result": "none", "say": "No edge needed: nothing to cascade.", "step": 2 }
+  }</script>
+</div>

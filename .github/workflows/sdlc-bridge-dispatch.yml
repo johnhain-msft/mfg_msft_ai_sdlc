@@ -1,0 +1,109 @@
+name: SDLC Merge Bridge Dispatch
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  notify-orchestrator:
+    name: Notify AI SDLC Orchestrator on Merge
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Emit upstream_pr_merged repository_dispatch
+        env:
+          APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
+          SDLC_DISPATCH_TOKEN: ${{ secrets.SDLC_ORCHESTRATOR_DISPATCH_TOKEN }}
+          ORCHESTRATOR_REPO: johnhain-msft/mfg_msft_ai_sdlc
+          UPSTREAM_REPO: ${{ github.repository }}
+          MERGED_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          node --input-type=module -e '
+          import crypto from "node:crypto";
+
+          const {
+            APP_CLIENT_ID,
+            APP_PRIVATE_KEY,
+            SDLC_DISPATCH_TOKEN,
+            ORCHESTRATOR_REPO,
+            UPSTREAM_REPO,
+            MERGED_SHA,
+            PR_NUMBER,
+            MERGED_AT,
+            DEFAULT_BRANCH,
+            GITHUB_RUN_ID,
+          } = process.env;
+
+          const headers = (token) => ({
+            Accept: "application/vnd.github+json",
+            Authorization: `Bearer ${token}`,
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+            "User-Agent": "ai-sdlc-merge-bridge",
+          });
+
+          async function mintInstallationToken(clientId, privateKeyPem, targetRepo) {
+            const [owner, repo] = targetRepo.split("/");
+            const now = Math.floor(Date.now() / 1000);
+            const b64 = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+            const unsigned = `${b64({ alg: "RS256", typ: "JWT" })}.${b64({ iat: now - 60, exp: now + 540, iss: clientId })}`;
+            const sig = crypto.createSign("RSA-SHA256").update(unsigned).sign(privateKeyPem, "base64url");
+            const jwt = `${unsigned}.${sig}`;
+
+            const instRes = await fetch("https://api.github.com/app/installations?per_page=100", { headers: headers(jwt) });
+            if (!instRes.ok) throw new Error(`GET /app/installations failed: HTTP ${instRes.status}`);
+            const installations = await instRes.json();
+            const inst = installations.find((i) => String(i?.account?.login ?? "").toLowerCase() === owner.toLowerCase());
+            if (!inst) throw new Error(`App is not installed on ${owner}`);
+
+            const tokRes = await fetch(`https://api.github.com/app/installations/${inst.id}/access_tokens`, {
+              method: "POST",
+              headers: headers(jwt),
+              body: JSON.stringify({ repositories: [repo], permissions: { contents: "write" } }),
+            });
+            if (!tokRes.ok) throw new Error(`POST /app/installations/${inst.id}/access_tokens failed: HTTP ${tokRes.status}`);
+            const { token } = await tokRes.json();
+            return token;
+          }
+
+          let token = (SDLC_DISPATCH_TOKEN || "").trim();
+          if (!token && APP_CLIENT_ID && APP_PRIVATE_KEY) {
+            token = await mintInstallationToken(APP_CLIENT_ID.trim(), APP_PRIVATE_KEY, ORCHESTRATOR_REPO);
+          }
+          if (!token) {
+            console.log("::notice::Neither APP_CLIENT_ID/APP_PRIVATE_KEY nor SDLC_ORCHESTRATOR_DISPATCH_TOKEN is configured; relying on the 6-hour ETag poll in johnhain-msft/mfg_msft_ai_sdlc.");
+            process.exit(0);
+          }
+
+          const payload = {
+            event_type: "upstream_pr_merged",
+            client_payload: {
+              correlation_id: `ai-sdlc-pr-${PR_NUMBER}-${GITHUB_RUN_ID}`,
+              upstream_repo: UPSTREAM_REPO,
+              merged_sha: MERGED_SHA,
+              pr_number: Number.parseInt(PR_NUMBER, 10),
+              merged_at: MERGED_AT,
+              default_branch: DEFAULT_BRANCH,
+            },
+          };
+
+          const res = await fetch(`https://api.github.com/repos/${ORCHESTRATOR_REPO}/dispatches`, {
+            method: "POST",
+            headers: headers(token),
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) {
+            const text = await res.text();
+            throw new Error(`POST /repos/${ORCHESTRATOR_REPO}/dispatches failed: HTTP ${res.status} ${text}`);
+          }
+          console.log(`Dispatched upstream_pr_merged for PR #${PR_NUMBER} (${MERGED_SHA}) to ${ORCHESTRATOR_REPO}.`);
+          '

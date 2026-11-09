@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<meta name="description" content="Architecture briefing for the AI SDLC Orchestrator. One file: slides on the audience screen, the speaker script in a separate window.">
+<style>
+{{STYLES}}
+</style>
+</head>
+<body>
+<a class="skip-link" href="#deck">Skip to slides</a>
+<noscript>This briefing needs JavaScript to show its slides.</noscript>
+
+<!-- Presentation surface -->
+<div id="presentation" hidden>
+  <header id="topbar" class="chrome">
+    <div class="topbar-left">
+      <span id="kicker-section" class="kicker"></span>
+    </div>
+    <div class="topbar-right">
+      <span id="lab-badge" class="lab-badge" hidden></span>
+      <span id="day-badge" class="day-badge"></span>
+    </div>
+  </header>
+
+  <main id="deck" tabindex="-1" aria-label="Slides">
+    <div id="stage">{{SLIDES_HTML}}</div>
+  </main>
+
+  <footer id="bottombar" class="chrome">
+    <div id="progress" aria-hidden="true"><div id="progress-bar"></div></div>
+    <div class="bottombar-row">
+      <div class="nav-buttons">
+        <button type="button" id="btn-prev" class="btn" data-nav="prev" aria-label="Previous slide">‹</button>
+        <button type="button" id="btn-next" class="btn" data-nav="next" aria-label="Next slide">›</button>
+        <span id="counter" class="counter" aria-live="off"></span>
+      </div>
+      <div class="toolbar">
+        <button type="button" id="btn-agenda" class="btn" aria-haspopup="dialog">Agenda <kbd>A</kbd></button>
+        <button type="button" id="btn-grid" class="btn" aria-haspopup="dialog">Overview <kbd>G</kbd></button>
+        <button type="button" id="btn-speaker" class="btn">Speaker <kbd>S</kbd></button>
+        <button type="button" id="btn-theme" class="btn" aria-label="Toggle light and dark theme">Theme <kbd>T</kbd></button>
+        <button type="button" id="btn-fullscreen" class="btn">Present <kbd>F</kbd></button>
+        <button type="button" id="btn-help" class="btn" aria-haspopup="dialog" aria-label="Keyboard shortcuts">?</button>
+      </div>
+    </div>
+  </footer>
+
+  <div id="blackout" hidden aria-hidden="true"></div>
+</div>
+
+<!-- Speaker surface -->
+<div id="speaker" hidden>
+  <header class="sp-head">
+    <div class="sp-title"><span class="kicker">Speaker view</span><span id="sp-deck-title"></span></div>
+    <div class="sp-clock">
+      <span id="sp-time" class="sp-time" aria-label="Current time"></span>
+      <span class="sp-sep">·</span>
+      <span id="sp-elapsed" class="sp-elapsed" aria-label="Elapsed">00:00</span>
+      <button type="button" id="sp-timer-toggle" class="btn">Start</button>
+      <button type="button" id="sp-timer-reset" class="btn">Reset</button>
+    </div>
+  </header>
+  <div class="sp-body">
+    <section class="sp-current" aria-label="Current slide">
+      <div class="sp-preview-wrap"><div id="sp-current" class="sp-preview"></div></div>
+      <div class="sp-position">
+        <button type="button" id="sp-prev" class="btn">‹ Prev</button>
+        <span id="sp-counter" class="counter"></span>
+        <button type="button" id="sp-next" class="btn">Next ›</button>
+        <span id="sp-budget" class="sp-budget"></span>
+      </div>
+      <div class="sp-next-wrap">
+        <div class="kicker">Next</div>
+        <div class="sp-preview-wrap sp-preview-wrap-small"><div id="sp-next-preview" class="sp-preview"></div></div>
+      </div>
+    </section>
+    <section class="sp-notes-wrap" aria-label="Speaker notes">
+      <div class="sp-notes-head">
+        <h2 id="sp-slide-title"></h2>
+        <div class="sp-notes-tools">
+          <span id="sp-words" class="muted"></span>
+          <button type="button" id="sp-font-dec" class="btn" aria-label="Smaller notes text">A−</button>
+          <button type="button" id="sp-font-inc" class="btn" aria-label="Larger notes text">A+</button>
+          <button type="button" id="sp-open-deck" class="btn">Open deck</button>
+        </div>
+      </div>
+      <div id="sp-notes" class="sp-notes" tabindex="0"></div>
+      <div id="sp-status" class="sp-status muted" role="status"></div>
+    </section>
+  </div>
+</div>
+
+<!-- Overlays (presentation surface) -->
+<dialog id="dlg-help" class="dlg" aria-labelledby="dlg-help-title">
+  <h2 id="dlg-help-title">Keyboard shortcuts</h2>
+  <div class="keys">
+    <div><kbd>→</kbd> <kbd>Space</kbd> <kbd>PgDn</kbd></div><div>Next step or slide</div>
+    <div><kbd>←</kbd> <kbd>PgUp</kbd></div><div>Previous step or slide</div>
+    <div><kbd>Home</kbd> / <kbd>End</kbd></div><div>First / last slide</div>
+    <div><kbd>1</kbd>–<kbd>9</kbd> then <kbd>Enter</kbd></div><div>Go to slide number</div>
+    <div><kbd>G</kbd></div><div>Slide overview grid (press again to close)</div>
+    <div><kbd>A</kbd></div><div>Agenda with your time zone (press again to close)</div>
+    <div><kbd>S</kbd></div><div>Open the speaker window (notes, timer, next slide). Open it before <kbd>F</kbd>: a new window leaves fullscreen</div>
+    <div><kbd>F</kbd></div><div>Present fullscreen. <kbd>Esc</kbd> leaves fullscreen in every browser, so close overlays with their own key</div>
+    <div><kbd>B</kbd></div><div>Blackout (pause the screen)</div>
+    <div><kbd>T</kbd></div><div>Toggle light / dark theme</div>
+    <div><kbd>P</kbd></div><div>Print all slides (PDF handout)</div>
+    <div><kbd>?</kbd></div><div>This help</div>
+  </div>
+  <form method="dialog"><button class="btn">Close</button></form>
+</dialog>
+
+<dialog id="dlg-grid" class="dlg dlg-wide" aria-labelledby="dlg-grid-title">
+  <h2 id="dlg-grid-title">Overview</h2>
+  <div id="grid" class="grid"></div>
+  <form method="dialog"><button class="btn">Close</button></form>
+</dialog>
+
+<dialog id="dlg-agenda" class="dlg dlg-wide" aria-labelledby="dlg-agenda-title">
+  <div class="agenda-head">
+    <h2 id="dlg-agenda-title">Agenda</h2>
+    <label class="tz-label">Time zone
+      <select id="agenda-tz"></select>
+    </label>
+  </div>
+  <div id="agenda-tabs" class="tabs" role="tablist"></div>
+  <div id="agenda-body"></div>
+  <form method="dialog"><button class="btn">Close</button></form>
+</dialog>
+
+<div id="live" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<script type="application/json" id="deck-data">{{DATA}}</script>
+<script>
+{{SCRIPT}}
+</script>
+</body>
+</html>

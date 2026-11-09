@@ -1,0 +1,1486 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI SDLC Orchestrator</title>
+<meta name="description" content="Architecture briefing for the AI SDLC Orchestrator. One file: slides on the audience screen, the speaker script in a separate window.">
+<style>
+/* ================================================================================================
+   AI SDLC Orchestrator briefing — styles
+   The stage is 1920×1080 and is scaled to fit the window; every size below is in stage pixels.
+   Two themes (dark default, light). Every text token holds ≥ 5:1 against every surface it sits on.
+   One accent (teal). Green / purple / amber appear only as card and outcome tones, never inside sentences.
+   ================================================================================================ */
+
+:root {
+  --font-sans: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
+  --scale: 1;
+
+  --bg: #0e1522;
+  --bg-deep: #080c14;
+  --surface: #151e2e;
+  --surface-2: #1d2940;
+  --line: #2b3a56;
+  --line-strong: #5a6e96;
+  --text: #f0f4fa;
+  --text-2: #cdd6e6;
+  --muted: #9eacc4;
+  --accent: #35d0c0;
+  --accent-ink: #06231f;
+  --accent-soft: rgba(53, 208, 192, 0.13);
+  --green: #4ade80;
+  --green-soft: rgba(74, 222, 128, 0.13);
+  --orange: #f5b942;
+  --orange-soft: rgba(245, 185, 66, 0.14);
+  --purple: #b9a4ff;
+  --purple-soft: rgba(185, 164, 255, 0.15);
+  --red: #ff8a82;
+  --red-soft: rgba(255, 138, 130, 0.14);
+  --pink: #f59ac9;
+  --code-bg: #0a101b;
+  --shadow: 0 24px 60px -30px rgba(0, 0, 0, 0.8);
+  --radius: 22px;
+  --radius-sm: 14px;
+}
+
+:root[data-theme="light"] {
+  --bg: #f5f7fb;
+  --bg-deep: #e4e9f2;
+  --surface: #ffffff;
+  --surface-2: #edf1f8;
+  --line: #d3dbea;
+  --line-strong: #7b89a4;
+  --text: #141c2b;
+  --text-2: #2a354a;
+  --muted: #4a5870;
+  --accent: #065f59;
+  --accent-ink: #ffffff;
+  --accent-soft: rgba(6, 95, 89, 0.1);
+  --green: #0e6a30;
+  --green-soft: rgba(14, 106, 48, 0.12);
+  --orange: #764c00;
+  --orange-soft: rgba(118, 76, 0, 0.12);
+  --purple: #5a34ae;
+  --purple-soft: rgba(90, 52, 174, 0.1);
+  --red: #a91d25;
+  --red-soft: rgba(169, 29, 37, 0.1);
+  --pink: #a3216f;
+  --code-bg: #eef2f9;
+  --shadow: 0 24px 60px -30px rgba(20, 28, 43, 0.35);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg-deep);
+  color: var(--text);
+  font-family: var(--font-text);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+[hidden] { display: none !important; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.skip-link { position: absolute; left: 8px; top: 8px; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); z-index: 100; background: var(--accent); color: var(--accent-ink); padding: 8px 12px; border-radius: 8px; }
+.skip-link:focus { width: auto; height: auto; overflow: visible; clip: auto; }
+.muted { color: var(--muted); }
+a { color: var(--accent); }
+kbd {
+  font-family: var(--font-mono); font-size: 0.8em; padding: 0.05em 0.45em; border-radius: 6px;
+  background: var(--surface-2); border: 1px solid var(--line-strong); border-bottom-width: 2px; color: var(--text);
+}
+button.btn, .btn {
+  font: inherit; font-size: 14px; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong);
+  border-radius: 10px; padding: 6px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 32px;
+}
+.btn:hover { border-color: var(--accent); background: var(--surface-2); }
+.btn:focus-visible, button:focus-visible, select:focus-visible, [tabindex]:focus-visible, .quiz-option:focus-visible, a:focus-visible {
+  outline: 3px solid var(--accent); outline-offset: 2px;
+}
+.btn kbd { font-size: 11px; }
+.project-back { text-decoration: none; margin-right: 10px; }
+
+/* ------------------------------------------------------------------------------ presentation chrome */
+#presentation { position: fixed; inset: 0; display: grid; grid-template-rows: 44px minmax(0, 1fr) 56px; }
+.chrome { display: flex; align-items: center; justify-content: space-between; padding: 0 16px; color: var(--muted); font-size: 14px; background: var(--bg-deep); }
+#topbar .kicker { font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; font-size: 12px; color: var(--muted); }
+.topbar-left { display: flex; align-items: center; }
+.topbar-right { display: flex; gap: 10px; align-items: center; }
+.lab-badge, .day-badge { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-strong); }
+.lab-badge { color: var(--green); border-color: var(--green); background: var(--green-soft); }
+#bottombar { flex-direction: column; align-items: stretch; padding: 0; }
+#progress { height: 3px; background: var(--line); }
+#progress-bar { height: 100%; width: 0; background: var(--accent); transition: width 0.3s ease; }
+.bottombar-row { display: flex; align-items: center; justify-content: space-between; padding: 0 12px; height: 53px; }
+.nav-buttons { display: flex; align-items: center; gap: 8px; }
+.toolbar { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.counter { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--muted); min-width: 72px; text-align: center; font-size: 14px; }
+
+/* The stage is centred with absolute + translate, never as a shrinkable flex item: a flex-centred
+   1920px canvas squeezes on a window narrower than 1920 and clips silently. */
+#deck { position: relative; overflow: hidden; background: var(--bg-deep); outline: none; }
+#stage {
+  position: absolute; left: 50%; top: 50%; width: 1920px; height: 1080px;
+  transform: translate(-50%, -50%) scale(var(--scale)); transform-origin: center center;
+  background-color: var(--bg);
+  background-image: radial-gradient(1300px 760px at 92% -8%, var(--accent-soft), transparent 62%);
+  box-shadow: var(--shadow); overflow: hidden;
+}
+#blackout { position: fixed; inset: 0; background: #000; z-index: 50; }
+body.presenting #presentation { grid-template-rows: minmax(0, 1fr); }
+body.presenting .chrome { display: none; }
+body.presenting #stage { box-shadow: none; }
+
+/* ------------------------------------------------------------------------------ slides */
+.slide {
+  position: absolute; inset: 0; padding: 76px 120px 84px;
+  display: flex; flex-direction: column;
+  opacity: 0; visibility: hidden; transition: opacity 0.25s ease;
+}
+.slide.active { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .slide, #progress-bar, .fragment, .outcome { transition: none !important; } }
+.slide-kicker { font-family: var(--font-sans); font-size: 20px; font-weight: 650; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 16px; display: flex; align-items: center; gap: 14px; line-height: 1; }
+.slide-kicker::before { content: ""; width: 34px; height: 4px; border-radius: 2px; background: var(--accent); }
+.slide h1 { font-family: var(--font-sans); font-size: 60px; line-height: 1.08; letter-spacing: -0.015em; font-weight: 700; margin: 0 0 32px; color: var(--text); max-width: 1640px; text-wrap: balance; }
+.slide h1 code { font-family: var(--font-mono); font-size: 0.82em; font-weight: 600; background: var(--code-bg); border: 1px solid var(--line); border-radius: 10px; padding: 0.04em 0.3em; }
+.slide h2 { font-family: var(--font-sans); font-size: 38px; line-height: 1.15; font-weight: 650; margin: 0 0 18px; color: var(--text); }
+.slide h3 { font-family: var(--font-sans); font-size: 34px; line-height: 1.2; font-weight: 650; margin: 0 0 12px; color: var(--text); }
+.slide h4 { font-size: 24px; margin: 0 0 8px; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.slide-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; justify-content: center; gap: 32px; font-size: 34px; line-height: 1.4; color: var(--text-2); }
+.slide-body p { margin: 0; max-width: 1360px; text-wrap: pretty; }
+.slide-body ul, .slide-body ol { margin: 0; padding-left: 1.2em; }
+.slide-body li { margin: 0.28em 0; padding-left: 0.2em; }
+.slide-body li::marker { color: var(--accent); }
+.slide-body strong { font-weight: 700; color: inherit; }
+.slide-body code { font-family: var(--font-mono); font-size: 0.82em; background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 0.06em 0.4em; color: var(--text); white-space: nowrap; }
+.slide-body pre.code { margin: 0; padding: 32px 38px; background: var(--code-bg); border: 1px solid var(--line); border-radius: var(--radius-sm); font-size: 30px; line-height: 1.5; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text); }
+.slide-body pre.code code { background: none; border: 0; padding: 0; font-size: inherit; white-space: inherit; }
+.slide-body table { border-collapse: collapse; width: 100%; font-size: 24px; line-height: 1.35; }
+.slide-body th { text-align: left; font-family: var(--font-sans); font-weight: 650; color: var(--text); padding: 12px 16px; border-bottom: 2px solid var(--line-strong); font-size: 20px; letter-spacing: 0.04em; text-transform: uppercase; background: var(--surface-2); }
+.slide-body td { padding: 11px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.slide-body blockquote { margin: 0; padding: 18px 28px; border-left: 5px solid var(--accent); background: var(--surface); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.slide-body img { max-width: 100%; max-height: 100%; border-radius: var(--radius-sm); }
+.spacer { flex: 1 1 auto; }
+.center { text-align: center; margin: auto; }
+.big { font-size: 44px; line-height: 1.25; max-width: 1500px; }
+.aside { font-size: 26px; color: var(--muted); letter-spacing: 0.02em; }
+.aside p { max-width: none; }
+
+/* ---- layouts ----------------------------------------------------------------------------- */
+/* title: kicker, a two-line display title, a lede, three status chips and the fleet glyph on the right */
+.layout-title { justify-content: center; padding-top: 96px; padding-bottom: 96px; }
+.layout-title .slide-kicker { font-size: 24px; margin-bottom: 30px; }
+.layout-title h1 { font-size: 136px; line-height: 0.98; letter-spacing: -0.035em; max-width: 1000px; margin: 0 0 44px; }
+.layout-title .slide-body { flex: 0 0 auto; justify-content: flex-start; gap: 38px; }
+.layout-title .slide-body > p { font-size: 42px; line-height: 1.3; color: var(--text-2); max-width: 1020px; }
+.layout-title .glyph { position: absolute; right: 96px; top: 50%; transform: translateY(-50%); width: 640px; height: 640px; }
+.glyph-svg { display: block; width: 100%; height: 100%; }
+.glyph-svg .g-ring { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 3 12; stroke-linecap: round; }
+.glyph-svg .g-ring-inner { stroke: var(--line-strong); stroke-dasharray: 2 10; }
+.glyph-svg .g-edges path { fill: none; stroke: var(--accent); stroke-width: 3; opacity: 0.55; }
+.glyph-svg .g-edges .g-edge-out { stroke-width: 5; opacity: 1; }
+.glyph-svg .g-dots circle { fill: var(--accent); }
+.glyph-svg .g-node { fill: var(--surface); stroke: var(--accent); stroke-width: 4; }
+.glyph-svg .g-node-out { fill: var(--accent-soft); stroke-width: 6; }
+.glyph-svg .g-hub { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 6; }
+.glyph-svg .g-hub-core { fill: var(--accent); }
+
+.layout-section { justify-content: center; }
+.layout-section h1 { font-size: 92px; max-width: 1400px; }
+.layout-break { justify-content: center; align-items: center; text-align: center; }
+.layout-break h1 { font-size: 120px; }
+.layout-end h1 { font-size: 68px; }
+.layout-quiz .slide-body { gap: 18px; }
+
+/* ---- cols ---------------------------------------------------------------------------------- */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
+.col { min-width: 0; }
+.col > h3 { color: var(--accent); font-size: 44px; margin-bottom: 18px; text-wrap: balance; }
+.col > * + * { margin-top: 24px; }
+.slide-body .col > p { font-size: 36px; line-height: 1.38; }
+.layout-default .col { border-left: 6px solid var(--accent); padding-left: 36px; }
+.layout-default .col > h3 { color: var(--text); }
+.layout-default .slide-body { gap: 52px; }
+.layout-split .cols { gap: 56px; align-items: start; }
+.layout-split .slide-body .col > p { font-size: 36px; }
+.layout-split .slide-body pre.code { font-size: 27px; padding: 32px 36px; }
+
+/* ---- cards ---------------------------------------------------------------------------------- */
+.cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 36px; align-items: stretch; }
+.cards[data-count="2"] { grid-template-columns: repeat(2, 1fr); }
+.cards[data-count="4"] { grid-template-columns: repeat(4, 1fr); }
+.card { --tone: var(--accent); position: relative; background: var(--surface); border: 1px solid var(--line); border-top: 8px solid var(--tone); border-radius: 22px; padding: 56px 44px 64px; font-size: 36px; line-height: 1.38; }
+.card::after { content: "0" attr(data-i); position: absolute; top: 40px; right: 42px; font-family: var(--font-mono); font-size: 28px; font-weight: 600; color: var(--muted); }
+.card-icon { display: block; width: 88px; height: 88px; color: var(--tone); margin-bottom: 30px; }
+.card h3 { font-size: 44px; line-height: 1.16; margin-bottom: 18px; text-wrap: balance; }
+.card p { max-width: none; }
+.card a { white-space: nowrap; }
+.card-good { --tone: var(--green); }
+.card-warn { --tone: var(--orange); }
+.card-bad { --tone: var(--red); }
+.card-purple { --tone: var(--purple); }
+.card-muted { --tone: var(--line-strong); }
+
+/* ---- callouts: tone by icon + label + stripe, never colour alone ------------------------------- */
+.callout { border-left: 8px solid var(--accent); background: var(--accent-soft); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; padding: 26px 36px; font-size: 32px; line-height: 1.4; }
+.callout-title { display: flex; align-items: center; gap: 16px; font-family: var(--font-sans); font-weight: 650; color: var(--text); margin-bottom: 10px; font-size: 32px; }
+.callout-icon { flex: 0 0 auto; width: 34px; height: 34px; color: var(--accent); }
+.slide-body .callout p { margin: 0; max-width: none; }
+.callout-tip { border-left-color: var(--accent); background: var(--accent-soft); }
+.callout-tip .callout-icon { color: var(--accent); }
+.callout-warn { border-left-color: var(--orange); background: var(--orange-soft); }
+.callout-warn .callout-icon { color: var(--orange); }
+
+/* ---- staged reveal (authoring option; the shipped slides do not use it) --------------------------- */
+.fragment { opacity: 0.18; transition: opacity 0.25s ease; }
+.fragment.visible { opacity: 1; }
+body.print .fragment { opacity: 1; }
+
+/* ---- stats ------------------------------------------------------------------------------------ */
+.stats { list-style: none; padding: 0 !important; margin: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px; }
+.slide-body .stat { margin: 0; padding: 40px 42px 42px; background: var(--surface); border: 1px solid var(--line); border-radius: 22px; }
+.stat-value { font-family: var(--font-sans); font-size: 140px; font-weight: 800; line-height: 0.9; letter-spacing: -0.035em; color: var(--accent); }
+.stat-label { margin-top: 22px; font-size: 29px; font-weight: 650; color: var(--text); letter-spacing: 0.05em; text-transform: uppercase; line-height: 1.2; }
+.stat-note { margin-top: 10px; font-size: 29px; color: var(--muted); line-height: 1.3; }
+
+/* ---- timeline: a numbered vertical stepper ------------------------------------------------------- */
+.timeline { list-style: none; padding: 0 !important; margin: 0; display: grid; gap: 20px; counter-reset: tl; }
+.slide-body .tl-row { counter-increment: tl; margin: 0; padding: 30px 40px 30px 32px; display: grid; grid-template-columns: 76px 250px minmax(0, 1fr); gap: 32px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 20px; }
+.tl-row::before { content: counter(tl); width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center; font-family: var(--font-mono); font-size: 34px; font-weight: 700; color: var(--accent); border: 3px solid var(--accent); background: var(--accent-soft); }
+.tl-row.tl-poll { border-style: dashed; border-color: var(--line-strong); }
+.tl-row.tl-poll::before { content: "↻"; font-size: 42px; color: var(--purple); border-color: var(--purple); background: var(--purple-soft); }
+.tl-date { font-family: var(--font-sans); font-size: 38px; font-weight: 700; color: var(--text); }
+.tl-text { font-size: 33px; line-height: 1.34; color: var(--text-2); text-wrap: pretty; }
+
+/* ---- chips, kv, ledger, spec links ------------------------------------------------------------------ */
+.chips { list-style: none; padding: 0 !important; margin: 0; display: flex; flex-wrap: wrap; gap: 18px; }
+.slide-body .chip { margin: 0; padding: 14px 30px 14px 26px; font-size: 30px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line-strong); color: var(--text); display: inline-flex; align-items: center; gap: 14px; }
+.chip::before { content: ""; width: 13px; height: 13px; border-radius: 50%; background: var(--accent); }
+.kv { display: grid; gap: 0; margin: 0; }
+.kv-row { display: grid; grid-template-columns: 420px minmax(0, 1fr); gap: 40px; padding: 38px 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+.kv-row:first-child { padding-top: 0; }
+.kv-row:last-child { border-bottom: 0; padding-bottom: 0; }
+.kv-k { margin: 0; font-family: var(--font-sans); font-weight: 650; font-size: 38px; line-height: 1.2; color: var(--text); }
+.kv-v { margin: 0; font-size: 34px; line-height: 1.42; color: var(--text-2); text-wrap: pretty; }
+.layout-diagram .kv-row { padding: 16px 0; grid-template-columns: 400px minmax(0, 1fr); }
+.layout-diagram .kv-row:first-child { padding-top: 0; }
+.layout-diagram .kv-row:last-child { padding-bottom: 0; }
+.layout-diagram .kv-k { font-size: 30px; }
+.layout-diagram .kv-v { font-size: 30px; }
+.ledger { list-style: none; padding: 0 !important; margin: 0; flex: 0 0 340px; border-left: 3px solid var(--line-strong); }
+.slide-body .ledger-row { position: relative; margin: 0; padding: 12px 16px 12px 28px; cursor: pointer; border-radius: 0 12px 12px 0; transition: background-color 0.15s ease; }
+.slide-body .ledger-row:hover { background: var(--surface); }
+.slide-body .ledger-row.is-active { background: var(--accent-soft); }
+.ledger-row::before { content: ""; position: absolute; left: -11px; top: 24px; width: 19px; height: 19px; border-radius: 50%; background: var(--line-strong); border: 4px solid var(--bg); }
+.ledger-row.is-active::before { background: var(--accent); }
+.ledger-k { font-size: 24px; font-weight: 650; color: var(--muted); letter-spacing: 0.03em; line-height: 1.2; }
+.ledger-row.is-active .ledger-k { color: var(--accent); }
+.ledger-v { margin-top: 4px; font-family: var(--font-mono); font-size: 27px; color: var(--text); line-height: 1.2; }
+.slide-body p.spec-ref, .slide-body .col > p.spec-ref, .layout-split .slide-body .col > p.spec-ref { font-family: var(--font-mono); font-size: 25px; line-height: 1.4; color: var(--muted); max-width: none; }
+.spec-ref::before { content: "↗ "; color: var(--accent); }
+.spec-ref a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed currentColor; overflow-wrap: anywhere; }
+
+/* ---- quiz --------------------------------------------------------------------------------------- */
+.quiz { background: var(--surface); border: 1px solid var(--line); border-radius: 24px; padding: 64px 68px; }
+.slide-body p.quiz-q { font-size: 50px; line-height: 1.2; color: var(--text); margin: 0 0 48px; font-weight: 650; font-family: var(--font-sans); max-width: 1500px; text-wrap: balance; }
+.quiz-options { display: grid; grid-template-columns: 1fr; gap: 22px; }
+.quiz-option { font: inherit; font-size: 36px; text-align: left; display: flex; gap: 28px; align-items: center; padding: 32px 40px; background: var(--bg); color: var(--text); border: 2px solid var(--line); border-radius: 18px; cursor: pointer; line-height: 1.3; }
+.quiz-option:hover { border-color: var(--accent); }
+.quiz-key { flex: 0 0 auto; display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; font-family: var(--font-mono); font-weight: 700; font-size: 32px; color: var(--accent); border: 3px solid var(--accent); }
+.quiz-option.is-correct { border-color: var(--green); background: var(--green-soft); }
+.quiz-option.is-correct::after { content: "✓"; margin-left: auto; color: var(--green); font-weight: 800; font-size: 44px; }
+.quiz-option.is-wrong { border-color: var(--red); background: var(--red-soft); }
+.quiz-option.is-wrong::after { content: "✕"; margin-left: auto; color: var(--red); font-weight: 800; font-size: 44px; }
+.slide-body p.quiz-expl { margin-top: 32px; font-size: 34px; color: var(--text-2); max-width: 1500px; }
+
+/* ---- diagrams ------------------------------------------------------------------------------------- */
+.diagram { margin: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.diagram svg { display: block; width: 100%; height: auto; max-height: 600px; font-family: var(--font-sans); }
+.diagram figcaption { font-size: 22px; color: var(--muted); margin-top: 10px; }
+.diagram .d-box { fill: var(--surface); stroke: var(--line-strong); stroke-width: 2.5; }
+.diagram .d-box-accent { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 3; }
+.diagram .d-box-green { fill: var(--green-soft); stroke: var(--green); stroke-width: 3; }
+.diagram .d-box-purple { fill: var(--purple-soft); stroke: var(--purple); stroke-width: 3; }
+.diagram .d-box-orange { fill: var(--orange-soft); stroke: var(--orange); stroke-width: 3; }
+.diagram .d-box-dashed { fill: none; stroke: var(--line-strong); stroke-width: 2.5; stroke-dasharray: 10 8; }
+.diagram .d-boundary { fill: none; stroke: var(--purple); stroke-width: 3; stroke-dasharray: 14 9; }
+.diagram .d-text { fill: var(--text); font-weight: 650; }
+.diagram .d-sub { fill: var(--muted); }
+.diagram .d-small { fill: var(--text-2); }
+.diagram .d-label { fill: var(--accent); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.diagram .d-label-purple { fill: var(--purple); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.diagram .d-dashed { stroke-dasharray: 14 9; }
+.diagram .d-line { stroke: var(--line-strong); stroke-width: 3; fill: none; }
+.diagram .d-line-accent { stroke: var(--accent); stroke-width: 3.5; fill: none; }
+.diagram .d-line-dashed { stroke: var(--purple); stroke-width: 3; fill: none; stroke-dasharray: 12 10; }
+.diagram .d-arrow { fill: var(--line-strong); }
+.diagram .d-arrow-accent { fill: var(--accent); }
+.diagram .d-arrow-purple { fill: var(--purple); }
+.diagram .d-mono { font-family: var(--font-mono); }
+.diagram [data-hl] { cursor: pointer; transition: opacity 0.15s ease; }
+.diagram [data-hl]:focus { outline: none; }
+.diagram [data-hl]:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
+.diagram.has-focus [data-hl]:not(.is-hl) { opacity: 0.28; }
+.diagram-missing { color: var(--red); font-family: var(--font-mono); }
+
+/* ---- diagram slides: the figure on top, one supporting block underneath ---------------------------- */
+.layout-diagram .slide-body, .layout-decision .slide-body, .layout-end .slide-body { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; align-content: center; row-gap: 30px; }
+.layout-diagram .diagram svg { max-height: 560px; }
+
+/* ---- the live pilot: a ledger of run ids beside the animation ---------------------------------------
+   Same header band as every other slide (kicker, 60px title, same margins). Only the bottom padding is trimmed so the
+   animation keeps as much height as the standard header allows; it is right-aligned to the common content edge. */
+.layout-media { padding-bottom: 56px; }
+.layout-media .slide-body { display: grid; grid-template-columns: 340px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 44px; row-gap: 16px; align-items: center; }
+.layout-media .ledger { grid-column: 1; grid-row: 1; }
+.layout-media .diagram { grid-column: 2; grid-row: 1; align-self: stretch; min-width: 0; }
+.layout-media .spec-ref { grid-column: 1 / -1; grid-row: 2; margin: 0; }
+.pilot-viewer { width: 100%; display: flex; flex-direction: column; gap: 14px; align-items: center; }
+.pilot-viewer svg { width: 100%; max-height: 560px; height: auto; }
+.pilot-controls { display: flex; align-items: center; gap: 16px; }
+.pilot-status { font-family: var(--font-mono); font-size: 22px; color: var(--muted); min-width: 80px; text-align: center; }
+
+/* ---- decision tree ----------------------------------------------------------------------------------- */
+.decision { display: grid; grid-template-columns: 1.1fr 1fr; gap: 44px; align-items: stretch; width: 100%; }
+.decision-panel { background: var(--surface); border: 1px solid var(--line); border-radius: 26px; padding: 56px 60px; display: flex; flex-direction: column; justify-content: center; gap: 38px; min-height: 600px; }
+.decision-steps { display: flex; gap: 14px; margin: 0; }
+.dstep-dot { width: 20px; height: 20px; border-radius: 50%; background: var(--line-strong); }
+.dstep-dot.is-on { background: var(--accent); box-shadow: 0 0 0 6px var(--accent-soft); }
+.slide .decision-q { font-family: var(--font-sans); font-size: 54px; line-height: 1.16; font-weight: 700; margin: 0; color: var(--text); text-wrap: balance; }
+.decision-actions { display: flex; gap: 20px; flex-wrap: wrap; }
+.decision-actions .btn { font-size: 36px; font-weight: 650; padding: 16px 52px; border-radius: 999px; min-height: 0; border-width: 2px; }
+.decision-actions .btn:hover { border-color: var(--accent); color: var(--accent); }
+.decision-outcomes { display: grid; grid-template-rows: 1fr 1fr; gap: 28px; }
+.outcome { --tone: var(--accent); --tone-soft: var(--accent-soft); display: flex; flex-direction: column; justify-content: center; background: var(--surface); border: 1px solid var(--line); border-left: 12px solid var(--tone); border-radius: 22px; padding: 36px 44px; transition: opacity 0.2s ease, background-color 0.2s ease; }
+.outcome-ai { --tone: var(--purple); --tone-soft: var(--purple-soft); }
+.outcome h3 { margin: 0 0 14px; font-size: 48px; }
+.slide-body .outcome p { font-size: 33px; line-height: 1.36; max-width: none; }
+.outcome.is-picked { background: var(--tone-soft); border-color: var(--tone); }
+.outcome.is-dim { opacity: 0.4; }
+.decision-result { color: var(--text); }
+
+/* ---- lab layout: a spec tile beside the supporting rows ------------------------------------------------- */
+.layout-lab .slide-body { flex-direction: row; align-items: center; gap: 72px; justify-content: flex-start; }
+.lab-tile { flex: 0 0 480px; background: var(--surface); border: 1px solid var(--line); border-top: 8px solid var(--accent); border-radius: var(--radius); padding: 56px 48px 60px; display: flex; flex-direction: column; justify-content: center; gap: 26px; }
+.lab-tile .lab-num { font-family: var(--font-sans); font-size: 208px; font-weight: 800; line-height: 0.86; color: var(--accent); letter-spacing: -0.045em; }
+.lab-tile .lab-dur { font-size: 36px; font-weight: 650; color: var(--text); line-height: 1.2; }
+.lab-tile .lab-path { font-family: var(--font-mono); font-size: 25px; color: var(--text); background: var(--code-bg); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; overflow-wrap: anywhere; text-decoration: none; line-height: 1.4; }
+a.lab-path { color: var(--accent); }
+.lab-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+
+/* ------------------------------------------------------------------------------ overlays */
+.dlg { border: 1px solid var(--line); background: var(--surface); color: var(--text); border-radius: 16px; padding: 28px 32px; width: min(720px, 92vw); max-height: 88vh; box-shadow: var(--shadow); }
+.dlg::backdrop { background: rgba(0, 0, 0, 0.6); }
+.dlg-wide { width: min(1200px, 94vw); }
+.dlg h2 { margin: 0 0 18px; font-size: 22px; }
+.dlg form { margin-top: 20px; display: flex; justify-content: flex-end; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; font-size: 15px; align-items: center; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; max-height: 64vh; overflow: auto; padding: 4px; }
+.grid-item { text-align: left; font: inherit; color: var(--text); background: var(--bg); border: 2px solid var(--line); border-radius: 10px; padding: 12px; cursor: pointer; display: grid; gap: 6px; }
+.grid-item:hover { border-color: var(--accent); }
+.grid-item.is-current { border-color: var(--accent); background: var(--accent-soft); }
+.grid-item .gi-n { font-family: var(--font-mono); font-size: 12px; color: var(--muted); }
+.grid-item .gi-t { font-size: 14px; font-weight: 600; line-height: 1.25; }
+.grid-item .gi-s { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.agenda-head { display: flex; justify-content: space-between; align-items: center; gap: 20px; }
+.tz-label { font-size: 14px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.tz-label select { font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 10px; }
+.tabs { display: flex; gap: 8px; margin: 14px 0; }
+.tabs button { font: inherit; font-size: 14px; padding: 8px 16px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--text); cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.agenda-table { width: 100%; border-collapse: collapse; font-size: 15px; }
+.agenda-table th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.agenda-table td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.agenda-table tr.is-current td { background: var(--accent-soft); }
+.agenda-table tr.ag-break td { color: var(--muted); }
+.agenda-table .ag-time { font-family: var(--font-mono); white-space: nowrap; }
+.agenda-table .ag-go { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0; text-decoration: underline; }
+
+/* ------------------------------------------------------------------------------ speaker surface */
+#speaker { position: fixed; inset: 0; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: var(--bg); color: var(--text); }
+.sp-head { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.sp-title { display: flex; gap: 14px; align-items: baseline; font-weight: 600; }
+.sp-title .kicker { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.sp-clock { display: flex; align-items: center; gap: 12px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.sp-time { font-size: 22px; }
+.sp-elapsed { font-size: 22px; color: var(--accent); }
+.sp-elapsed.over { color: var(--red); }
+.sp-sep { color: var(--muted); }
+.sp-body { display: grid; grid-template-columns: minmax(420px, 44%) 1fr; gap: 0; min-height: 0; }
+.sp-current { padding: 18px 20px; display: flex; flex-direction: column; gap: 14px; border-right: 1px solid var(--line); min-height: 0; overflow: auto; }
+.sp-preview-wrap { width: 100%; aspect-ratio: 16 / 9; position: relative; background: var(--bg-deep); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.sp-preview { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: top left; pointer-events: none; background-color: var(--bg); }
+.sp-preview .slide { opacity: 1; visibility: visible; }
+.sp-preview .fragment { opacity: 1; }
+.sp-position { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sp-budget { font-size: 13px; color: var(--muted); margin-left: auto; font-family: var(--font-mono); }
+.sp-next-wrap { display: grid; gap: 8px; }
+.sp-next-wrap .kicker { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.sp-preview-wrap-small { width: 58%; border-radius: 8px; }
+.sp-notes-wrap { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; }
+.sp-notes-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 16px 24px 10px; border-bottom: 1px solid var(--line); }
+.sp-notes-head h2 { margin: 0; font-size: 20px; flex: 1 1 auto; min-width: 0; }
+.sp-notes-tools { display: flex; gap: 8px; align-items: center; font-size: 13px; flex: 0 0 auto; white-space: nowrap; }
+.sp-notes { overflow: auto; padding: 20px 28px 40px; font-size: var(--notes-size, 22px); line-height: 1.55; min-height: 0; }
+.sp-notes .say { margin: 0 0 1em; max-width: 60ch; color: var(--text); }
+.sp-notes .cue { margin: 0.4em 0 1em; padding: 10px 16px; border-radius: 10px; background: var(--surface); border-left: 4px solid var(--orange); color: var(--text-2); font-size: 0.9em; max-width: 60ch; }
+.sp-notes .cue-label, .sp-notes .transition .cue-label { font-size: 0.7em; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--orange); margin-right: 8px; }
+.sp-notes .cue-do { border-left-color: var(--orange); }
+.sp-notes .cue-show { border-left-color: var(--accent); }
+.sp-notes .cue-ask { border-left-color: var(--purple); }
+.sp-notes .cue-pause { border-left-color: var(--line-strong); }
+.sp-notes .cue-demo, .sp-notes .cue-lab { border-left-color: var(--pink); }
+.sp-notes .cue-check { border-left-color: var(--red); }
+.sp-notes .cue-click { border-left-color: var(--green); }
+.sp-notes .cue-ask .cue-label { color: var(--purple); }
+.sp-notes .cue-show .cue-label { color: var(--accent); }
+.sp-notes .cue-check .cue-label { color: var(--red); }
+.sp-notes .cue-click .cue-label { color: var(--green); }
+.sp-notes .transition { margin: 1.2em 0 0; padding: 12px 16px; border-radius: 10px; background: var(--accent-soft); color: var(--text); font-style: italic; max-width: 60ch; }
+.sp-notes .transition .cue-label { color: var(--accent); font-style: normal; }
+.sp-notes .sources { margin-top: 1.2em; font-size: 0.7em; color: var(--muted); }
+.sp-notes .sources ul { padding-left: 1.2em; }
+.sp-notes .sources a { word-break: break-all; }
+.sp-notes .empty { color: var(--muted); font-style: italic; }
+.sp-status { padding: 8px 24px; border-top: 1px solid var(--line); font-size: 13px; }
+
+/* ------------------------------------------------------------------------------ print */
+@media print {
+  @page { size: 1920px 1080px; margin: 0; }
+  html, body { overflow: visible; background: #fff; }
+  #presentation { position: static; display: block; }
+  .chrome, #blackout, .dlg, #speaker { display: none !important; }
+  #deck { display: block; overflow: visible; background: #fff; }
+  #stage { position: static; transform: none; box-shadow: none; width: 1920px; height: auto; }
+  .slide { position: relative; opacity: 1; visibility: visible; height: 1080px; page-break-after: always; break-after: page; }
+  .fragment { opacity: 1; }
+}
+
+</style>
+</head>
+<body>
+<a class="skip-link" href="#deck">Skip to slides</a>
+<noscript>This briefing needs JavaScript to show its slides.</noscript>
+
+<!-- Presentation surface -->
+<div id="presentation" hidden>
+  <header id="topbar" class="chrome">
+    <div class="topbar-left">
+      <span id="kicker-section" class="kicker"></span>
+    </div>
+    <div class="topbar-right">
+      <span id="lab-badge" class="lab-badge" hidden></span>
+      <span id="day-badge" class="day-badge"></span>
+    </div>
+  </header>
+
+  <main id="deck" tabindex="-1" aria-label="Slides">
+    <div id="stage"><section class="slide layout-title active" id="s1" data-id="cover" aria-roledescription="slide" aria-label="Slide 1: AI SDLC Orchestrator"><div class="slide-kicker">Architecture Briefing</div><h1>AI SDLC Orchestrator</h1><div class="slide-body"><div class="glyph" aria-hidden="true"><svg class="glyph-svg" viewBox="0 0 640 640" width="640" height="640" aria-hidden="true" focusable="false">
+<circle class="g-ring" cx="320" cy="320" r="268"/>
+<circle class="g-ring g-ring-inner" cx="320" cy="320" r="176"/>
+<g class="g-edges">
+<path d="M122 132L320 320"/><path d="M70 286L320 320"/><path d="M96 468L320 320"/><path d="M208 580L320 320"/>
+<path class="g-edge-out" d="M320 320L548 320"/>
+</g>
+<g class="g-dots"><circle cx="221" cy="226" r="7"/><circle cx="195" cy="303" r="7"/><circle cx="208" cy="394" r="7"/><circle cx="264" cy="450" r="7"/><circle cx="434" cy="320" r="7"/></g>
+<g class="g-nodes">
+<circle class="g-node" cx="122" cy="132" r="30"/><circle class="g-node" cx="70" cy="286" r="30"/><circle class="g-node" cx="96" cy="468" r="30"/><circle class="g-node" cx="208" cy="580" r="30"/>
+<circle class="g-hub" cx="320" cy="320" r="58"/><circle class="g-hub-core" cx="320" cy="320" r="18"/>
+<circle class="g-node g-node-out" cx="548" cy="320" r="42"/>
+</g>
+<text class="d-mono d-sub" x="320" y="408" font-size="22" text-anchor="middle">sdlc.yaml</text>
+<text class="d-mono d-sub" x="548" y="392" font-size="22" text-anchor="middle">portfolio</text>
+</svg></div>
+<p>Declarative fleet upkeep and downstream cascade on GitHub Actions and <code>gh-aw v1.0.1</code>.</p>
+<ul class="chips"><li class="chip">GitHub App #5671833</li><li class="chip">Zero External Servers</li><li class="chip">Human-Merged PRs</li></ul>
+<aside class="aside"><p>John Hain · L300 · 30 minutes</p></aside></div></section>
+<section class="slide layout-default" id="s2" data-id="fleet-problem" aria-roledescription="slide" aria-label="Slide 2: Why Multi-Repo Fleets Drift"><div class="slide-kicker">Overview &amp; Security</div><h1>Why Multi-Repo Fleets Drift</h1><div class="slide-body"><div class="cols" style="grid-template-columns:1fr 1fr"><div class="col"><h3>Independent Crons Break</h3><p>Scattered schedules miss vendor doc changes and diverge silently.</p></div><div class="col"><h3>Downstream Copy-Paste Stalls</h3><p>Merged upstream fixes leave portfolio bundles pinned to stale commits.</p></div></div>
+<ul class="stats"><li class="stat"><div class="stat-value">6</div><div class="stat-label">Tracked Fleet Repos</div><div class="stat-note">5 upstreams + 1 portfolio</div></li><li class="stat"><div class="stat-value">1</div><div class="stat-label">Declarative Manifest</div><div class="stat-note"><code>sdlc.yaml</code> owns every edge</div></li><li class="stat"><div class="stat-value">0</div><div class="stat-label">Webhook Servers</div><div class="stat-note">100% GitHub Actions native</div></li></ul></div></section>
+<section class="slide layout-diagram" id="s3" data-id="architecture" aria-roledescription="slide" aria-label="Slide 3: Five Workstreams, One Control Plane"><div class="slide-kicker">Overview &amp; Security</div><h1>Five Workstreams, One Control Plane</h1><div class="slide-body"><figure class="diagram" data-diagram="fleet-topology"><svg viewBox="0 0 1560 540" role="group" aria-label="Fleet topology. S1 renders the workflows for S2, S3 and S4. Four upstream repositories feed S2 upstream drift, then S3 hybrid router, then S4 cascade, then the portfolio. S5 bootstraps the fleet and cascades this repository into the portfolio.">
+<title>Five workstreams, one control plane</title>
+
+<g data-hl="s1" role="img" aria-label="S1 manifest and reconciler: sdlc.yaml and reconcile.mjs render every workflow and lockfile">
+<rect class="d-box-accent" x="340" y="12" width="880" height="96" rx="18"/>
+<text class="d-text" x="780" y="54" font-size="28" text-anchor="middle"><tspan class="d-label" font-size="26">S1:</tspan>  Manifest &amp; Reconciler</text>
+<text class="d-sub d-mono" x="780" y="90" font-size="22" text-anchor="middle">sdlc.yaml → reconcile.mjs → workflows + lockfiles</text>
+<path class="d-line-accent" d="M475 108V158"/><path class="d-arrow-accent" d="M475 170l-10-16h20z"/>
+<path class="d-line-accent" d="M780 108V158"/><path class="d-arrow-accent" d="M780 170l-10-16h20z"/>
+<path class="d-line-accent" d="M1085 108V158"/><path class="d-arrow-accent" d="M1085 170l-10-16h20z"/>
+</g>
+
+<g data-hl="s2" role="img" aria-label="Four upstream repositories (gh-admin-msft, copilot-lab, pipeline-showcase, github-intermediate) feed S2 upstream drift, which audits watched docs and opens drift pull requests">
+<rect class="d-box-dashed" x="20" y="132" width="290" height="296" rx="18"/>
+<text class="d-sub" x="44" y="166" font-size="22">4 upstream repos:</text>
+<rect class="d-box" x="42" y="186" width="246" height="48" rx="12"/><text class="d-small" x="62" y="218" font-size="22">gh-admin-msft</text>
+<rect class="d-box" x="42" y="246" width="246" height="48" rx="12"/><text class="d-small" x="62" y="278" font-size="22">copilot-lab</text>
+<rect class="d-box" x="42" y="306" width="246" height="48" rx="12"/><text class="d-small" x="62" y="338" font-size="22">pipeline-showcase</text>
+<rect class="d-box" x="42" y="366" width="246" height="48" rx="12"/><text class="d-small" x="62" y="398" font-size="22">github-intermediate</text>
+<path class="d-line" d="M310 280H338"/><path class="d-arrow" d="M350 280l-14-9v18z"/>
+<rect class="d-box" x="350" y="172" width="250" height="216" rx="18"/>
+<text class="d-label" x="374" y="214" font-size="22">S2:</text>
+<text class="d-text" x="374" y="254" font-size="26">Upstream Drift</text>
+<text class="d-sub" x="374" y="304" font-size="22">audit watched docs</text>
+<text class="d-sub" x="374" y="336" font-size="22">open drift PRs</text>
+</g>
+
+<g data-hl="s3" role="img" aria-label="S3 hybrid router: sdlc-bridge-dispatch plus a six hour ETag poll">
+<path class="d-line" d="M600 280H628"/><path class="d-arrow" d="M640 280l-14-9v18z"/>
+<rect class="d-box" x="640" y="172" width="280" height="216" rx="18"/>
+<text class="d-label" x="664" y="214" font-size="22">S3:</text>
+<text class="d-text" x="664" y="254" font-size="26">Hybrid Router</text>
+<text class="d-sub" x="664" y="304" font-size="22">bridge dispatch</text>
+<text class="d-sub" x="664" y="336" font-size="22">+ 6 h ETag poll</text>
+</g>
+
+<g data-hl="s4" role="img" aria-label="S4 cascade, mechanical or AI adaptation, opens human-merged pull requests on johnhain-msft/portfolio">
+<path class="d-line" d="M920 280H948"/><path class="d-arrow" d="M960 280l-14-9v18z"/>
+<rect class="d-box" x="960" y="172" width="250" height="216" rx="18"/>
+<text class="d-label" x="984" y="214" font-size="22">S4:</text>
+<text class="d-text" x="984" y="254" font-size="26">Cascade</text>
+<text class="d-sub" x="984" y="304" font-size="22">mechanical or</text>
+<text class="d-sub" x="984" y="336" font-size="22">AI adaptation</text>
+<path class="d-line-accent" d="M1210 280H1238"/><path class="d-arrow-accent" d="M1250 280l-14-9v18z"/>
+<rect class="d-box-accent" x="1250" y="172" width="290" height="216" rx="18"/>
+<text class="d-label" x="1274" y="214" font-size="22">Downstream:</text>
+<text class="d-text" x="1274" y="254" font-size="26">portfolio</text>
+<text class="d-sub" x="1274" y="304" font-size="22">johnhain-msft</text>
+<text class="d-sub" x="1274" y="336" font-size="22">human-merged PRs</text>
+</g>
+
+<g data-hl="s5" role="img" aria-label="S5 bootstrap and self-cascade: sdlc-bootstrap and sdlc-onboard set up the fleet, and mfg_msft_ai_sdlc cascades itself into the portfolio through the ai-sdlc edge">
+<rect class="d-box-purple" x="20" y="448" width="1520" height="80" rx="18"/>
+<text class="d-text" x="52" y="498" font-size="26"><tspan class="d-label-purple" font-size="24">S5:</tspan>  Bootstrap &amp; Self-Cascade</text>
+<text class="d-sub" x="580" y="497" font-size="22">sdlc-bootstrap, sdlc-onboard, mfg_msft_ai_sdlc → portfolio</text>
+<path class="d-line-dashed" d="M1395 448V402"/><path class="d-arrow-purple" d="M1395 388l-10 16h20z"/>
+<text class="d-sub" x="1378" y="428" font-size="22" text-anchor="end">ai-sdlc edge</text>
+</g>
+</svg></figure>
+<div class="callout callout-tip"><div class="callout-title"><svg class="callout-icon" viewBox="0 0 28 28" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 17.5c-2.2-1.6-3.7-3.8-3.7-6.8a8.7 8.7 0 0 1 17.4 0c0 3-1.5 5.2-3.7 6.8V21H9z"/><path d="M10.5 24.5h7"/></svg><span>Zero-Infrastructure State</span></div><p>Actions variables (<code>SDLC_SYNC_STATE_*</code>) hold ETag and SHA watermarks, with no external database.</p></div></div></section>
+<section class="slide layout-cards" id="s4" data-id="security-boundary" aria-roledescription="slide" aria-label="Slide 4: Six Permissions, Zero Autonomous Merges"><div class="slide-kicker">Overview &amp; Security</div><h1>Six Permissions, Zero Autonomous Merges</h1><div class="slide-body"><div class="cards" data-count="3"><div class="card" data-i="1"><svg class="card-icon" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="16" cy="24" r="9"/><path d="M25 24h19M37 24v7M43 24v5"/><circle cx="16" cy="24" r="2.5" fill="currentColor" stroke="none"/></svg><h3>6-Permission App Ceiling</h3><p><code>mfg-msft-ai-sdlc</code> holds only contents, pull_requests, issues, actions, variables, and metadata.</p></div><div class="card" data-i="2"><svg class="card-icon" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="6" y="9" width="36" height="30" rx="6" stroke-dasharray="5 4"/><circle cx="24" cy="24" r="6"/><circle cx="24" cy="24" r="1.8" fill="currentColor" stroke="none"/></svg><h3>AWF Firewall Sandbox</h3><p>Agent turns run in <code>gh-aw</code> strict mode, with dependencies pre-installed and domains allowlisted.</p></div><div class="card" data-i="3"><svg class="card-icon" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="10" y="21" width="28" height="21" rx="4"/><path d="M16 21v-6a8 8 0 0 1 16 0v6"/><circle cx="24" cy="31" r="2.6" fill="currentColor" stroke="none"/></svg><h3>Immutable Post‑Agent Gates</h3><p>Tests, builds, and zero-diff checks run outside the agent before <code>safe_outputs</code>.</p></div></div></div></section>
+<section class="slide layout-lab" id="s5" data-id="s1-reconciler" aria-roledescription="slide" aria-label="Slide 5: S1 · Manifest &amp; Deterministic Reconciler"><div class="slide-kicker">Workstreams &amp; Cascade</div><h1>S1 · Manifest &amp; Deterministic Reconciler</h1><div class="slide-body"><div class="lab-tile"><div class="lab-num">S1</div><div class="lab-dur">SPEC-01 · Reconciler</div><div class="lab-path">specs/01-manifest-and-reconciler.md</div></div><div class="lab-main">
+<dl class="kv"><div class="kv-row"><dt class="kv-k">Schema Gate</dt><dd class="kv-v">Validates <code>sdlc.yaml</code> against <code>schemas/sdlc.schema.json</code>, then cross-field semantic rules.</dd></div><div class="kv-row"><dt class="kv-k">Compiler Pipeline</dt><dd class="kv-v">Renders <code>.md</code> workflows, then runs <code>gh aw compile --strict --purge</code>.</dd></div><div class="kv-row"><dt class="kv-k">Token &amp; Merge Guardrails</dt><dd class="kv-v">Scopes each App token to its edge&#39;s repositories and rejects <code>auto-merge</code>.</dd></div></dl></div></div></section>
+<section class="slide layout-diagram" id="s6" data-id="s2-drift-harness" aria-roledescription="slide" aria-label="Slide 6: S2 · Upstream Drift &amp; Remote-Only Harness"><div class="slide-kicker">Workstreams &amp; Cascade</div><h1>S2 · Upstream Drift &amp; Remote-Only Harness</h1><div class="slide-body"><figure class="diagram" data-diagram="drift-pipeline"><svg viewBox="0 0 1560 440" role="group" aria-label="S2 drift run execution boundary. Pre-agent steps run first: prepare-run, dedupe-open-prs, snapshot-watch-sources and npm ci with ignore-scripts. Then the agent runs inside the AWF firewall sandbox through the three-agent harness: source-verifier, curriculum-updater, regression-tester. Then immutable post-steps run: npm test, the deck test and a clean-tree check, and the first failure stops the run. Last, safe_outputs creates one pull request with auto-merge false and protected files blocked.">
+<title>S2 drift run: the execution boundary</title>
+
+<g data-hl="pre" role="img" aria-label="Before the agent: four deterministic pre-agent steps">
+<text class="d-label" x="16" y="38" font-size="22">Before the agent</text>
+<rect class="d-box" x="16" y="62" width="392" height="310" rx="18"/>
+<text class="d-text" x="40" y="110" font-size="26">Pre-Agent Steps</text>
+<text class="d-small d-mono" x="40" y="164" font-size="22">prepare-run.mjs</text>
+<text class="d-small d-mono" x="40" y="208" font-size="22">dedupe-open-prs.mjs</text>
+<text class="d-small d-mono" x="40" y="252" font-size="22">snapshot-watch-sources.mjs</text>
+<text class="d-small d-mono" x="40" y="296" font-size="22">npm ci --ignore-scripts</text>
+<text class="d-sub" x="40" y="412" font-size="22">Deterministic scripts</text>
+</g>
+
+<g data-hl="agent" role="img" aria-label="The agent: the dot-github-sdlc three-agent harness inside the AWF firewall sandbox, with read-only job permissions">
+<path class="d-line" d="M408 217H424"/><path class="d-arrow" d="M436 217l-12-9v18z"/>
+<text class="d-label-purple" x="436" y="38" font-size="22">The agent</text>
+<rect class="d-box-purple d-dashed" x="436" y="62" width="330" height="310" rx="18"/>
+<text class="d-text" x="460" y="110" font-size="26">AWF Firewall Sandbox</text>
+<text class="d-sub d-mono" x="460" y="148" font-size="22">.github/sdlc/</text>
+<rect class="d-box" x="453" y="168" width="296" height="52" rx="12"/><circle class="d-box-accent" cx="479" cy="194" r="17"/><text class="d-text" x="479" y="202" font-size="22" text-anchor="middle">1</text><text class="d-small d-mono" x="505" y="202" font-size="22">source-verifier</text>
+<rect class="d-box" x="453" y="232" width="296" height="52" rx="12"/><circle class="d-box-accent" cx="479" cy="258" r="17"/><text class="d-text" x="479" y="266" font-size="22" text-anchor="middle">2</text><text class="d-small d-mono" x="505" y="266" font-size="22">curriculum-updater</text>
+<rect class="d-box" x="453" y="296" width="296" height="52" rx="12"/><circle class="d-box-accent" cx="479" cy="322" r="17"/><text class="d-text" x="479" y="330" font-size="22" text-anchor="middle">3</text><text class="d-small d-mono" x="505" y="330" font-size="22">regression-tester</text>
+<text class="d-sub" x="460" y="412" font-size="22">Read-only job permissions</text>
+</g>
+
+<g data-hl="post" role="img" aria-label="After the agent: seven project verifyCommands in sdlc.yaml order, the first failure stops the run">
+<path class="d-line" d="M766 217H782"/><path class="d-arrow" d="M794 217l-12-9v18z"/>
+<text class="d-label" x="794" y="38" font-size="22">After the agent</text>
+<rect class="d-box" x="794" y="62" width="340" height="310" rx="18"/>
+<text class="d-text" x="818" y="110" font-size="26">Immutable Post-Steps</text>
+<text class="d-sub" x="818" y="150" font-size="22">7 project verifyCommands:</text>
+<text class="d-small d-mono" x="818" y="204" font-size="22">npm ci · build.mjs</text>
+<text class="d-small d-mono" x="818" y="248" font-size="22">git status --porcelain</text>
+<text class="d-small d-mono" x="818" y="292" font-size="22">unit · freshness · deck</text>
+<text class="d-sub" x="818" y="412" font-size="22">First failure stops the run</text>
+</g>
+
+<g data-hl="out" role="img" aria-label="The only writer: safe_outputs creates one pull request, auto-merge false, protected files blocked">
+<path class="d-line-accent" d="M1134 217H1150"/><path class="d-arrow-accent" d="M1162 217l-12-9v18z"/>
+<text class="d-label" x="1162" y="38" font-size="22">The only writer</text>
+<rect class="d-box-accent" x="1162" y="62" width="380" height="310" rx="18"/>
+<text class="d-text" x="1186" y="110" font-size="26">safe_outputs</text>
+<text class="d-small d-mono" x="1186" y="164" font-size="22">create-pull-request</text>
+<text class="d-small d-mono" x="1186" y="208" font-size="22">auto-merge: false</text>
+<text class="d-small d-mono" x="1186" y="252" font-size="22">protected-files: blocked</text>
+<text class="d-sub" x="1186" y="412" font-size="22">Opens one PR, never merges</text>
+</g>
+</svg></figure>
+<dl class="kv"><div class="kv-row"><dt class="kv-k">Why a separate folder?</dt><dd class="kv-v">Local sessions load <code>.github/agents/</code>, never <code>.github/sdlc/</code>; only remote runs read it.</dd></div><div class="kv-row"><dt class="kv-k">Three Specialist Roles</dt><dd class="kv-v"><code>source-verifier</code> corroborates changes, <code>curriculum-updater</code> edits labs and decks, <code>regression-tester</code> runs validators.</dd></div></dl>
+<p class="spec-ref"><a href="specs/02-upstream-drift-automation.md" target="_blank" rel="noopener">specs/02-upstream-drift-automation.md</a></p></div></section>
+<section class="slide layout-timeline" id="s7" data-id="s3-event-router" aria-roledescription="slide" aria-label="Slide 7: S3 · Hybrid Push + ETag Event Router"><div class="slide-kicker">Workstreams &amp; Cascade</div><h1>S3 · Hybrid Push + ETag Event Router</h1><div class="slide-body"><ol class="timeline"><li class="tl-row tl-push"><div class="tl-date">Push</div><div class="tl-text"><code>sdlc-bridge-dispatch.yml</code> posts <code>upstream_pr_merged</code> on every merge.</div></li><li class="tl-row tl-check"><div class="tl-date">Check</div><div class="tl-text"><code>route-upstream.mjs</code> sends <code>If-None-Match</code> and compares recorded state.</div></li><li class="tl-row tl-dispatch"><div class="tl-date">Dispatch</div><div class="tl-text">Router starts <code>cascade-mechanical-*</code> or <code>cascade-ai-*</code> with a correlation id.</div></li><li class="tl-row tl-poll"><div class="tl-date">Every 6 h</div><div class="tl-text">Scheduled poll catches direct pushes; <code>304</code> answers cost no primary rate limit.</div></li></ol>
+<p class="spec-ref"><a href="specs/03-event-routing-and-mechanical-cascade.md" target="_blank" rel="noopener">specs/03-event-routing-and-mechanical-cascade.md</a></p></div></section>
+<section class="slide layout-decision" id="s8" data-id="s4-cascade-modes" aria-roledescription="slide" aria-label="Slide 8: S4 · Mechanical vs AI-Adaptation Cascade"><div class="slide-kicker">Workstreams &amp; Cascade</div><h1>S4 · Mechanical vs AI-Adaptation Cascade</h1><div class="slide-body"><figure class="diagram" data-diagram="cascade-decision"><div class="decision" data-decision>
+  <div class="decision-panel" aria-live="polite">
+    <div class="decision-steps" aria-hidden="true"><span class="dstep-dot is-on"></span><span class="dstep-dot"></span></div>
+    <h3 class="decision-q" data-dq>Does a deterministic import script rebuild this edge's bundle?</h3>
+    <div class="decision-actions" data-dactions><button type="button" class="btn">Yes</button><button type="button" class="btn">No</button></div>
+  </div>
+  <div class="decision-outcomes">
+    <div class="outcome outcome-mechanical" data-outcome="mechanical">
+      <h3>Mechanical</h3>
+      <p>Runs the import script, then the 7-leg portfolio gate.</p>
+    </div>
+    <div class="outcome outcome-ai" data-outcome="ai">
+      <h3>AI-Adaptation</h3>
+      <p>Agent edits only allowedFiles, then immutable gates verify.</p>
+    </div>
+  </div>
+  <script type="application/json">{
+    "start": { "q": "Does a deterministic import script rebuild this edge's bundle?", "yes": "mechanical", "no": "q2", "step": 1 },
+    "q2": { "q": "Does the upstream change need cross-file prose or component edits?", "yes": "ai", "no": "none", "step": 2 },
+    "mechanical": { "result": "mechanical", "say": "Mechanical: one import script rebuilds the bundle.", "step": 1 },
+    "ai": { "result": "ai", "say": "AI-Adaptation: an agent must edit across files.", "step": 2 },
+    "none": { "result": "none", "say": "No edge needed: nothing to cascade.", "step": 2 }
+  }</script>
+</div></figure>
+<p class="spec-ref"><a href="specs/04-ai-downstream-adaptation.md" target="_blank" rel="noopener">specs/04-ai-downstream-adaptation.md</a></p></div></section>
+<section class="slide layout-media" id="s9" data-id="live-pilot" aria-roledescription="slide" aria-label="Slide 9: Live Production Run: gh-admin-msft → portfolio"><div class="slide-kicker">Pilot &amp; Onboarding</div><h1>Live Production Run: <code>gh-admin-msft</code> → <code>portfolio</code></h1><div class="slide-body"><ol class="ledger"><li class="ledger-row is-active" data-pilot-step="0" tabindex="0" role="button"><div class="ledger-k">Dry run</div><div class="ledger-v">#42525239087</div></li><li class="ledger-row" data-pilot-step="1" tabindex="0" role="button"><div class="ledger-k">Live drift</div><div class="ledger-v">#42531290378</div></li><li class="ledger-row" data-pilot-step="2" tabindex="0" role="button"><div class="ledger-k">Drift PR</div><div class="ledger-v">gh-admin-msft#19</div></li><li class="ledger-row" data-pilot-step="3" tabindex="0" role="button"><div class="ledger-k">Router</div><div class="ledger-v">#42532934615</div></li><li class="ledger-row" data-pilot-step="4" tabindex="0" role="button"><div class="ledger-k">Cascade</div><div class="ledger-v">#42532946999</div></li><li class="ledger-row" data-pilot-step="5" tabindex="0" role="button"><div class="ledger-k">Cascade PR</div><div class="ledger-v">portfolio#1</div></li></ol>
+<figure class="diagram" data-diagram="live-pipeline-demo"><svg viewBox="0 0 1120 620" data-pilot role="group" aria-label="Interactive six-step production telemetry walkthrough from gh-admin-msft to portfolio">
+  <title>Production Telemetry Walkthrough: gh-admin-msft to portfolio</title>
+  <rect class="d-box" x="4" y="4" width="1112" height="612" rx="20"/>
+  <rect class="d-box-accent" x="28" y="24" width="1064" height="66" rx="12"/>
+
+  <g data-pilot-panel="0">
+    <text class="d-label" x="52" y="65" font-size="24">STEP 1 OF 6: DRY-RUN GATE</text>
+    <text class="d-text" x="1064" y="65" font-size="24" text-anchor="end">RUN #42525239087: 0 WRITES</text>
+    <rect class="d-box" x="28" y="110" width="510" height="404" rx="14"/>
+    <text class="d-text" x="54" y="158" font-size="26">Job Graph (dry_run: true)</text>
+    <text class="d-small d-mono" x="54" y="214" font-size="22">✓ activation: lockfile verified</text>
+    <text class="d-small d-mono" x="54" y="262" font-size="22">✓ agent: 7 URLs, 7 gates green</text>
+    <text class="d-small d-mono" x="54" y="310" font-size="22">✓ detection: AWF scan passed</text>
+    <text class="d-sub d-mono" x="54" y="358" font-size="22">⊘ safe_outputs: skipped</text>
+    <text class="d-sub d-mono" x="54" y="406" font-size="22">⊘ conclusion: 0 branches/PRs</text>
+    <rect class="d-box" x="562" y="110" width="530" height="404" rx="14"/>
+    <text class="d-text" x="588" y="158" font-size="26">Watched Snapshot: 7/7 HTTP 200</text>
+    <text class="d-small d-mono" x="588" y="214" font-size="22">sources/manifest-json:</text>
+    <text class="d-small d-mono" x="588" y="262" font-size="22">• changelog + enterprise: 200</text>
+    <text class="d-small d-mono" x="588" y="310" font-size="22">• admin + billing: 200</text>
+    <text class="d-small d-mono" x="588" y="358" font-size="22">• copilot + actions: 200</text>
+    <text class="d-small d-mono" x="588" y="406" font-size="22">• code-security: 200</text>
+    <text class="d-sub" x="588" y="464" font-size="22">Mode: rehearsal before live write;</text>
+  </g>
+
+  <g data-pilot-panel="1" hidden>
+    <text class="d-label" x="52" y="65" font-size="24">STEP 2 OF 6: LIVE DRIFT RUN</text>
+    <text class="d-text" x="1064" y="65" font-size="24" text-anchor="end">RUN #42531290378: PR #19</text>
+    <rect class="d-box" x="28" y="110" width="510" height="404" rx="14"/>
+    <text class="d-text" x="54" y="158" font-size="26">In-Sandbox Agent: 3 Roles</text>
+    <text class="d-small d-mono" x="54" y="214" font-size="22">pre-agent: npm ci --ignore-scripts</text>
+    <text class="d-small d-mono" x="54" y="262" font-size="22">1: ghec-source-verifier</text>
+    <text class="d-small d-mono" x="54" y="310" font-size="22">2: ghec-curriculum-updater</text>
+    <text class="d-small d-mono" x="54" y="358" font-size="22">3: ghec-regression-tester</text>
+    <text class="d-sub" x="54" y="454" font-size="22">Sandbox: GitHub Agentic Workflows Firewall;</text>
+    <rect class="d-box" x="562" y="110" width="530" height="404" rx="14"/>
+    <text class="d-text" x="588" y="158" font-size="26">Post-Steps: 7 Verification Gates</text>
+    <text class="d-small d-mono" x="588" y="214" font-size="22">✓ 99/99: unit tests passed</text>
+    <text class="d-small d-mono" x="588" y="262" font-size="22">✓ 60/60: freshness (0 warnings)</text>
+    <text class="d-small d-mono" x="588" y="310" font-size="22">✓ 7/7: deck checks passed</text>
+    <text class="d-small d-mono" x="588" y="358" font-size="22">✓ 11/11: validator suites run</text>
+    <text class="d-small d-mono" x="588" y="406" font-size="22">✓ clean: git status --porcelain</text>
+    <text class="d-sub" x="588" y="464" font-size="22">Output: opened #19, superseded #16;</text>
+  </g>
+
+  <g data-pilot-panel="2" hidden>
+    <text class="d-label" x="52" y="65" font-size="24">STEP 3 OF 6: UPSTREAM DRIFT PR</text>
+    <text class="d-text" x="1064" y="65" font-size="24" text-anchor="end">gh-admin-msft#19: MERGED</text>
+    <rect class="d-box" x="28" y="110" width="1064" height="404" rx="14"/>
+    <text class="d-text" x="56" y="158" font-size="26">chore(sdlc-drift): align GHAS licensing heading</text>
+    <text class="d-small d-mono" x="56" y="214" font-size="22">File: docs/19-licenses-billing-md (1 line)</text>
+    <text class="d-sub d-mono" x="56" y="264" font-size="22">Before: ### GitHub Advanced Security</text>
+    <text class="d-small d-mono" x="56" y="310" font-size="22">After: ### GitHub Advanced Security (Secret Protection &amp; Code Security)</text>
+    <text class="d-text" x="56" y="374" font-size="24">PR Body: Telemetry &amp; Scope Honesty</text>
+    <text class="d-small" x="56" y="422" font-size="22">• Validation: 99/99 unit, 60/60 freshness, 11/11 suites;</text>
+    <text class="d-small" x="56" y="466" font-size="22">• Not confirmed: logged snapshot boundary; merged: 495695012d56;</text>
+  </g>
+
+  <g data-pilot-panel="3" hidden>
+    <text class="d-label" x="52" y="65" font-size="24">STEP 4 OF 6: CENTRAL ROUTER</text>
+    <text class="d-text" x="1064" y="65" font-size="24" text-anchor="end">RUN #42532934615: DISPATCHED</text>
+    <rect class="d-box" x="28" y="110" width="510" height="404" rx="14"/>
+    <text class="d-text" x="54" y="158" font-size="26">ETag Poll: Provenance Compare</text>
+    <text class="d-small d-mono" x="54" y="214" font-size="22">Var: SDLC_SYNC_STATE_GH_ADMIN_MSFT</text>
+    <text class="d-small d-mono" x="54" y="262" font-size="22">prev SHA: a2f9a3bbbb60</text>
+    <text class="d-small d-mono" x="54" y="310" font-size="22">head SHA: 495695012d56 (HTTP 200)</text>
+    <text class="d-small d-mono" x="54" y="358" font-size="22">public/ghec-admin/source-json:</text>
+    <text class="d-sub d-mono" x="54" y="406" font-size="22">commit: a2f9a3bbbb60 (stale);</text>
+    <rect class="d-box" x="562" y="110" width="530" height="404" rx="14"/>
+    <text class="d-text" x="588" y="158" font-size="26">Matrix: Per-Edge Isolation</text>
+    <text class="d-small d-mono" x="588" y="214" font-size="22">✓ route gh-admin-msft: dispatched</text>
+    <text class="d-small d-mono" x="588" y="262" font-size="22">✓ route copilot-lab: noop</text>
+    <text class="d-small d-mono" x="588" y="310" font-size="22">✓ route github-intermediate: noop</text>
+    <text class="d-sub d-mono" x="588" y="358" font-size="22">✕ route pipeline-showcase: isolated</text>
+    <text class="d-sub" x="588" y="446" font-size="22">fail-fast: false let gh-admin-msft</text>
+    <text class="d-sub" x="588" y="480" font-size="22">dispatch: cascade-mechanical-ghec-admin;</text>
+  </g>
+
+  <g data-pilot-panel="4" hidden>
+    <text class="d-label" x="52" y="65" font-size="24">STEP 5 OF 6: MECHANICAL CASCADE</text>
+    <text class="d-text" x="1064" y="65" font-size="24" text-anchor="end">RUN #42532946999: 7/7 GREEN</text>
+    <rect class="d-box" x="28" y="110" width="510" height="404" rx="14"/>
+    <text class="d-text" x="54" y="158" font-size="26">Import: Deterministic Snapshot</text>
+    <text class="d-small d-mono" x="54" y="214" font-size="22">cmd: npm run import:ghec-admin</text>
+    <text class="d-small d-mono" x="54" y="262" font-size="22">• 61: markdown docs sanitized</text>
+    <text class="d-small d-mono" x="54" y="310" font-size="22">• 9: lab tiles linked to reader</text>
+    <text class="d-small d-mono" x="54" y="358" font-size="22">• CSP: externalized css + js</text>
+    <text class="d-small d-mono" x="54" y="406" font-size="22">• source-json: 495695012d56;</text>
+    <rect class="d-box" x="562" y="110" width="530" height="404" rx="14"/>
+    <text class="d-text" x="588" y="158" font-size="26">Gate: 7-Leg Portfolio Check</text>
+    <text class="d-small d-mono" x="588" y="214" font-size="22">✓ build: npm run build &amp; catalog</text>
+    <text class="d-small d-mono" x="588" y="258" font-size="22">✓ static: typecheck &amp; lint</text>
+    <text class="d-small d-mono" x="588" y="302" font-size="22">✓ unit: test &amp; test:studio</text>
+    <text class="d-small d-mono" x="588" y="346" font-size="22">✓ browser: playwright sites-spec</text>
+    <text class="d-small d-mono" x="588" y="390" font-size="22">✓ state: finalize_poll_state</text>
+    <text class="d-sub" x="588" y="454" font-size="22">max-patch-size: 10240 KB carried HTML;</text>
+  </g>
+
+  <g data-pilot-panel="5" hidden>
+    <text class="d-label" x="52" y="65" font-size="24">STEP 6 OF 6: DOWNSTREAM PR</text>
+    <text class="d-text" x="1064" y="65" font-size="24" text-anchor="end">portfolio#1: MERGED</text>
+    <rect class="d-box" x="28" y="110" width="1064" height="404" rx="14"/>
+    <text class="d-text" x="56" y="158" font-size="26">chore(cascade): import gh-admin-msft 495695012d56</text>
+    <text class="d-small d-mono" x="56" y="214" font-size="22">Branch: sdlc/cascade-ghec-admin -&gt; main (auto-merge: false)</text>
+    <text class="d-small d-mono" x="56" y="264" font-size="22">• public/ghec-admin/source-json: commit 495695012d56</text>
+    <text class="d-small d-mono" x="56" y="310" font-size="22">• public/ghec-admin/labs/index-html: LF SHA-256 digest</text>
+    <text class="d-small d-mono" x="56" y="356" font-size="22">• public/ghec-admin/workshop/index-html: Teaching SPA</text>
+    <text class="d-text" x="56" y="418" font-size="24">Outcome: End-to-End Loop Closed</text>
+    <text class="d-small" x="56" y="464" font-size="22">SDLC_SYNC_STATE_GH_ADMIN_MSFT: recorded openPrNumber 1; merged;</text>
+  </g>
+
+  <g data-pilot-prev role="button" tabindex="0" aria-label="Previous step" style="cursor:pointer">
+    <rect class="d-box" x="340" y="536" width="140" height="54" rx="27"/>
+    <text class="d-text" x="410" y="571" font-size="22" text-anchor="middle">‹ Prev</text>
+  </g>
+  <text class="d-mono d-sub" data-pilot-status x="560" y="571" font-size="22" text-anchor="middle">1 / 6</text>
+  <g data-pilot-next role="button" tabindex="0" aria-label="Next step" style="cursor:pointer">
+    <rect class="d-box" x="640" y="536" width="140" height="54" rx="27"/>
+    <text class="d-text" x="710" y="571" font-size="22" text-anchor="middle">Next ›</text>
+  </g>
+</svg></figure>
+<p class="spec-ref"><a href="docs/media/gh-admin-sdlc-pipeline-demo.svg" target="_blank" rel="noopener">docs/media/gh-admin-sdlc-pipeline-demo.svg</a></p></div></section>
+<section class="slide layout-split" id="s10" data-id="self-cascade-onboard" aria-roledescription="slide" aria-label="Slide 10: S5 · Self-Cascade &amp; Two-Command Onboarding"><div class="slide-kicker">Pilot &amp; Onboarding</div><h1>S5 · Self-Cascade &amp; Two-Command Onboarding</h1><div class="slide-body"><div class="cols" style="grid-template-columns:1fr 1fr"><div class="col"><h3>Bootstrap &amp; Onboard CLI</h3><p><code>sdlc-bootstrap.mjs</code> provisions the App and state variables; <code>sdlc-onboard.mjs</code> writes manifest entries.</p>
+<pre class="code" data-lang="bash"><code>node bin/sdlc-bootstrap.mjs
+node bin/sdlc-onboard.mjs --repo &lt;owner/repo&gt;</code></pre>
+<p class="spec-ref"><a href="specs/05-packaging-bootstrap-and-governance.md" target="_blank" rel="noopener">specs/05-packaging-bootstrap-and-governance.md</a></p></div><div class="col"><h3>Self-Cascading edge: <code>ai-sdlc</code></h3><pre class="code" data-lang="yaml"><code>edgeId: ai-sdlc
+upstreamRepo: johnhain-msft/mfg_msft_ai_sdlc
+downstreamRepo: johnhain-msft/portfolio
+mode: mechanical
+importCommands:
+  - npm run import:ai-sdlc -- &lt;checkout&gt;</code></pre></div></div></div></section>
+<section class="slide layout-quiz" id="s11" data-id="knowledge-check" aria-roledescription="slide" aria-label="Slide 11: Architecture Check: Who Grades the Agent?"><div class="slide-kicker">Pilot &amp; Onboarding</div><h1>Architecture Check: Who Grades the Agent?</h1><div class="slide-body"><div class="quiz" data-answer="B" id="knowledge-check-q1"><p class="quiz-q">An adaptation agent edits a locked test file. What happens?</p><div class="quiz-options"><button type="button" class="quiz-option" data-key="A"><span class="quiz-key" aria-hidden="true">A</span><span>The pull request opens with a warning.</span></button><button type="button" class="quiz-option" data-key="B"><span class="quiz-key" aria-hidden="true">B</span><span><code>verify-immutable-gates.mjs</code> fails; <code>safe_outputs</code> never runs.</span></button><button type="button" class="quiz-option" data-key="C"><span class="quiz-key" aria-hidden="true">C</span><span>The router resets <code>SDLC_SYNC_STATE</code>.</span></button></div><p class="quiz-expl" hidden><strong>Answer: B.</strong> Gates run outside the agent turn; <code>safe_outputs</code> depends on them.</p></div></div></section>
+<section class="slide layout-end" id="s12" data-id="takeaways" aria-roledescription="slide" aria-label="Slide 12: Declarative, Sandboxed, Self-Cascading"><div class="slide-kicker">Takeaways</div><h1>Declarative, Sandboxed, Self-Cascading</h1><div class="slide-body"><div class="cards" data-count="3"><div class="card" data-i="1"><svg class="card-icon" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M13 5h16l9 9v29H13z"/><path d="M29 5v9h9M19 23h13M19 30h13M19 37h8"/></svg><h3>Declare Fleet Intent</h3><p>Keep watch URLs, verify gates, and cascade edges in <code>sdlc.yaml</code> (<a href="specs/01-manifest-and-reconciler.md" target="_blank" rel="noopener">SPEC-01</a>).</p></div><div class="card" data-i="2"><svg class="card-icon" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="6" y="9" width="36" height="30" rx="6" stroke-dasharray="5 4"/><circle cx="24" cy="24" r="6"/><circle cx="24" cy="24" r="1.8" fill="currentColor" stroke="none"/></svg><h3>Isolate Agent Execution</h3><p>Bound AI turns with <code>.github/sdlc/</code>, <code>awf</code> sandboxing, and deterministic <code>post-steps</code> (<a href="specs/02-upstream-drift-automation.md" target="_blank" rel="noopener">SPEC-02</a>, <a href="specs/04-ai-downstream-adaptation.md" target="_blank" rel="noopener">SPEC-04</a>).</p></div><div class="card" data-i="3"><svg class="card-icon" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="9" cy="24" r="4.5"/><circle cx="39" cy="24" r="4.5"/><path d="M14 24h17M26 18l7 6-7 6"/></svg><h3>Automate the Cascade</h3><p>Pair push bridge dispatch with ETag polling and human-merged PRs (<a href="specs/03-event-routing-and-mechanical-cascade.md" target="_blank" rel="noopener">SPEC-03</a>, <a href="specs/05-packaging-bootstrap-and-governance.md" target="_blank" rel="noopener">SPEC-05</a>).</p></div></div>
+<p class="spec-ref"><a href="plan.md" target="_blank" rel="noopener">plan.md</a></p></div></section></div>
+  </main>
+
+  <footer id="bottombar" class="chrome">
+    <div id="progress" aria-hidden="true"><div id="progress-bar"></div></div>
+    <div class="bottombar-row">
+      <div class="nav-buttons">
+        <button type="button" id="btn-prev" class="btn" data-nav="prev" aria-label="Previous slide">‹</button>
+        <button type="button" id="btn-next" class="btn" data-nav="next" aria-label="Next slide">›</button>
+        <span id="counter" class="counter" aria-live="off"></span>
+      </div>
+      <div class="toolbar">
+        <button type="button" id="btn-agenda" class="btn" aria-haspopup="dialog">Agenda <kbd>A</kbd></button>
+        <button type="button" id="btn-grid" class="btn" aria-haspopup="dialog">Overview <kbd>G</kbd></button>
+        <button type="button" id="btn-speaker" class="btn">Speaker <kbd>S</kbd></button>
+        <button type="button" id="btn-theme" class="btn" aria-label="Toggle light and dark theme">Theme <kbd>T</kbd></button>
+        <button type="button" id="btn-fullscreen" class="btn">Present <kbd>F</kbd></button>
+        <button type="button" id="btn-help" class="btn" aria-haspopup="dialog" aria-label="Keyboard shortcuts">?</button>
+      </div>
+    </div>
+  </footer>
+
+  <div id="blackout" hidden aria-hidden="true"></div>
+</div>
+
+<!-- Speaker surface -->
+<div id="speaker" hidden>
+  <header class="sp-head">
+    <div class="sp-title"><span class="kicker">Speaker view</span><span id="sp-deck-title"></span></div>
+    <div class="sp-clock">
+      <span id="sp-time" class="sp-time" aria-label="Current time"></span>
+      <span class="sp-sep">·</span>
+      <span id="sp-elapsed" class="sp-elapsed" aria-label="Elapsed">00:00</span>
+      <button type="button" id="sp-timer-toggle" class="btn">Start</button>
+      <button type="button" id="sp-timer-reset" class="btn">Reset</button>
+    </div>
+  </header>
+  <div class="sp-body">
+    <section class="sp-current" aria-label="Current slide">
+      <div class="sp-preview-wrap"><div id="sp-current" class="sp-preview"></div></div>
+      <div class="sp-position">
+        <button type="button" id="sp-prev" class="btn">‹ Prev</button>
+        <span id="sp-counter" class="counter"></span>
+        <button type="button" id="sp-next" class="btn">Next ›</button>
+        <span id="sp-budget" class="sp-budget"></span>
+      </div>
+      <div class="sp-next-wrap">
+        <div class="kicker">Next</div>
+        <div class="sp-preview-wrap sp-preview-wrap-small"><div id="sp-next-preview" class="sp-preview"></div></div>
+      </div>
+    </section>
+    <section class="sp-notes-wrap" aria-label="Speaker notes">
+      <div class="sp-notes-head">
+        <h2 id="sp-slide-title"></h2>
+        <div class="sp-notes-tools">
+          <span id="sp-words" class="muted"></span>
+          <button type="button" id="sp-font-dec" class="btn" aria-label="Smaller notes text">A−</button>
+          <button type="button" id="sp-font-inc" class="btn" aria-label="Larger notes text">A+</button>
+          <button type="button" id="sp-open-deck" class="btn">Open deck</button>
+        </div>
+      </div>
+      <div id="sp-notes" class="sp-notes" tabindex="0"></div>
+      <div id="sp-status" class="sp-status muted" role="status"></div>
+    </section>
+  </div>
+</div>
+
+<!-- Overlays (presentation surface) -->
+<dialog id="dlg-help" class="dlg" aria-labelledby="dlg-help-title">
+  <h2 id="dlg-help-title">Keyboard shortcuts</h2>
+  <div class="keys">
+    <div><kbd>→</kbd> <kbd>Space</kbd> <kbd>PgDn</kbd></div><div>Next step or slide</div>
+    <div><kbd>←</kbd> <kbd>PgUp</kbd></div><div>Previous step or slide</div>
+    <div><kbd>Home</kbd> / <kbd>End</kbd></div><div>First / last slide</div>
+    <div><kbd>1</kbd>–<kbd>9</kbd> then <kbd>Enter</kbd></div><div>Go to slide number</div>
+    <div><kbd>G</kbd></div><div>Slide overview grid (press again to close)</div>
+    <div><kbd>A</kbd></div><div>Agenda with your time zone (press again to close)</div>
+    <div><kbd>S</kbd></div><div>Open the speaker window (notes, timer, next slide). Open it before <kbd>F</kbd>: a new window leaves fullscreen</div>
+    <div><kbd>F</kbd></div><div>Present fullscreen. <kbd>Esc</kbd> leaves fullscreen in every browser, so close overlays with their own key</div>
+    <div><kbd>B</kbd></div><div>Blackout (pause the screen)</div>
+    <div><kbd>T</kbd></div><div>Toggle light / dark theme</div>
+    <div><kbd>P</kbd></div><div>Print all slides (PDF handout)</div>
+    <div><kbd>?</kbd></div><div>This help</div>
+  </div>
+  <form method="dialog"><button class="btn">Close</button></form>
+</dialog>
+
+<dialog id="dlg-grid" class="dlg dlg-wide" aria-labelledby="dlg-grid-title">
+  <h2 id="dlg-grid-title">Overview</h2>
+  <div id="grid" class="grid"></div>
+  <form method="dialog"><button class="btn">Close</button></form>
+</dialog>
+
+<dialog id="dlg-agenda" class="dlg dlg-wide" aria-labelledby="dlg-agenda-title">
+  <div class="agenda-head">
+    <h2 id="dlg-agenda-title">Agenda</h2>
+    <label class="tz-label">Time zone
+      <select id="agenda-tz"></select>
+    </label>
+  </div>
+  <div id="agenda-tabs" class="tabs" role="tablist"></div>
+  <div id="agenda-body"></div>
+  <form method="dialog"><button class="btn">Close</button></form>
+</dialog>
+
+<div id="live" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>
+
+<script type="application/json" id="deck-data">{"title":"AI SDLC Orchestrator","subtitle":"Declarative Fleet Upkeep & Downstream Cascade on GitHub Actions and gh-aw v1.0.1","built":"2026-11-09T03:21:32.185Z","source":{"repo":"johnhain-msft/mfg_msft_ai_sdlc","branch":"main"},"slides":[{"id":"cover","n":1,"day":1,"section":"Overview & Security","layout":"title","kicker":"Architecture Briefing","exempt":"","minutes":2,"title":"AI SDLC Orchestrator","titleHtml":"AI SDLC Orchestrator","html":"<div class=\"glyph\" aria-hidden=\"true\"><svg class=\"glyph-svg\" viewBox=\"0 0 640 640\" width=\"640\" height=\"640\" aria-hidden=\"true\" focusable=\"false\">\n<circle class=\"g-ring\" cx=\"320\" cy=\"320\" r=\"268\"/>\n<circle class=\"g-ring g-ring-inner\" cx=\"320\" cy=\"320\" r=\"176\"/>\n<g class=\"g-edges\">\n<path d=\"M122 132L320 320\"/><path d=\"M70 286L320 320\"/><path d=\"M96 468L320 320\"/><path d=\"M208 580L320 320\"/>\n<path class=\"g-edge-out\" d=\"M320 320L548 320\"/>\n<\/g>\n<g class=\"g-dots\"><circle cx=\"221\" cy=\"226\" r=\"7\"/><circle cx=\"195\" cy=\"303\" r=\"7\"/><circle cx=\"208\" cy=\"394\" r=\"7\"/><circle cx=\"264\" cy=\"450\" r=\"7\"/><circle cx=\"434\" cy=\"320\" r=\"7\"/><\/g>\n<g class=\"g-nodes\">\n<circle class=\"g-node\" cx=\"122\" cy=\"132\" r=\"30\"/><circle class=\"g-node\" cx=\"70\" cy=\"286\" r=\"30\"/><circle class=\"g-node\" cx=\"96\" cy=\"468\" r=\"30\"/><circle class=\"g-node\" cx=\"208\" cy=\"580\" r=\"30\"/>\n<circle class=\"g-hub\" cx=\"320\" cy=\"320\" r=\"58\"/><circle class=\"g-hub-core\" cx=\"320\" cy=\"320\" r=\"18\"/>\n<circle class=\"g-node g-node-out\" cx=\"548\" cy=\"320\" r=\"42\"/>\n<\/g>\n<text class=\"d-mono d-sub\" x=\"320\" y=\"408\" font-size=\"22\" text-anchor=\"middle\">sdlc.yaml<\/text>\n<text class=\"d-mono d-sub\" x=\"548\" y=\"392\" font-size=\"22\" text-anchor=\"middle\">portfolio<\/text>\n<\/svg><\/div>\n<p>Declarative fleet upkeep and downstream cascade on GitHub Actions and <code>gh-aw v1.0.1<\/code>.<\/p>\n<ul class=\"chips\"><li class=\"chip\">GitHub App #5671833<\/li><li class=\"chip\">Zero External Servers<\/li><li class=\"chip\">Human-Merged PRs<\/li><\/ul>\n<aside class=\"aside\"><p>John Hain · L300 · 30 minutes<\/p><\/aside>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> The cover. Let the room read the title and the three chips before you speak.<\/p>\n<p class=\"say\">Thanks for joining. Over the next thirty minutes I&#39;ll show you how a fleet of repositories can keep itself current, with the whole control plane running inside GitHub.<\/p>\n<p class=\"say\">I look after a handful of technical repositories: workshops, labs, a reference architecture. They lean on vendor documentation that changes every week, and a portfolio site embeds their compiled output. Two things go wrong. The upstream content goes stale, and then the portfolio falls behind the upstream.<\/p>\n<p class=\"say\">The project is called mfg_msft_ai_sdlc. It&#39;s built from three pieces: a GitHub App, GitHub Actions, and GitHub Agentic Workflows, or gh-aw.<\/p>\n<p class=\"say\">The chips along the bottom are the three promises. One App identity does all the work. There&#39;s no server to patch and no database to back up. And a person merges every pull request; the machine never does.<\/p>\n<p class=\"cue cue-pause\"><span class=\"cue-kind\" aria-hidden=\"true\">⏸<\/span><span class=\"cue-label\">PAUSE<\/span> Two seconds. Let the third promise land.<\/p>\n<p class=\"say\">By the end I want you to be able to do three things. Explain why one declarative control plane beats a cron job in every repository. Trace why an agent inside the pipeline can&#39;t approve its own work. And choose the right cascade mode when you bring a new repository on board.<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> First, why does a fleet drift at all?<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>README.md · plan.md<\/li><\/ul><\/details>","words":186},{"id":"fleet-problem","n":2,"day":1,"section":"Overview & Security","layout":"default","kicker":"","exempt":"","minutes":2,"title":"Why Multi-Repo Fleets Drift","titleHtml":"Why Multi-Repo Fleets Drift","html":"<div class=\"cols\" style=\"grid-template-columns:1fr 1fr\"><div class=\"col\"><h3>Independent Crons Break<\/h3><p>Scattered schedules miss vendor doc changes and diverge silently.<\/p><\/div><div class=\"col\"><h3>Downstream Copy-Paste Stalls<\/h3><p>Merged upstream fixes leave portfolio bundles pinned to stale commits.<\/p><\/div><\/div>\n<ul class=\"stats\"><li class=\"stat\"><div class=\"stat-value\">6<\/div><div class=\"stat-label\">Tracked Fleet Repos<\/div><div class=\"stat-note\">5 upstreams + 1 portfolio<\/div><\/li><li class=\"stat\"><div class=\"stat-value\">1<\/div><div class=\"stat-label\">Declarative Manifest<\/div><div class=\"stat-note\"><code>sdlc.yaml<\/code> owns every edge<\/div><\/li><li class=\"stat\"><div class=\"stat-value\">0<\/div><div class=\"stat-label\">Webhook Servers<\/div><div class=\"stat-note\">100% GitHub Actions native<\/div><\/li><\/ul>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> Two columns of text, then three number tiles underneath.<\/p>\n<p class=\"say\">Picture four upstream repositories: a GitHub Enterprise administration workshop, a Copilot lab, a pipeline showcase and an intermediate GitHub template, plus this orchestrator repository itself. They span three different GitHub accounts and organizations.<\/p>\n<p class=\"say\">Suppose each one ran its own cron job against vendor docs. You&#39;d end up with four slightly different schedules, four sets of secrets, and four places for a failure to hide, and nobody would be watching the gaps between them. That&#39;s the left column.<\/p>\n<p class=\"say\">The right column is the downstream half. Somebody merges a fix upstream, and the site that embeds the compiled output never hears about it. It stays pinned to an old commit until someone happens to remember.<\/p>\n<p class=\"say\">The tiles underneath: six repositories, five of them feeding one, including this orchestrator repository itself. A single manifest, sdlc.yaml, describes every one of them and every dependency between them. The last tile is a zero because there are no webhook servers anywhere. Everything is a GitHub Actions workflow that the manifest generates.<\/p>\n<p class=\"say\">Changing a watch URL or adding a dependency is a pull request against one file. A reviewer reads the diff, the reconciler regenerates the workflows from it, and nobody edits a generated workflow by hand.<\/p>\n<p class=\"cue cue-ask\"><span class=\"cue-kind\" aria-hidden=\"true\">💬<\/span><span class=\"cue-label\">ASK<\/span> Show of hands. Who has a repository that is really a copy of another repository&#39;s output?<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> So what does that machinery look like? Five workstreams.<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>sdlc.yaml · specs/01-manifest-and-reconciler.md · README.md<\/li><\/ul><\/details>","words":200},{"id":"architecture","n":3,"day":1,"section":"Overview & Security","layout":"diagram","kicker":"","exempt":"","minutes":3,"title":"Five Workstreams, One Control Plane","titleHtml":"Five Workstreams, One Control Plane","html":"<figure class=\"diagram\" data-diagram=\"fleet-topology\"><svg viewBox=\"0 0 1560 540\" role=\"group\" aria-label=\"Fleet topology. S1 renders the workflows for S2, S3 and S4. Four upstream repositories feed S2 upstream drift, then S3 hybrid router, then S4 cascade, then the portfolio. S5 bootstraps the fleet and cascades this repository into the portfolio.\">\n<title>Five workstreams, one control plane<\/title>\n\n<g data-hl=\"s1\" role=\"img\" aria-label=\"S1 manifest and reconciler: sdlc.yaml and reconcile.mjs render every workflow and lockfile\">\n<rect class=\"d-box-accent\" x=\"340\" y=\"12\" width=\"880\" height=\"96\" rx=\"18\"/>\n<text class=\"d-text\" x=\"780\" y=\"54\" font-size=\"28\" text-anchor=\"middle\"><tspan class=\"d-label\" font-size=\"26\">S1:<\/tspan>  Manifest &amp; Reconciler<\/text>\n<text class=\"d-sub d-mono\" x=\"780\" y=\"90\" font-size=\"22\" text-anchor=\"middle\">sdlc.yaml → reconcile.mjs → workflows + lockfiles<\/text>\n<path class=\"d-line-accent\" d=\"M475 108V158\"/><path class=\"d-arrow-accent\" d=\"M475 170l-10-16h20z\"/>\n<path class=\"d-line-accent\" d=\"M780 108V158\"/><path class=\"d-arrow-accent\" d=\"M780 170l-10-16h20z\"/>\n<path class=\"d-line-accent\" d=\"M1085 108V158\"/><path class=\"d-arrow-accent\" d=\"M1085 170l-10-16h20z\"/>\n<\/g>\n\n<g data-hl=\"s2\" role=\"img\" aria-label=\"Four upstream repositories (gh-admin-msft, copilot-lab, pipeline-showcase, github-intermediate) feed S2 upstream drift, which audits watched docs and opens drift pull requests\">\n<rect class=\"d-box-dashed\" x=\"20\" y=\"132\" width=\"290\" height=\"296\" rx=\"18\"/>\n<text class=\"d-sub\" x=\"44\" y=\"166\" font-size=\"22\">4 upstream repos:<\/text>\n<rect class=\"d-box\" x=\"42\" y=\"186\" width=\"246\" height=\"48\" rx=\"12\"/><text class=\"d-small\" x=\"62\" y=\"218\" font-size=\"22\">gh-admin-msft<\/text>\n<rect class=\"d-box\" x=\"42\" y=\"246\" width=\"246\" height=\"48\" rx=\"12\"/><text class=\"d-small\" x=\"62\" y=\"278\" font-size=\"22\">copilot-lab<\/text>\n<rect class=\"d-box\" x=\"42\" y=\"306\" width=\"246\" height=\"48\" rx=\"12\"/><text class=\"d-small\" x=\"62\" y=\"338\" font-size=\"22\">pipeline-showcase<\/text>\n<rect class=\"d-box\" x=\"42\" y=\"366\" width=\"246\" height=\"48\" rx=\"12\"/><text class=\"d-small\" x=\"62\" y=\"398\" font-size=\"22\">github-intermediate<\/text>\n<path class=\"d-line\" d=\"M310 280H338\"/><path class=\"d-arrow\" d=\"M350 280l-14-9v18z\"/>\n<rect class=\"d-box\" x=\"350\" y=\"172\" width=\"250\" height=\"216\" rx=\"18\"/>\n<text class=\"d-label\" x=\"374\" y=\"214\" font-size=\"22\">S2:<\/text>\n<text class=\"d-text\" x=\"374\" y=\"254\" font-size=\"26\">Upstream Drift<\/text>\n<text class=\"d-sub\" x=\"374\" y=\"304\" font-size=\"22\">audit watched docs<\/text>\n<text class=\"d-sub\" x=\"374\" y=\"336\" font-size=\"22\">open drift PRs<\/text>\n<\/g>\n\n<g data-hl=\"s3\" role=\"img\" aria-label=\"S3 hybrid router: sdlc-bridge-dispatch plus a six hour ETag poll\">\n<path class=\"d-line\" d=\"M600 280H628\"/><path class=\"d-arrow\" d=\"M640 280l-14-9v18z\"/>\n<rect class=\"d-box\" x=\"640\" y=\"172\" width=\"280\" height=\"216\" rx=\"18\"/>\n<text class=\"d-label\" x=\"664\" y=\"214\" font-size=\"22\">S3:<\/text>\n<text class=\"d-text\" x=\"664\" y=\"254\" font-size=\"26\">Hybrid Router<\/text>\n<text class=\"d-sub\" x=\"664\" y=\"304\" font-size=\"22\">bridge dispatch<\/text>\n<text class=\"d-sub\" x=\"664\" y=\"336\" font-size=\"22\">+ 6 h ETag poll<\/text>\n<\/g>\n\n<g data-hl=\"s4\" role=\"img\" aria-label=\"S4 cascade, mechanical or AI adaptation, opens human-merged pull requests on johnhain-msft/portfolio\">\n<path class=\"d-line\" d=\"M920 280H948\"/><path class=\"d-arrow\" d=\"M960 280l-14-9v18z\"/>\n<rect class=\"d-box\" x=\"960\" y=\"172\" width=\"250\" height=\"216\" rx=\"18\"/>\n<text class=\"d-label\" x=\"984\" y=\"214\" font-size=\"22\">S4:<\/text>\n<text class=\"d-text\" x=\"984\" y=\"254\" font-size=\"26\">Cascade<\/text>\n<text class=\"d-sub\" x=\"984\" y=\"304\" font-size=\"22\">mechanical or<\/text>\n<text class=\"d-sub\" x=\"984\" y=\"336\" font-size=\"22\">AI adaptation<\/text>\n<path class=\"d-line-accent\" d=\"M1210 280H1238\"/><path class=\"d-arrow-accent\" d=\"M1250 280l-14-9v18z\"/>\n<rect class=\"d-box-accent\" x=\"1250\" y=\"172\" width=\"290\" height=\"216\" rx=\"18\"/>\n<text class=\"d-label\" x=\"1274\" y=\"214\" font-size=\"22\">Downstream:<\/text>\n<text class=\"d-text\" x=\"1274\" y=\"254\" font-size=\"26\">portfolio<\/text>\n<text class=\"d-sub\" x=\"1274\" y=\"304\" font-size=\"22\">johnhain-msft<\/text>\n<text class=\"d-sub\" x=\"1274\" y=\"336\" font-size=\"22\">human-merged PRs<\/text>\n<\/g>\n\n<g data-hl=\"s5\" role=\"img\" aria-label=\"S5 bootstrap and self-cascade: sdlc-bootstrap and sdlc-onboard set up the fleet, and mfg_msft_ai_sdlc cascades itself into the portfolio through the ai-sdlc edge\">\n<rect class=\"d-box-purple\" x=\"20\" y=\"448\" width=\"1520\" height=\"80\" rx=\"18\"/>\n<text class=\"d-text\" x=\"52\" y=\"498\" font-size=\"26\"><tspan class=\"d-label-purple\" font-size=\"24\">S5:<\/tspan>  Bootstrap &amp; Self-Cascade<\/text>\n<text class=\"d-sub\" x=\"580\" y=\"497\" font-size=\"22\">sdlc-bootstrap, sdlc-onboard, mfg_msft_ai_sdlc → portfolio<\/text>\n<path class=\"d-line-dashed\" d=\"M1395 448V402\"/><path class=\"d-arrow-purple\" d=\"M1395 388l-10 16h20z\"/>\n<text class=\"d-sub\" x=\"1378\" y=\"428\" font-size=\"22\" text-anchor=\"end\">ai-sdlc edge<\/text>\n<\/g>\n<\/svg><\/figure>\n<div class=\"callout callout-tip\"><div class=\"callout-title\"><svg class=\"callout-icon\" viewBox=\"0 0 28 28\" width=\"28\" height=\"28\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M9 17.5c-2.2-1.6-3.7-3.8-3.7-6.8a8.7 8.7 0 0 1 17.4 0c0 3-1.5 5.2-3.7 6.8V21H9z\"/><path d=\"M10.5 24.5h7\"/><\/svg><span>Zero-Infrastructure State<\/span><\/div><p>Actions variables (<code>SDLC_SYNC_STATE_*<\/code>) hold ETag and SHA watermarks, with no external database.<\/p><\/div>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> The topology diagram. Hover each node as you name it; the others dim.<\/p>\n<p class=\"say\">This is the whole system on one page. Read it top to bottom, then left to right.<\/p>\n<p class=\"cue cue-do\"><span class=\"cue-kind\" aria-hidden=\"true\">🎬<\/span><span class=\"cue-label\">DO<\/span> Hover the S1 band at the top.<\/p>\n<p class=\"say\">S1 is the manifest and its reconciler. You edit sdlc.yaml, and a script called reconcile.mjs validates it, renders every workflow file below, and compiles them into lockfiles. In effect it&#39;s the compiler for the rest of the fleet.<\/p>\n<p class=\"say\">Left to right is the life of a change.<\/p>\n<p class=\"cue cue-do\"><span class=\"cue-kind\" aria-hidden=\"true\">🎬<\/span><span class=\"cue-label\">DO<\/span> Hover S2.<\/p>\n<p class=\"say\">S2 watches the upstream repositories on the left that have a drift audit enabled. On a schedule it checks each one against the live documentation it depends on, and where it finds drift it opens a pull request on that same repository. A person reviews and merges.<\/p>\n<p class=\"cue cue-do\"><span class=\"cue-kind\" aria-hidden=\"true\">🎬<\/span><span class=\"cue-label\">DO<\/span> Hover S3.<\/p>\n<p class=\"say\">When one of those pull requests merges, S3 learns about it two ways. The upstream sends a push signal at the moment of the merge, and S3 also polls every six hours as a safety net, so a direct push or a dropped signal still gets caught.<\/p>\n<p class=\"cue cue-do\"><span class=\"cue-kind\" aria-hidden=\"true\">🎬<\/span><span class=\"cue-label\">DO<\/span> Hover S4.<\/p>\n<p class=\"say\">S4 is the cascade. It carries the new upstream revision into the portfolio, either by running an import script or with a bounded agent that adapts files. Either way it ends by opening a pull request on the portfolio, and a person merges that too.<\/p>\n<p class=\"cue cue-do\"><span class=\"cue-kind\" aria-hidden=\"true\">🎬<\/span><span class=\"cue-label\">DO<\/span> Hover S5.<\/p>\n<p class=\"say\">Along the bottom is S5: the commands that bootstrap the fleet and onboard new repositories. The purple dashed arrow is this repository cascading itself into the portfolio. We&#39;ll come back to it near the end.<\/p>\n<p class=\"say\">The callout covers where state lives: in repository Actions variables, one per upstream. Each holds a single small object with fourteen fields, including the last revision seen, the ETag, and a failure count. Every write goes through one script. There&#39;s no database, so there&#39;s nothing else to back up.<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> Everything on this diagram runs with credentials. What can it actually do?<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>plan.md · .github/workflows/cascade-router.yml · specs/03-event-routing-and-mechanical-cascade.md<\/li><\/ul><\/details>","words":287},{"id":"security-boundary","n":4,"day":1,"section":"Overview & Security","layout":"cards","kicker":"","exempt":"","minutes":3,"title":"Six Permissions, Zero Autonomous Merges","titleHtml":"Six Permissions, Zero Autonomous Merges","html":"<div class=\"cards\" data-count=\"3\"><div class=\"card\" data-i=\"1\"><svg class=\"card-icon\" viewBox=\"0 0 48 48\" width=\"48\" height=\"48\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"16\" cy=\"24\" r=\"9\"/><path d=\"M25 24h19M37 24v7M43 24v5\"/><circle cx=\"16\" cy=\"24\" r=\"2.5\" fill=\"currentColor\" stroke=\"none\"/><\/svg><h3>6-Permission App Ceiling<\/h3><p><code>mfg-msft-ai-sdlc<\/code> holds only contents, pull_requests, issues, actions, variables, and metadata.<\/p><\/div><div class=\"card\" data-i=\"2\"><svg class=\"card-icon\" viewBox=\"0 0 48 48\" width=\"48\" height=\"48\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><rect x=\"6\" y=\"9\" width=\"36\" height=\"30\" rx=\"6\" stroke-dasharray=\"5 4\"/><circle cx=\"24\" cy=\"24\" r=\"6\"/><circle cx=\"24\" cy=\"24\" r=\"1.8\" fill=\"currentColor\" stroke=\"none\"/><\/svg><h3>AWF Firewall Sandbox<\/h3><p>Agent turns run in <code>gh-aw<\/code> strict mode, with dependencies pre-installed and domains allowlisted.<\/p><\/div><div class=\"card\" data-i=\"3\"><svg class=\"card-icon\" viewBox=\"0 0 48 48\" width=\"48\" height=\"48\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><rect x=\"10\" y=\"21\" width=\"28\" height=\"21\" rx=\"4\"/><path d=\"M16 21v-6a8 8 0 0 1 16 0v6\"/><circle cx=\"24\" cy=\"31\" r=\"2.6\" fill=\"currentColor\" stroke=\"none\"/><\/svg><h3>Immutable Post‑Agent Gates<\/h3><p>Tests, builds, and zero-diff checks run outside the agent before <code>safe_outputs<\/code>.<\/p><\/div><\/div>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> Three cards, left to right: a key, a dashed box, a padlock.<\/p>\n<p class=\"say\">The security design has three layers, in the order the agent meets them. Each one is meant to hold if the one before it fails.<\/p>\n<p class=\"say\">First, identity. The orchestrator acts as a single GitHub App, and its permission list is short and fixed: write access to contents, pull requests, issues, actions and variables, plus read access to metadata. That list is one data file, bin/lib/app-permissions.json. The bootstrap code compares whatever the App actually holds against that file. If the App has an extra permission or a higher level than listed, such as the right to change workflows or administer repositories, the command aborts and tells you nothing was written.<\/p>\n<p class=\"say\">Second, the sandbox. The agent runs inside the GitHub Agentic Workflows Firewall, a container behind a network allowlist. For the drift audit that allowlist is two domains, docs.github.com and github.blog. For the mechanical cascade it&#39;s empty. The job also runs in gh-aw strict mode, and dependencies are installed before the agent starts, with install scripts switched off, so the agent never needs the network to run tests.<\/p>\n<p class=\"say\">Third, the gates. After the agent finishes, deterministic steps run outside the agent&#39;s prompt. For drift, those are the project&#39;s own test commands, in order, and the first non-zero exit fails the job. For the AI cascade, an immutable-gates script also checks that locked files show zero diff. Only if all of that passes does the safe-outputs job run. It&#39;s the only place a pull request is opened, and auto-merge is off.<\/p>\n<p class=\"say\">That&#39;s the title: six permissions, and a person is the last step every time.<\/p>\n<p class=\"cue cue-ask\"><span class=\"cue-kind\" aria-hidden=\"true\">💬<\/span><span class=\"cue-label\">ASK<\/span> Which of these three layers does your current automation have?<\/p>\n<p class=\"cue cue-pause\"><span class=\"cue-kind\" aria-hidden=\"true\">⏸<\/span><span class=\"cue-label\">PAUSE<\/span> Let the room answer in chat. Ten seconds.<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> With the boundary set, let me walk the workstreams one at a time, starting with the compiler.<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>bin/lib/app-permissions.json · bin/lib/github-app.mjs · .github/workflows/drift-gh-admin-msft.md · src/verify-immutable-gates.mjs · specs/02-upstream-drift-automation.md<\/li><\/ul><\/details>","words":262},{"id":"s1-reconciler","n":5,"day":1,"section":"Workstreams & Cascade","layout":"lab","kicker":"","exempt":"","minutes":2,"title":"S1 · Manifest & Deterministic Reconciler","titleHtml":"S1 · Manifest &amp; Deterministic Reconciler","html":"<div class=\"lab-tile\"><div class=\"lab-num\">S1<\/div><div class=\"lab-dur\">SPEC-01 · Reconciler<\/div><div class=\"lab-path\">specs/01-manifest-and-reconciler.md<\/div><\/div><div class=\"lab-main\">\n<dl class=\"kv\"><div class=\"kv-row\"><dt class=\"kv-k\">Schema Gate<\/dt><dd class=\"kv-v\">Validates <code>sdlc.yaml<\/code> against <code>schemas/sdlc.schema.json<\/code>, then cross-field semantic rules.<\/dd><\/div><div class=\"kv-row\"><dt class=\"kv-k\">Compiler Pipeline<\/dt><dd class=\"kv-v\">Renders <code>.md<\/code> workflows, then runs <code>gh aw compile --strict --purge<\/code>.<\/dd><\/div><div class=\"kv-row\"><dt class=\"kv-k\">Token &amp; Merge Guardrails<\/dt><dd class=\"kv-v\">Scopes each App token to its edge&#39;s repositories and rejects <code>auto-merge<\/code>.<\/dd><\/div><\/dl><\/div>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> The tile on the left, then the three rows on the right.<\/p>\n<p class=\"say\">The input to S1 is sdlc.yaml and the engine is reconcile.mjs. It&#39;s deterministic: the same manifest produces the same output, byte for byte, every time.<\/p>\n<p class=\"say\">Row one is the schema gate. First the file is checked against a JSON Schema. Then a second pass checks the rules a schema can&#39;t express: no dependency cycles, unique state variable names, reviewers and a non-empty list of allowed files on every edge, and a variable name that matches its upstream&#39;s slug.<\/p>\n<p class=\"say\">Row two is the compiler pipeline. It renders a markdown workflow for each project and each edge, then calls the gh-aw compiler in strict mode with purge, which writes the lockfiles and removes any stale ones.<\/p>\n<p class=\"say\">Row three covers token and merge guardrails on what it generates. Each workflow mints an App token, and the reconciler scopes that token to the repositories of that one edge. Then an audit of the rendered output rejects disallowed settings: auto-merge turned on, the option that lets a workflow push workflow files, and strict mode switched off.<\/p>\n<p class=\"cue cue-do\"><span class=\"cue-kind\" aria-hidden=\"true\">🎬<\/span><span class=\"cue-label\">DO<\/span> If you want to open the spec, click the path on the tile.<\/p>\n<p class=\"say\">That&#39;s why the other workstreams stay consistent. Nobody hand-edits a workflow, and if the rendered output violates policy, the build fails before anything is written.<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> S1 produces the workflows. Next, the first one it produces: the drift audit.<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>src/reconcile.mjs · schemas/sdlc.schema.json · specs/01-manifest-and-reconciler.md<\/li><\/ul><\/details>","words":196},{"id":"s2-drift-harness","n":6,"day":1,"section":"Workstreams & Cascade","layout":"diagram","kicker":"","exempt":"","minutes":3,"title":"S2 · Upstream Drift & Remote-Only Harness","titleHtml":"S2 · Upstream Drift &amp; Remote-Only Harness","html":"<figure class=\"diagram\" data-diagram=\"drift-pipeline\"><svg viewBox=\"0 0 1560 440\" role=\"group\" aria-label=\"S2 drift run execution boundary. Pre-agent steps run first: prepare-run, dedupe-open-prs, snapshot-watch-sources and npm ci with ignore-scripts. Then the agent runs inside the AWF firewall sandbox through the three-agent harness: source-verifier, curriculum-updater, regression-tester. Then immutable post-steps run: npm test, the deck test and a clean-tree check, and the first failure stops the run. Last, safe_outputs creates one pull request with auto-merge false and protected files blocked.\">\n<title>S2 drift run: the execution boundary<\/title>\n\n<g data-hl=\"pre\" role=\"img\" aria-label=\"Before the agent: four deterministic pre-agent steps\">\n<text class=\"d-label\" x=\"16\" y=\"38\" font-size=\"22\">Before the agent<\/text>\n<rect class=\"d-box\" x=\"16\" y=\"62\" width=\"392\" height=\"310\" rx=\"18\"/>\n<text class=\"d-text\" x=\"40\" y=\"110\" font-size=\"26\">Pre-Agent Steps<\/text>\n<text class=\"d-small d-mono\" x=\"40\" y=\"164\" font-size=\"22\">prepare-run.mjs<\/text>\n<text class=\"d-small d-mono\" x=\"40\" y=\"208\" font-size=\"22\">dedupe-open-prs.mjs<\/text>\n<text class=\"d-small d-mono\" x=\"40\" y=\"252\" font-size=\"22\">snapshot-watch-sources.mjs<\/text>\n<text class=\"d-small d-mono\" x=\"40\" y=\"296\" font-size=\"22\">npm ci --ignore-scripts<\/text>\n<text class=\"d-sub\" x=\"40\" y=\"412\" font-size=\"22\">Deterministic scripts<\/text>\n<\/g>\n\n<g data-hl=\"agent\" role=\"img\" aria-label=\"The agent: the dot-github-sdlc three-agent harness inside the AWF firewall sandbox, with read-only job permissions\">\n<path class=\"d-line\" d=\"M408 217H424\"/><path class=\"d-arrow\" d=\"M436 217l-12-9v18z\"/>\n<text class=\"d-label-purple\" x=\"436\" y=\"38\" font-size=\"22\">The agent<\/text>\n<rect class=\"d-box-purple d-dashed\" x=\"436\" y=\"62\" width=\"330\" height=\"310\" rx=\"18\"/>\n<text class=\"d-text\" x=\"460\" y=\"110\" font-size=\"26\">AWF Firewall Sandbox<\/text>\n<text class=\"d-sub d-mono\" x=\"460\" y=\"148\" font-size=\"22\">.github/sdlc/<\/text>\n<rect class=\"d-box\" x=\"453\" y=\"168\" width=\"296\" height=\"52\" rx=\"12\"/><circle class=\"d-box-accent\" cx=\"479\" cy=\"194\" r=\"17\"/><text class=\"d-text\" x=\"479\" y=\"202\" font-size=\"22\" text-anchor=\"middle\">1<\/text><text class=\"d-small d-mono\" x=\"505\" y=\"202\" font-size=\"22\">source-verifier<\/text>\n<rect class=\"d-box\" x=\"453\" y=\"232\" width=\"296\" height=\"52\" rx=\"12\"/><circle class=\"d-box-accent\" cx=\"479\" cy=\"258\" r=\"17\"/><text class=\"d-text\" x=\"479\" y=\"266\" font-size=\"22\" text-anchor=\"middle\">2<\/text><text class=\"d-small d-mono\" x=\"505\" y=\"266\" font-size=\"22\">curriculum-updater<\/text>\n<rect class=\"d-box\" x=\"453\" y=\"296\" width=\"296\" height=\"52\" rx=\"12\"/><circle class=\"d-box-accent\" cx=\"479\" cy=\"322\" r=\"17\"/><text class=\"d-text\" x=\"479\" y=\"330\" font-size=\"22\" text-anchor=\"middle\">3<\/text><text class=\"d-small d-mono\" x=\"505\" y=\"330\" font-size=\"22\">regression-tester<\/text>\n<text class=\"d-sub\" x=\"460\" y=\"412\" font-size=\"22\">Read-only job permissions<\/text>\n<\/g>\n\n<g data-hl=\"post\" role=\"img\" aria-label=\"After the agent: seven project verifyCommands in sdlc.yaml order, the first failure stops the run\">\n<path class=\"d-line\" d=\"M766 217H782\"/><path class=\"d-arrow\" d=\"M794 217l-12-9v18z\"/>\n<text class=\"d-label\" x=\"794\" y=\"38\" font-size=\"22\">After the agent<\/text>\n<rect class=\"d-box\" x=\"794\" y=\"62\" width=\"340\" height=\"310\" rx=\"18\"/>\n<text class=\"d-text\" x=\"818\" y=\"110\" font-size=\"26\">Immutable Post-Steps<\/text>\n<text class=\"d-sub\" x=\"818\" y=\"150\" font-size=\"22\">7 project verifyCommands:<\/text>\n<text class=\"d-small d-mono\" x=\"818\" y=\"204\" font-size=\"22\">npm ci · build.mjs<\/text>\n<text class=\"d-small d-mono\" x=\"818\" y=\"248\" font-size=\"22\">git status --porcelain<\/text>\n<text class=\"d-small d-mono\" x=\"818\" y=\"292\" font-size=\"22\">unit · freshness · deck<\/text>\n<text class=\"d-sub\" x=\"818\" y=\"412\" font-size=\"22\">First failure stops the run<\/text>\n<\/g>\n\n<g data-hl=\"out\" role=\"img\" aria-label=\"The only writer: safe_outputs creates one pull request, auto-merge false, protected files blocked\">\n<path class=\"d-line-accent\" d=\"M1134 217H1150\"/><path class=\"d-arrow-accent\" d=\"M1162 217l-12-9v18z\"/>\n<text class=\"d-label\" x=\"1162\" y=\"38\" font-size=\"22\">The only writer<\/text>\n<rect class=\"d-box-accent\" x=\"1162\" y=\"62\" width=\"380\" height=\"310\" rx=\"18\"/>\n<text class=\"d-text\" x=\"1186\" y=\"110\" font-size=\"26\">safe_outputs<\/text>\n<text class=\"d-small d-mono\" x=\"1186\" y=\"164\" font-size=\"22\">create-pull-request<\/text>\n<text class=\"d-small d-mono\" x=\"1186\" y=\"208\" font-size=\"22\">auto-merge: false<\/text>\n<text class=\"d-small d-mono\" x=\"1186\" y=\"252\" font-size=\"22\">protected-files: blocked<\/text>\n<text class=\"d-sub\" x=\"1186\" y=\"412\" font-size=\"22\">Opens one PR, never merges<\/text>\n<\/g>\n<\/svg><\/figure>\n<dl class=\"kv\"><div class=\"kv-row\"><dt class=\"kv-k\">Why a separate folder?<\/dt><dd class=\"kv-v\">Local sessions load <code>.github/agents/<\/code>, never <code>.github/sdlc/<\/code>; only remote runs read it.<\/dd><\/div><div class=\"kv-row\"><dt class=\"kv-k\">Three Specialist Roles<\/dt><dd class=\"kv-v\"><code>source-verifier<\/code> corroborates changes, <code>curriculum-updater<\/code> edits labs and decks, <code>regression-tester<\/code> runs validators.<\/dd><\/div><\/dl>\n<p class=\"spec-ref\"><a href=\"specs/02-upstream-drift-automation.md\" target=\"_blank\" rel=\"noopener\">specs/02-upstream-drift-automation.md<\/a><\/p>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> The pipeline diagram, left to right. Hover each stage as you reach it.<\/p>\n<p class=\"say\">S2 audits an upstream repository against the live documentation it depends on. It has four stages, left to right.<\/p>\n<p class=\"cue cue-do\"><span class=\"cue-kind\" aria-hidden=\"true\">🎬<\/span><span class=\"cue-label\">DO<\/span> Hover the first box.<\/p>\n<p class=\"say\">Before any model runs, deterministic scripts prepare the run. One writes the run context. One looks for open drift pull requests, so the run doesn&#39;t open a duplicate. One snapshots the watched sources, which for the administration repository means seven addresses: the changelog, the enterprise changelog, and five documentation sections. The last installs the target repository&#39;s dependencies with install scripts disabled.<\/p>\n<p class=\"cue cue-do\"><span class=\"cue-kind\" aria-hidden=\"true\">🎬<\/span><span class=\"cue-label\">DO<\/span> Hover the dashed box.<\/p>\n<p class=\"say\">Then the model runs, inside the firewall sandbox, with read-only permissions on the repository. It runs a three-role harness, and the roles go in strict order. A source verifier checks each candidate change against primary documentation. A curriculum updater edits the labs, docs, deck and script together. A regression tester steps through every modified exercise and runs the validators.<\/p>\n<p class=\"say\">The first row underneath is about the folder. The harness lives in a folder called sdlc, not the usual agents folder, because Copilot CLI and VS Code load the agents folder automatically. Put the harness there and every developer who opened the repository locally would silently inherit a drift-bot persona. One level over, nothing loads it by accident, and only the remote workflow reads it.<\/p>\n<p class=\"cue cue-do\"><span class=\"cue-kind\" aria-hidden=\"true\">🎬<\/span><span class=\"cue-label\">DO<\/span> Hover the third box.<\/p>\n<p class=\"say\">After the agent come the project&#39;s seven verification commands from sdlc.yaml, in order, outside the agent&#39;s control: a clean dependency install, rebuilding the deck, a clean-tree check, unit tests, freshness rules, the deck validator, and the remaining test suites. The first failure ends the job.<\/p>\n<p class=\"cue cue-do\"><span class=\"cue-kind\" aria-hidden=\"true\">🎬<\/span><span class=\"cue-label\">DO<\/span> Hover the last box.<\/p>\n<p class=\"say\">If everything passes, and only then, safe outputs opens one pull request. Auto-merge is off, edits to protected files are blocked, and an older drift pull request for the same project is closed in favor of the new one.<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> The audit opens a pull request upstream. When a person merges it, how does the portfolio find out?<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>.github/workflows/drift-gh-admin-msft.md · src/snapshot-watch-sources.mjs · specs/02-upstream-drift-automation.md · https://github.com/johnhain-msft/gh-admin-msft/blob/main/.github/sdlc/AGENTS.md<\/li><\/ul><\/details>","words":288},{"id":"s3-event-router","n":7,"day":1,"section":"Workstreams & Cascade","layout":"timeline","kicker":"","exempt":"","minutes":3,"title":"S3 · Hybrid Push + ETag Event Router","titleHtml":"S3 · Hybrid Push + ETag Event Router","html":"<ol class=\"timeline\"><li class=\"tl-row tl-push\"><div class=\"tl-date\">Push<\/div><div class=\"tl-text\"><code>sdlc-bridge-dispatch.yml<\/code> posts <code>upstream_pr_merged<\/code> on every merge.<\/div><\/li><li class=\"tl-row tl-check\"><div class=\"tl-date\">Check<\/div><div class=\"tl-text\"><code>route-upstream.mjs<\/code> sends <code>If-None-Match<\/code> and compares recorded state.<\/div><\/li><li class=\"tl-row tl-dispatch\"><div class=\"tl-date\">Dispatch<\/div><div class=\"tl-text\">Router starts <code>cascade-mechanical-*<\/code> or <code>cascade-ai-*<\/code> with a correlation id.<\/div><\/li><li class=\"tl-row tl-poll\"><div class=\"tl-date\">Every 6 h<\/div><div class=\"tl-text\">Scheduled poll catches direct pushes; <code>304<\/code> answers cost no primary rate limit.<\/div><\/li><\/ol>\n<p class=\"spec-ref\"><a href=\"specs/03-event-routing-and-mechanical-cascade.md\" target=\"_blank\" rel=\"noopener\">specs/03-event-routing-and-mechanical-cascade.md<\/a><\/p>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> Four numbered rows. The last one has a dashed border and a circular arrow. That is the safety net.<\/p>\n<p class=\"say\">I&#39;ll trace one merge through S3. Rows one to three are the fast path, and row four is the safety net.<\/p>\n<p class=\"say\">Row one is the push. The upstream repository carries a small workflow called the merge bridge. When a pull request merges to the main branch, it mints a short-lived token for the App, or uses a stored dispatch token, and sends a repository dispatch to the orchestrator. The event is named upstream underscore pr underscore merged, and its payload has six fields, including the merged commit, the pull request number and a correlation id.<\/p>\n<p class=\"say\">Row two is the check. The router wakes up and reads that edge&#39;s state variable. Then it asks GitHub for the upstream&#39;s latest commit, sending the stored ETag in an If-None-Match header. If nothing changed, GitHub answers 304, and a 304 doesn&#39;t count against the primary rate limit. If something changed, the router compares the new head with the recorded state and runs the edge&#39;s cheap preflight checks, so a commit that changes nothing material, like a refreshed timestamp, doesn&#39;t start a cascade.<\/p>\n<p class=\"say\">Row three is the dispatch. Otherwise the router starts the cascade workflow for that edge and passes the correlation id along, so the dispatch, the run and any failure issue share one id you can search for.<\/p>\n<p class=\"say\">Row four is the safety net. Every six hours the same router runs on a schedule. If a developer pushes straight to main, or the bridge isn&#39;t installed, or a dispatch gets dropped, the poll still sees the new head. That&#39;s the hybrid: the push is fast, and the poll catches whatever the push misses.<\/p>\n<p class=\"say\">The router has two safeguards. Runs are serialized per edge, in a concurrency group that never cancels a run in progress, so two runs can&#39;t corrupt the state. And if a revision fails twice, the router stops and waits for a person instead of retrying forever.<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> The router has decided a cascade is needed. Now, which kind?<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>src/route-upstream.mjs · src/update-poll-state.mjs · .github/workflows/cascade-router.yml · specs/03-event-routing-and-mechanical-cascade.md · https://github.com/johnhain-msft/gh-admin-msft/blob/main/.github/workflows/sdlc-bridge-dispatch.yml<\/li><\/ul><\/details>","words":316},{"id":"s4-cascade-modes","n":8,"day":1,"section":"Workstreams & Cascade","layout":"decision","kicker":"","exempt":"","minutes":3,"title":"S4 · Mechanical vs AI-Adaptation Cascade","titleHtml":"S4 · Mechanical vs AI-Adaptation Cascade","html":"<figure class=\"diagram\" data-diagram=\"cascade-decision\"><div class=\"decision\" data-decision>\n  <div class=\"decision-panel\" aria-live=\"polite\">\n    <div class=\"decision-steps\" aria-hidden=\"true\"><span class=\"dstep-dot is-on\"><\/span><span class=\"dstep-dot\"><\/span><\/div>\n    <h3 class=\"decision-q\" data-dq>Does a deterministic import script rebuild this edge's bundle?<\/h3>\n    <div class=\"decision-actions\" data-dactions><button type=\"button\" class=\"btn\">Yes<\/button><button type=\"button\" class=\"btn\">No<\/button><\/div>\n  <\/div>\n  <div class=\"decision-outcomes\">\n    <div class=\"outcome outcome-mechanical\" data-outcome=\"mechanical\">\n      <h3>Mechanical<\/h3>\n      <p>Runs the import script, then the 7-leg portfolio gate.<\/p>\n    <\/div>\n    <div class=\"outcome outcome-ai\" data-outcome=\"ai\">\n      <h3>AI-Adaptation<\/h3>\n      <p>Agent edits only allowedFiles, then immutable gates verify.<\/p>\n    <\/div>\n  <\/div>\n  <script type=\"application/json\">{\n    \"start\": { \"q\": \"Does a deterministic import script rebuild this edge's bundle?\", \"yes\": \"mechanical\", \"no\": \"q2\", \"step\": 1 },\n    \"q2\": { \"q\": \"Does the upstream change need cross-file prose or component edits?\", \"yes\": \"ai\", \"no\": \"none\", \"step\": 2 },\n    \"mechanical\": { \"result\": \"mechanical\", \"say\": \"Mechanical: one import script rebuilds the bundle.\", \"step\": 1 },\n    \"ai\": { \"result\": \"ai\", \"say\": \"AI-Adaptation: an agent must edit across files.\", \"step\": 2 },\n    \"none\": { \"result\": \"none\", \"say\": \"No edge needed: nothing to cascade.\", \"step\": 2 }\n  }<\/script>\n<\/div><\/figure>\n<p class=\"spec-ref\"><a href=\"specs/04-ai-downstream-adaptation.md\" target=\"_blank\" rel=\"noopener\">specs/04-ai-downstream-adaptation.md<\/a><\/p>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> The question card on the left and two outcome cards on the right.<\/p>\n<p class=\"say\">Every edge in sdlc.yaml has a mode, and the mode sets how much freedom the agent gets. I&#39;ll walk the tree on screen.<\/p>\n<p class=\"cue cue-click\"><span class=\"cue-kind\" aria-hidden=\"true\">👉<\/span><span class=\"cue-label\">CLICK<\/span> Answer Yes to the first question.<\/p>\n<p class=\"say\">The first question asks whether a deterministic import script rebuilds this edge&#39;s bundle. If yes, the edge is mechanical. When you run sdlc-onboard with mode set to auto, it picks mechanical automatically if the downstream repository has a single import-colon-star script; on our portfolio repository, which hosts multiple import scripts, we pass dash-dash-mode mechanical explicitly so each edge runs its own import script, commits what changed under a fixed allow-list, and opens a pull request. For the administration workshop going into the portfolio, that script is npm run import:ghec-admin.<\/p>\n<p class=\"say\">Mechanical still involves an agent: gh-aw runs one agent turn. The prompt tells it to do three things, in order, and nothing else, and its network allowlist is empty. It&#39;s mechanical because the agent exercises no judgment, and the pull request footer shows what that turn cost. The decision belongs to the gate: a clean worktree, only allowed paths touched, the provenance file recording the new revision, and a seven-leg portfolio check. The legs are build, catalog build, typecheck, lint, tests, studio tests and a browser suite.<\/p>\n<p class=\"cue cue-click\"><span class=\"cue-kind\" aria-hidden=\"true\">👉<\/span><span class=\"cue-label\">CLICK<\/span> Press Start over. Answer No, then Yes.<\/p>\n<p class=\"say\">With no single import script, the answer is usually AI-adaptation, because the upstream change needs editing across files: workshop pages, lab pages, and tests that pin a revision. The agent may edit only the files on that edge&#39;s allowed list. Afterward the immutable-gates script checks that locked files show zero diff and that protected blocks in the companion tests are byte for byte identical.<\/p>\n<p class=\"say\">The Copilot lab, the pipeline showcase and the intermediate template are AI-adaptation edges. The administration workshop and this orchestrator repository are mechanical.<\/p>\n<p class=\"cue cue-click\"><span class=\"cue-kind\" aria-hidden=\"true\">👉<\/span><span class=\"cue-label\">CLICK<\/span> Press Start over. Answer No, then No.<\/p>\n<p class=\"say\">The third result: two noes, and you probably don&#39;t need an edge at all, because there&#39;s nothing to cascade.<\/p>\n<p class=\"cue cue-ask\"><span class=\"cue-kind\" aria-hidden=\"true\">💬<\/span><span class=\"cue-label\">ASK<\/span> Think of one repository in your own organization. Which mode would it be? Say it in chat.<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> Now the same pipeline, running in production.<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>bin/lib/synthesize.mjs · .github/workflows/cascade-mechanical-ghec-admin.md · .github/workflows/cascade-ai-pipeline-showcase.md · src/verify-immutable-gates.mjs · specs/04-ai-downstream-adaptation.md<\/li><\/ul><\/details>","words":304},{"id":"live-pilot","n":9,"day":1,"section":"Pilot & Onboarding","layout":"media","kicker":"","exempt":"","minutes":4,"title":"Live Production Run: gh-admin-msft → portfolio","titleHtml":"Live Production Run: <code>gh-admin-msft<\/code> → <code>portfolio<\/code>","html":"<ol class=\"ledger\"><li class=\"ledger-row is-active\" data-pilot-step=\"0\" tabindex=\"0\" role=\"button\"><div class=\"ledger-k\">Dry run<\/div><div class=\"ledger-v\">#42525239087<\/div><\/li><li class=\"ledger-row\" data-pilot-step=\"1\" tabindex=\"0\" role=\"button\"><div class=\"ledger-k\">Live drift<\/div><div class=\"ledger-v\">#42531290378<\/div><\/li><li class=\"ledger-row\" data-pilot-step=\"2\" tabindex=\"0\" role=\"button\"><div class=\"ledger-k\">Drift PR<\/div><div class=\"ledger-v\">gh-admin-msft#19<\/div><\/li><li class=\"ledger-row\" data-pilot-step=\"3\" tabindex=\"0\" role=\"button\"><div class=\"ledger-k\">Router<\/div><div class=\"ledger-v\">#42532934615<\/div><\/li><li class=\"ledger-row\" data-pilot-step=\"4\" tabindex=\"0\" role=\"button\"><div class=\"ledger-k\">Cascade<\/div><div class=\"ledger-v\">#42532946999<\/div><\/li><li class=\"ledger-row\" data-pilot-step=\"5\" tabindex=\"0\" role=\"button\"><div class=\"ledger-k\">Cascade PR<\/div><div class=\"ledger-v\">portfolio#1<\/div><\/li><\/ol>\n<figure class=\"diagram\" data-diagram=\"live-pipeline-demo\"><svg viewBox=\"0 0 1120 620\" data-pilot role=\"group\" aria-label=\"Interactive six-step production telemetry walkthrough from gh-admin-msft to portfolio\">\n  <title>Production Telemetry Walkthrough: gh-admin-msft to portfolio<\/title>\n  <rect class=\"d-box\" x=\"4\" y=\"4\" width=\"1112\" height=\"612\" rx=\"20\"/>\n  <rect class=\"d-box-accent\" x=\"28\" y=\"24\" width=\"1064\" height=\"66\" rx=\"12\"/>\n\n  <g data-pilot-panel=\"0\">\n    <text class=\"d-label\" x=\"52\" y=\"65\" font-size=\"24\">STEP 1 OF 6: DRY-RUN GATE<\/text>\n    <text class=\"d-text\" x=\"1064\" y=\"65\" font-size=\"24\" text-anchor=\"end\">RUN #42525239087: 0 WRITES<\/text>\n    <rect class=\"d-box\" x=\"28\" y=\"110\" width=\"510\" height=\"404\" rx=\"14\"/>\n    <text class=\"d-text\" x=\"54\" y=\"158\" font-size=\"26\">Job Graph (dry_run: true)<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"214\" font-size=\"22\">✓ activation: lockfile verified<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"262\" font-size=\"22\">✓ agent: 7 URLs, 7 gates green<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"310\" font-size=\"22\">✓ detection: AWF scan passed<\/text>\n    <text class=\"d-sub d-mono\" x=\"54\" y=\"358\" font-size=\"22\">⊘ safe_outputs: skipped<\/text>\n    <text class=\"d-sub d-mono\" x=\"54\" y=\"406\" font-size=\"22\">⊘ conclusion: 0 branches/PRs<\/text>\n    <rect class=\"d-box\" x=\"562\" y=\"110\" width=\"530\" height=\"404\" rx=\"14\"/>\n    <text class=\"d-text\" x=\"588\" y=\"158\" font-size=\"26\">Watched Snapshot: 7/7 HTTP 200<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"214\" font-size=\"22\">sources/manifest-json:<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"262\" font-size=\"22\">• changelog + enterprise: 200<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"310\" font-size=\"22\">• admin + billing: 200<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"358\" font-size=\"22\">• copilot + actions: 200<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"406\" font-size=\"22\">• code-security: 200<\/text>\n    <text class=\"d-sub\" x=\"588\" y=\"464\" font-size=\"22\">Mode: rehearsal before live write;<\/text>\n  <\/g>\n\n  <g data-pilot-panel=\"1\" hidden>\n    <text class=\"d-label\" x=\"52\" y=\"65\" font-size=\"24\">STEP 2 OF 6: LIVE DRIFT RUN<\/text>\n    <text class=\"d-text\" x=\"1064\" y=\"65\" font-size=\"24\" text-anchor=\"end\">RUN #42531290378: PR #19<\/text>\n    <rect class=\"d-box\" x=\"28\" y=\"110\" width=\"510\" height=\"404\" rx=\"14\"/>\n    <text class=\"d-text\" x=\"54\" y=\"158\" font-size=\"26\">In-Sandbox Agent: 3 Roles<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"214\" font-size=\"22\">pre-agent: npm ci --ignore-scripts<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"262\" font-size=\"22\">1: ghec-source-verifier<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"310\" font-size=\"22\">2: ghec-curriculum-updater<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"358\" font-size=\"22\">3: ghec-regression-tester<\/text>\n    <text class=\"d-sub\" x=\"54\" y=\"454\" font-size=\"22\">Sandbox: GitHub Agentic Workflows Firewall;<\/text>\n    <rect class=\"d-box\" x=\"562\" y=\"110\" width=\"530\" height=\"404\" rx=\"14\"/>\n    <text class=\"d-text\" x=\"588\" y=\"158\" font-size=\"26\">Post-Steps: 7 Verification Gates<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"214\" font-size=\"22\">✓ 99/99: unit tests passed<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"262\" font-size=\"22\">✓ 60/60: freshness (0 warnings)<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"310\" font-size=\"22\">✓ 7/7: deck checks passed<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"358\" font-size=\"22\">✓ 11/11: validator suites run<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"406\" font-size=\"22\">✓ clean: git status --porcelain<\/text>\n    <text class=\"d-sub\" x=\"588\" y=\"464\" font-size=\"22\">Output: opened #19, superseded #16;<\/text>\n  <\/g>\n\n  <g data-pilot-panel=\"2\" hidden>\n    <text class=\"d-label\" x=\"52\" y=\"65\" font-size=\"24\">STEP 3 OF 6: UPSTREAM DRIFT PR<\/text>\n    <text class=\"d-text\" x=\"1064\" y=\"65\" font-size=\"24\" text-anchor=\"end\">gh-admin-msft#19: MERGED<\/text>\n    <rect class=\"d-box\" x=\"28\" y=\"110\" width=\"1064\" height=\"404\" rx=\"14\"/>\n    <text class=\"d-text\" x=\"56\" y=\"158\" font-size=\"26\">chore(sdlc-drift): align GHAS licensing heading<\/text>\n    <text class=\"d-small d-mono\" x=\"56\" y=\"214\" font-size=\"22\">File: docs/19-licenses-billing-md (1 line)<\/text>\n    <text class=\"d-sub d-mono\" x=\"56\" y=\"264\" font-size=\"22\">Before: ### GitHub Advanced Security<\/text>\n    <text class=\"d-small d-mono\" x=\"56\" y=\"310\" font-size=\"22\">After: ### GitHub Advanced Security (Secret Protection &amp; Code Security)<\/text>\n    <text class=\"d-text\" x=\"56\" y=\"374\" font-size=\"24\">PR Body: Telemetry &amp; Scope Honesty<\/text>\n    <text class=\"d-small\" x=\"56\" y=\"422\" font-size=\"22\">• Validation: 99/99 unit, 60/60 freshness, 11/11 suites;<\/text>\n    <text class=\"d-small\" x=\"56\" y=\"466\" font-size=\"22\">• Not confirmed: logged snapshot boundary; merged: 495695012d56;<\/text>\n  <\/g>\n\n  <g data-pilot-panel=\"3\" hidden>\n    <text class=\"d-label\" x=\"52\" y=\"65\" font-size=\"24\">STEP 4 OF 6: CENTRAL ROUTER<\/text>\n    <text class=\"d-text\" x=\"1064\" y=\"65\" font-size=\"24\" text-anchor=\"end\">RUN #42532934615: DISPATCHED<\/text>\n    <rect class=\"d-box\" x=\"28\" y=\"110\" width=\"510\" height=\"404\" rx=\"14\"/>\n    <text class=\"d-text\" x=\"54\" y=\"158\" font-size=\"26\">ETag Poll: Provenance Compare<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"214\" font-size=\"22\">Var: SDLC_SYNC_STATE_GH_ADMIN_MSFT<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"262\" font-size=\"22\">prev SHA: a2f9a3bbbb60<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"310\" font-size=\"22\">head SHA: 495695012d56 (HTTP 200)<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"358\" font-size=\"22\">public/ghec-admin/source-json:<\/text>\n    <text class=\"d-sub d-mono\" x=\"54\" y=\"406\" font-size=\"22\">commit: a2f9a3bbbb60 (stale);<\/text>\n    <rect class=\"d-box\" x=\"562\" y=\"110\" width=\"530\" height=\"404\" rx=\"14\"/>\n    <text class=\"d-text\" x=\"588\" y=\"158\" font-size=\"26\">Matrix: Per-Edge Isolation<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"214\" font-size=\"22\">✓ route gh-admin-msft: dispatched<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"262\" font-size=\"22\">✓ route copilot-lab: noop<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"310\" font-size=\"22\">✓ route github-intermediate: noop<\/text>\n    <text class=\"d-sub d-mono\" x=\"588\" y=\"358\" font-size=\"22\">✕ route pipeline-showcase: isolated<\/text>\n    <text class=\"d-sub\" x=\"588\" y=\"446\" font-size=\"22\">fail-fast: false let gh-admin-msft<\/text>\n    <text class=\"d-sub\" x=\"588\" y=\"480\" font-size=\"22\">dispatch: cascade-mechanical-ghec-admin;<\/text>\n  <\/g>\n\n  <g data-pilot-panel=\"4\" hidden>\n    <text class=\"d-label\" x=\"52\" y=\"65\" font-size=\"24\">STEP 5 OF 6: MECHANICAL CASCADE<\/text>\n    <text class=\"d-text\" x=\"1064\" y=\"65\" font-size=\"24\" text-anchor=\"end\">RUN #42532946999: 7/7 GREEN<\/text>\n    <rect class=\"d-box\" x=\"28\" y=\"110\" width=\"510\" height=\"404\" rx=\"14\"/>\n    <text class=\"d-text\" x=\"54\" y=\"158\" font-size=\"26\">Import: Deterministic Snapshot<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"214\" font-size=\"22\">cmd: npm run import:ghec-admin<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"262\" font-size=\"22\">• 61: markdown docs sanitized<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"310\" font-size=\"22\">• 9: lab tiles linked to reader<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"358\" font-size=\"22\">• CSP: externalized css + js<\/text>\n    <text class=\"d-small d-mono\" x=\"54\" y=\"406\" font-size=\"22\">• source-json: 495695012d56;<\/text>\n    <rect class=\"d-box\" x=\"562\" y=\"110\" width=\"530\" height=\"404\" rx=\"14\"/>\n    <text class=\"d-text\" x=\"588\" y=\"158\" font-size=\"26\">Gate: 7-Leg Portfolio Check<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"214\" font-size=\"22\">✓ build: npm run build &amp; catalog<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"258\" font-size=\"22\">✓ static: typecheck &amp; lint<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"302\" font-size=\"22\">✓ unit: test &amp; test:studio<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"346\" font-size=\"22\">✓ browser: playwright sites-spec<\/text>\n    <text class=\"d-small d-mono\" x=\"588\" y=\"390\" font-size=\"22\">✓ state: finalize_poll_state<\/text>\n    <text class=\"d-sub\" x=\"588\" y=\"454\" font-size=\"22\">max-patch-size: 10240 KB carried HTML;<\/text>\n  <\/g>\n\n  <g data-pilot-panel=\"5\" hidden>\n    <text class=\"d-label\" x=\"52\" y=\"65\" font-size=\"24\">STEP 6 OF 6: DOWNSTREAM PR<\/text>\n    <text class=\"d-text\" x=\"1064\" y=\"65\" font-size=\"24\" text-anchor=\"end\">portfolio#1: MERGED<\/text>\n    <rect class=\"d-box\" x=\"28\" y=\"110\" width=\"1064\" height=\"404\" rx=\"14\"/>\n    <text class=\"d-text\" x=\"56\" y=\"158\" font-size=\"26\">chore(cascade): import gh-admin-msft 495695012d56<\/text>\n    <text class=\"d-small d-mono\" x=\"56\" y=\"214\" font-size=\"22\">Branch: sdlc/cascade-ghec-admin -&gt; main (auto-merge: false)<\/text>\n    <text class=\"d-small d-mono\" x=\"56\" y=\"264\" font-size=\"22\">• public/ghec-admin/source-json: commit 495695012d56<\/text>\n    <text class=\"d-small d-mono\" x=\"56\" y=\"310\" font-size=\"22\">• public/ghec-admin/labs/index-html: LF SHA-256 digest<\/text>\n    <text class=\"d-small d-mono\" x=\"56\" y=\"356\" font-size=\"22\">• public/ghec-admin/workshop/index-html: Teaching SPA<\/text>\n    <text class=\"d-text\" x=\"56\" y=\"418\" font-size=\"24\">Outcome: End-to-End Loop Closed<\/text>\n    <text class=\"d-small\" x=\"56\" y=\"464\" font-size=\"22\">SDLC_SYNC_STATE_GH_ADMIN_MSFT: recorded openPrNumber 1; merged;<\/text>\n  <\/g>\n\n  <g data-pilot-prev role=\"button\" tabindex=\"0\" aria-label=\"Previous step\" style=\"cursor:pointer\">\n    <rect class=\"d-box\" x=\"340\" y=\"536\" width=\"140\" height=\"54\" rx=\"27\"/>\n    <text class=\"d-text\" x=\"410\" y=\"571\" font-size=\"22\" text-anchor=\"middle\">‹ Prev<\/text>\n  <\/g>\n  <text class=\"d-mono d-sub\" data-pilot-status x=\"560\" y=\"571\" font-size=\"22\" text-anchor=\"middle\">1 / 6<\/text>\n  <g data-pilot-next role=\"button\" tabindex=\"0\" aria-label=\"Next step\" style=\"cursor:pointer\">\n    <rect class=\"d-box\" x=\"640\" y=\"536\" width=\"140\" height=\"54\" rx=\"27\"/>\n    <text class=\"d-text\" x=\"710\" y=\"571\" font-size=\"22\" text-anchor=\"middle\">Next ›<\/text>\n  <\/g>\n<\/svg><\/figure>\n<p class=\"spec-ref\"><a href=\"docs/media/gh-admin-sdlc-pipeline-demo.svg\" target=\"_blank\" rel=\"noopener\">docs/media/gh-admin-sdlc-pipeline-demo.svg<\/a><\/p>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> The ledger of six identifiers on the left and the interactive six-step telemetry viewer on the right, starting on Step 1.<\/p>\n<p class=\"say\">The viewer on the right steps through six production milestones from the administration pilot, and the link below opens the full eight-frame animated SVG. Because these repositories are private, collaborators with repository access can inspect each run and pull request directly by the identifiers on the left.<\/p>\n<p class=\"say\">Step one, already on screen, is the dry run ending in nine-oh-eight-seven. The dry-run flag is true, so it snapshots all seven sources, runs the agent and the seven post-steps, and skips safe outputs with zero writes to the remote. Do this first when you wire up a new repository.<\/p>\n<p class=\"cue cue-click\"><span class=\"cue-kind\" aria-hidden=\"true\">👉<\/span><span class=\"cue-label\">CLICK<\/span> Click Live drift #42531290378 in the ledger (or press Next in the viewer) to show Step 2.<\/p>\n<p class=\"say\">Step two is the live run, ending in oh-three-seven-eight. Because dependencies were installed before the agent started, it ran the repository&#39;s validators inside the sandbox: ninety-nine unit tests, sixty freshness checks with no warnings, seven deck checks, and eleven validation suites, all passing.<\/p>\n<p class=\"cue cue-click\"><span class=\"cue-kind\" aria-hidden=\"true\">👉<\/span><span class=\"cue-label\">CLICK<\/span> Click Drift PR gh-admin-msft#19 in the ledger to show Step 3.<\/p>\n<p class=\"say\">Step three is pull request number nineteen on the administration repository. It changes one line: a heading in the licenses and billing document now names Secret Protection and Code Security beside the old Advanced Security title. The product was split, and a freshness rule flagged the old wording.<\/p>\n<p class=\"say\">The agent also wrote down what it hadn&#39;t done. Its report has a Not confirmed section noting that it did not do a full drift review of the other snapshots. That pull request superseded an older drift pull request, number sixteen, which the close-older key closed. I merged number nineteen.<\/p>\n<p class=\"cue cue-click\"><span class=\"cue-kind\" aria-hidden=\"true\">👉<\/span><span class=\"cue-label\">CLICK<\/span> Click Router #42532934615 in the ledger to show Step 4.<\/p>\n<p class=\"say\">Step four is the router run ending in four-six-one-five. It sees the administration repository advance from a2f9a3bb to 49569501 and dispatches the mechanical cascade for that edge. If a collaborator opens that run, the overall run shows red because the pipeline-showcase job in the same matrix failed, while fail-fast false let the green administration job dispatch the cascade.<\/p>\n<p class=\"cue cue-click\"><span class=\"cue-kind\" aria-hidden=\"true\">👉<\/span><span class=\"cue-label\">CLICK<\/span> Click Cascade #42532946999 in the ledger to show Step 5.<\/p>\n<p class=\"say\">Step five is the cascade run ending in six-nine-nine-nine. It imports that exact revision into the portfolio, passes all seven legs of the portfolio verification gate, and updates the poll state variable.<\/p>\n<p class=\"cue cue-click\"><span class=\"cue-kind\" aria-hidden=\"true\">👉<\/span><span class=\"cue-label\">CLICK<\/span> Click Cascade PR portfolio#1 in the ledger to show Step 6.<\/p>\n<p class=\"say\">Step six is portfolio pull request number one, opened by the bot. It imported sixty-one documents and nine lab tiles, with provenance pinned to the same revision, and I merged that one as well.<\/p>\n<p class=\"say\">So a wording fix upstream became a merged pull request downstream, with no server in the path and nobody copying files by hand.<\/p>\n<p class=\"cue cue-ask\"><span class=\"cue-kind\" aria-hidden=\"true\">💬<\/span><span class=\"cue-label\">ASK<\/span> What would you want to see on a screen like this before you let it touch your own repositories?<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> This deck is itself a repository in the fleet. Here&#39;s the wiring.<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>docs/media/gh-admin-sdlc-pipeline-demo.svg · https://github.com/johnhain-msft/gh-admin-msft/pull/19 · https://github.com/johnhain-msft/portfolio/pull/1 · https://github.com/johnhain-msft/mfg_msft_ai_sdlc/actions/runs/42531290378 · https://github.com/johnhain-msft/mfg_msft_ai_sdlc/actions/runs/42532946999<\/li><\/ul><\/details>","words":385},{"id":"self-cascade-onboard","n":10,"day":1,"section":"Pilot & Onboarding","layout":"split","kicker":"","exempt":"","minutes":2,"title":"S5 · Self-Cascade & Two-Command Onboarding","titleHtml":"S5 · Self-Cascade &amp; Two-Command Onboarding","html":"<div class=\"cols\" style=\"grid-template-columns:1fr 1fr\"><div class=\"col\"><h3>Bootstrap &amp; Onboard CLI<\/h3><p><code>sdlc-bootstrap.mjs<\/code> provisions the App and state variables; <code>sdlc-onboard.mjs<\/code> writes manifest entries.<\/p>\n<pre class=\"code\" data-lang=\"bash\"><code>node bin/sdlc-bootstrap.mjs\nnode bin/sdlc-onboard.mjs --repo &lt;owner/repo&gt;<\/code><\/pre>\n<p class=\"spec-ref\"><a href=\"specs/05-packaging-bootstrap-and-governance.md\" target=\"_blank\" rel=\"noopener\">specs/05-packaging-bootstrap-and-governance.md<\/a><\/p><\/div><div class=\"col\"><h3>Self-Cascading edge: <code>ai-sdlc<\/code><\/h3><pre class=\"code\" data-lang=\"yaml\"><code>edgeId: ai-sdlc\nupstreamRepo: johnhain-msft/mfg_msft_ai_sdlc\ndownstreamRepo: johnhain-msft/portfolio\nmode: mechanical\nimportCommands:\n  - npm run import:ai-sdlc -- &lt;checkout&gt;<\/code><\/pre><\/div><\/div>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> Two commands on the left. A small block of YAML on the right.<\/p>\n<p class=\"say\">Two commands make up the operator experience.<\/p>\n<p class=\"say\">The first is sdlc-bootstrap. It registers the GitHub App, or reuses one, under the permission ceiling we saw earlier. It checks the installations on every target account, writes the repository variables and secrets, hands the manifest to the reconciler, and runs readiness checks. You get one browser confirmation for the App and one installation page per account. Secrets never land in a file, a flag, or a log.<\/p>\n<p class=\"say\">The second is sdlc-onboard, pointed at any repository. It inspects the repository, works out the upstream and downstream sides, and writes the project and edge entries for the manifest, plus an instructions file for the drift agent. Both commands refuse to run on a gh-aw older than one point zero point one, because of a security advisory on how earlier releases wrote safe-output artifacts.<\/p>\n<p class=\"say\">The YAML on the right is the self-cascade edge, ai-sdlc, and it&#39;s registered in sdlc.yaml. The deck you&#39;re looking at lives in this repository, under the presentation folder, and that edge wires it into the portfolio in the same mechanical mode as the administration workshop. When a pull request merges here, the router sees the new head and starts the cascade. The portfolio runs its import script against this checkout, passes the seven gates, and opens a pull request, and a person merges that one too.<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> Let us see whether the security story stuck.<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>README.md · bin/sdlc-bootstrap.mjs · bin/sdlc-onboard.mjs · bin/lib/ghaw-version.mjs · specs/05-packaging-bootstrap-and-governance.md<\/li><\/ul><\/details>","words":225},{"id":"knowledge-check","n":11,"day":1,"section":"Pilot & Onboarding","layout":"quiz","kicker":"","exempt":"","minutes":2,"title":"Architecture Check: Who Grades the Agent?","titleHtml":"Architecture Check: Who Grades the Agent?","html":"<div class=\"quiz\" data-answer=\"B\" id=\"knowledge-check-q1\"><p class=\"quiz-q\">An adaptation agent edits a locked test file. What happens?<\/p><div class=\"quiz-options\"><button type=\"button\" class=\"quiz-option\" data-key=\"A\"><span class=\"quiz-key\" aria-hidden=\"true\">A<\/span><span>The pull request opens with a warning.<\/span><\/button><button type=\"button\" class=\"quiz-option\" data-key=\"B\"><span class=\"quiz-key\" aria-hidden=\"true\">B<\/span><span><code>verify-immutable-gates.mjs<\/code> fails; <code>safe_outputs<\/code> never runs.<\/span><\/button><button type=\"button\" class=\"quiz-option\" data-key=\"C\"><span class=\"quiz-key\" aria-hidden=\"true\">C<\/span><span>The router resets <code>SDLC_SYNC_STATE<\/code>.<\/span><\/button><\/div><p class=\"quiz-expl\" hidden><strong>Answer: B.<\/strong> Gates run outside the agent turn; <code>safe_outputs<\/code> depends on them.<\/p><\/div>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> One question and three answers. Do not click yet.<\/p>\n<p class=\"cue cue-ask\"><span class=\"cue-kind\" aria-hidden=\"true\">💬<\/span><span class=\"cue-label\">ASK<\/span> Read the question. Vote in chat: A, B, or C. You have twenty seconds.<\/p>\n<p class=\"cue cue-pause\"><span class=\"cue-kind\" aria-hidden=\"true\">⏸<\/span><span class=\"cue-label\">PAUSE<\/span> Twenty seconds of silence. Resist the urge to hint.<\/p>\n<p class=\"cue cue-click\"><span class=\"cue-kind\" aria-hidden=\"true\">👉<\/span><span class=\"cue-label\">CLICK<\/span> Click option B.<\/p>\n<p class=\"say\">The answer is B. I&#39;ll start with why the other two fail.<\/p>\n<p class=\"say\">A has the pull request opening with a warning. That would make the gate advisory, and the design doesn&#39;t allow advisory gates. A failing post-step fails the agent job, and safe outputs depends on that job, so no pull request exists at all.<\/p>\n<p class=\"say\">C has the router resetting the state variable. The router isn&#39;t in this path. A failed gate is recorded as one failure against that revision, and after two failures the router stops and waits for a person.<\/p>\n<p class=\"say\">B is right because the check that decides isn&#39;t the agent&#39;s. The prompt can ask the agent to be careful, but it can&#39;t change which files the gate treats as locked. That list is data in sdlc.yaml, under the edge&#39;s immutable gates, and the script that enforces it runs after the agent has finished.<\/p>\n<p class=\"say\">Locked covers three things. First, paths that must show zero diff. Second, the companion test files of the sibling workflows, which also must not move. Third, named blocks inside the edge&#39;s own tests, which must stay byte for byte what they were before the agent started. Change any of those and the script fails the job.<\/p>\n<p class=\"transition\"><span class=\"cue-label\">Bridge<\/span> Three rules to take with you.<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>src/verify-immutable-gates.mjs · src/update-poll-state.mjs · specs/02-upstream-drift-automation.md · specs/04-ai-downstream-adaptation.md<\/li><\/ul><\/details>","words":202},{"id":"takeaways","n":12,"day":1,"section":"Pilot & Onboarding","layout":"end","kicker":"Takeaways","exempt":"","minutes":1,"title":"Declarative, Sandboxed, Self-Cascading","titleHtml":"Declarative, Sandboxed, Self-Cascading","html":"<div class=\"cards\" data-count=\"3\"><div class=\"card\" data-i=\"1\"><svg class=\"card-icon\" viewBox=\"0 0 48 48\" width=\"48\" height=\"48\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><path d=\"M13 5h16l9 9v29H13z\"/><path d=\"M29 5v9h9M19 23h13M19 30h13M19 37h8\"/><\/svg><h3>Declare Fleet Intent<\/h3><p>Keep watch URLs, verify gates, and cascade edges in <code>sdlc.yaml<\/code> (<a href=\"specs/01-manifest-and-reconciler.md\" target=\"_blank\" rel=\"noopener\">SPEC-01<\/a>).<\/p><\/div><div class=\"card\" data-i=\"2\"><svg class=\"card-icon\" viewBox=\"0 0 48 48\" width=\"48\" height=\"48\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><rect x=\"6\" y=\"9\" width=\"36\" height=\"30\" rx=\"6\" stroke-dasharray=\"5 4\"/><circle cx=\"24\" cy=\"24\" r=\"6\"/><circle cx=\"24\" cy=\"24\" r=\"1.8\" fill=\"currentColor\" stroke=\"none\"/><\/svg><h3>Isolate Agent Execution<\/h3><p>Bound AI turns with <code>.github/sdlc/<\/code>, <code>awf<\/code> sandboxing, and deterministic <code>post-steps<\/code> (<a href=\"specs/02-upstream-drift-automation.md\" target=\"_blank\" rel=\"noopener\">SPEC-02<\/a>, <a href=\"specs/04-ai-downstream-adaptation.md\" target=\"_blank\" rel=\"noopener\">SPEC-04<\/a>).<\/p><\/div><div class=\"card\" data-i=\"3\"><svg class=\"card-icon\" viewBox=\"0 0 48 48\" width=\"48\" height=\"48\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\" focusable=\"false\"><circle cx=\"9\" cy=\"24\" r=\"4.5\"/><circle cx=\"39\" cy=\"24\" r=\"4.5\"/><path d=\"M14 24h17M26 18l7 6-7 6\"/><\/svg><h3>Automate the Cascade<\/h3><p>Pair push bridge dispatch with ETag polling and human-merged PRs (<a href=\"specs/03-event-routing-and-mechanical-cascade.md\" target=\"_blank\" rel=\"noopener\">SPEC-03<\/a>, <a href=\"specs/05-packaging-bootstrap-and-governance.md\" target=\"_blank\" rel=\"noopener\">SPEC-05<\/a>).<\/p><\/div><\/div>\n<p class=\"spec-ref\"><a href=\"plan.md\" target=\"_blank\" rel=\"noopener\">plan.md<\/a><\/p>","notes":"<p class=\"cue cue-show\"><span class=\"cue-kind\" aria-hidden=\"true\">👁<\/span><span class=\"cue-label\">SHOW<\/span> Three cards. Each one names the specification that owns its rule.<\/p>\n<p class=\"say\">Three rules, one per card.<\/p>\n<p class=\"say\">Declare the fleet as data. Watch addresses, verification commands and dependency edges all live in one manifest, so a reviewer can read the intent in a diff.<\/p>\n<p class=\"say\">Never let an agent grade its own homework, and never hand it the write token. Bound the turn, sandbox the network, and run the checks where the agent can&#39;t edit them.<\/p>\n<p class=\"say\">And match the cascade mode to the job. If a script can do the import, let the script do it, and spend the agent only where judgment is needed.<\/p>\n<p class=\"say\">Each card names the specification that owns that rule; in the hosted portfolio reader those links open the specification pages directly, and in the standalone deck they open the files on GitHub for collaborators. The plan file holds the whole plan, with every claim traced to a source.<\/p>\n<p class=\"cue cue-ask\"><span class=\"cue-kind\" aria-hidden=\"true\">💬<\/span><span class=\"cue-label\">ASK<\/span> Open the floor. What would you want to put under this kind of control first?<\/p>\n<details class=\"sources\"><summary>Sources (1)<\/summary><ul><li>plan.md · specs/01-manifest-and-reconciler.md · specs/02-upstream-drift-automation.md · specs/03-event-routing-and-mechanical-cascade.md · specs/04-ai-downstream-adaptation.md · specs/05-packaging-bootstrap-and-governance.md<\/li><\/ul><\/details>","words":140}],"agenda":{"title":"AI SDLC Orchestrator","subtitle":"Declarative Fleet Upkeep & Downstream Cascade on GitHub Actions and gh-aw v1.0.1","baseTz":"America/New_York","baseTzLabel":"Eastern (US)","days":[{"day":1,"label":"Architecture Briefing","title":"Centralized AI SDLC Control Plane, Security Boundary & Self-Cascading Pipeline","date":"2026-11-08","blocks":[{"type":"session","start":"10:00","minutes":10,"title":"Fleet problem, architecture and security boundary","detail":"Why fleets drift, the five workstreams, the six-permission App and the sandbox","slides":["cover","fleet-problem","architecture","security-boundary"]},{"type":"session","start":"10:10","minutes":11,"title":"Workstreams S1 to S4","detail":"Reconciler, upstream drift harness, event router and the two cascade modes","slides":["s1-reconciler","s2-drift-harness","s3-event-router","s4-cascade-modes"]},{"type":"session","start":"10:21","minutes":6,"title":"Live pilot and self-cascade","detail":"gh-admin-msft to portfolio in production, then bootstrap, onboarding and the ai-sdlc edge","slides":["live-pilot","self-cascade-onboard"]},{"type":"discussion","start":"10:27","minutes":3,"title":"Knowledge check and takeaways","slides":["knowledge-check","takeaways"]}]}]}}</script>
+<script>
+/* ================================================================================================
+   AI SDLC Orchestrator briefing — runtime
+   One document, two surfaces. `#/<slide-id>` (or `#/<number>`) is the presentation; `#/speaker` is
+   the speaker window. The two stay in sync through postMessage, BroadcastChannel and localStorage.
+   The speaker window can drive the deck (prev/next/goto); the deck answers with its state.
+   Nothing from the script is rendered on the presentation surface.
+
+   build.mjs pre-renders every slide into #stage (for static readers) and ships the same slides as
+   JSON in #deck-data. This file builds the live sections from the JSON and REPLACES the pre-rendered
+   ones, so the JSON stays the single source of truth (the portfolio importer rewrites it) and #stage
+   never holds a duplicate slide.
+   ================================================================================================ */
+(() => {
+  'use strict';
+  const DATA = JSON.parse(document.getElementById('deck-data').textContent);
+  const SLIDES = DATA.slides;
+  const byId = new Map(SLIDES.map((s) => [s.id, s]));
+  const CHANNEL = 'ai-sdlc-deck';
+  const LS_STATE = 'ai-sdlc-deck:state';
+  const LS_TIMER = 'ai-sdlc-deck:timer';
+  const LS_THEME = 'ai-sdlc-deck:theme';
+  const LS_NOTES = 'ai-sdlc-deck:notes-size';
+  const LS_TZ = 'ai-sdlc-deck:tz';
+
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+  const live = $('#live');
+  const announce = (t) => { live.textContent = ''; setTimeout(() => { live.textContent = t; }, 30); };
+  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+  const pad = (n) => String(n).padStart(2, '0');
+  const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  // ---------------------------------------------------------------- theme
+  function applyTheme(t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem(LS_THEME, t); } catch {}
+  }
+  function initTheme() {
+    let t = null;
+    try { t = localStorage.getItem(LS_THEME); } catch {}
+    if (!t) t = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    applyTheme(t);
+  }
+  const toggleTheme = () => applyTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+
+  // ---------------------------------------------------------------- transport
+  // Three transports, used together: postMessage between the deck and the window it opened (works even
+  // from file:// where each page is its own opaque origin), BroadcastChannel for same-origin windows,
+  // and a localStorage write whose `storage` event reaches other same-origin windows.
+  const bc = typeof BroadcastChannel === 'function' ? new BroadcastChannel(CHANNEL) : null;
+  const listeners = new Set();
+  let peer = null; // the other surface's window handle, when we have one
+  function deliver(m) {
+    if (!m || m.__deck !== CHANNEL) return;
+    const key = `${m.type}:${m.ts}:${m.id || ''}:${m.frag || ''}`;
+    if (key === deliver.last) return; // the same message can arrive on two transports
+    deliver.last = key;
+    listeners.forEach((fn) => fn(m));
+  }
+  function send(msg) {
+    const payload = { ...msg, __deck: CHANNEL, ts: Date.now() };
+    if (peer && !peer.closed) { try { peer.postMessage(payload, '*'); } catch {} }
+    if (bc) bc.postMessage(payload);
+    try { localStorage.setItem(`${CHANNEL}:msg`, JSON.stringify(payload)); } catch {}
+  }
+  function onMessage(fn) { listeners.add(fn); }
+  if (bc) bc.onmessage = (e) => deliver(e.data);
+  window.addEventListener('storage', (e) => {
+    if (e.key === `${CHANNEL}:msg` && e.newValue) {
+      try { deliver(JSON.parse(e.newValue)); } catch {}
+    }
+  });
+  window.addEventListener('message', (e) => {
+    if (e.data && e.data.__deck === CHANNEL) {
+      if (e.source && e.source !== window) peer = e.source; // adopt whoever talks to us
+      deliver(e.data);
+    }
+  });
+
+  // ---------------------------------------------------------------- shared timer (both surfaces)
+  function readTimer() {
+    try { return JSON.parse(localStorage.getItem(LS_TIMER) || 'null') || { startedAt: null, accumulated: 0, running: false }; }
+    catch { return { startedAt: null, accumulated: 0, running: false }; }
+  }
+  function writeTimer(t) { try { localStorage.setItem(LS_TIMER, JSON.stringify(t)); } catch {} send({ type: 'timer', timer: t }); }
+  function elapsedMs(t) { return t.accumulated + (t.running && t.startedAt ? Date.now() - t.startedAt : 0); }
+  function fmtElapsed(ms) { const s = Math.floor(ms / 1000); const h = Math.floor(s / 3600); const m = Math.floor((s % 3600) / 60); return (h ? `${h}:` : '') + `${pad(m)}:${pad(s % 60)}`; }
+
+  // ---------------------------------------------------------------- routing
+  function route() {
+    const h = decodeURIComponent(window.location.hash || '');
+    const m = h.match(/^#\/([^/]+)(?:\/(\d+))?/);
+    if (!m) return { kind: 'slide', id: SLIDES[0]?.id, frag: 0 };
+    if (m[1] === 'speaker') return { kind: 'speaker' };
+    if (byId.has(m[1])) return { kind: 'slide', id: m[1], frag: Number(m[2] || 0) };
+    const n = Number(m[1]);
+    if (Number.isInteger(n) && SLIDES[n - 1]) return { kind: 'slide', id: SLIDES[n - 1].id, frag: 0 };
+    return { kind: 'slide', id: SLIDES[0]?.id, frag: 0, unknown: m[1] };
+  }
+
+  // ---------------------------------------------------------------- repository links
+  // Slides link to documents in this repository with root-relative paths (specs/…, plan.md). Opened on its
+  // own, the deck points them at GitHub; the portfolio importer rewrites them in the JSON to the hosted
+  // reader first, and those absolute paths do not match, so they are left alone.
+  const SRC_REPO = DATA.source || { repo: 'johnhain-msft/mfg_msft_ai_sdlc', branch: 'main' };
+  const REPO_PATH = /^(?:specs\/[\w.-]+\.md|plan\.md|README\.md|sdlc\.yaml|(?:src|bin|docs|schemas|prompts|instructions)\/[\w./-]+)(?:#.*)?$/;
+  const repoUrl = (p) => `https://github.com/${SRC_REPO.repo}/blob/${SRC_REPO.branch}/${p}`;
+  function resolveRepoLinks(root) {
+    $$('a[href]', root).forEach((a) => {
+      const h = a.getAttribute('href');
+      if (REPO_PATH.test(h)) a.setAttribute('href', repoUrl(h));
+    });
+    $$('div.lab-path', root).forEach((d) => {
+      const p = d.textContent.trim();
+      if (!REPO_PATH.test(p)) return;
+      const a = document.createElement('a');
+      a.className = 'lab-path';
+      a.href = repoUrl(p);
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.textContent = p;
+      d.replaceWith(a);
+    });
+  }
+
+  // ---------------------------------------------------------------- slide DOM
+  // Must stay identical to slideSection()/slideInner() in build.mjs, so the live DOM equals the pre-rendered one.
+  function slideElement(s, { preview = false } = {}) {
+    const el = document.createElement('section');
+    el.className = `slide layout-${s.layout || 'default'}`;
+    if (!preview) el.id = `s${s.n}`;
+    el.dataset.id = s.id;
+    el.setAttribute('aria-roledescription', 'slide');
+    el.setAttribute('aria-label', `Slide ${s.n}: ${s.title || s.id}`);
+    if (s.exempt) el.setAttribute('data-density-exempt', s.exempt);
+    const kicker = s.kicker || (['title', 'break'].includes(s.layout) ? '' : s.section);
+    const inner = [];
+    if (kicker) inner.push(`<div class="slide-kicker">${escapeHtml(kicker)}</div>`);
+    if (s.title) inner.push(`<h1>${s.titleHtml}</h1>`);
+    inner.push(`<div class="slide-body">${s.html}</div>`);
+    el.innerHTML = inner.join('');
+    resolveRepoLinks(el);
+    if (preview) el.classList.add('active');
+    return el;
+  }
+
+  // ---------------------------------------------------------------- interactions inside slides
+  function mountInteractions(root, { interactive = true } = {}) {
+    // quiz
+    $$('.quiz', root).forEach((q) => {
+      const answer = q.dataset.answer;
+      const expl = $('.quiz-expl', q);
+      $$('.quiz-option', q).forEach((b) => {
+        if (!interactive) { b.disabled = true; return; }
+        b.addEventListener('click', () => {
+          $$('.quiz-option', q).forEach((x) => { x.classList.remove('is-wrong'); x.classList.toggle('is-correct', x.dataset.key === answer); x.setAttribute('aria-pressed', String(x === b)); });
+          if (b.dataset.key !== answer) b.classList.add('is-wrong');
+          expl.hidden = false;
+          announce(b.dataset.key === answer ? 'Correct.' : `Not quite. The answer is ${answer}.`);
+        });
+      });
+    });
+    // highlight groups in diagrams: hover or focus a node and its group stays lit
+    $$('.diagram', root).forEach((fig) => {
+      const nodes = $$('[data-hl]', fig);
+      if (!nodes.length) return;
+      const clear = () => { fig.classList.remove('has-focus'); nodes.forEach((n) => n.classList.remove('is-hl')); };
+      nodes.forEach((n) => {
+        n.setAttribute('tabindex', '0');
+        const on = () => { fig.classList.add('has-focus'); const g = n.dataset.hl; nodes.forEach((x) => x.classList.toggle('is-hl', x.dataset.hl === g)); };
+        n.addEventListener('mouseenter', on); n.addEventListener('focus', on);
+        n.addEventListener('mouseleave', clear); n.addEventListener('blur', clear);
+      });
+    });
+    // decision tree: a Yes/No walk that ends on one of the outcome cards. The tree is described by an
+    // embedded JSON object: { start: {q, yes, no, step}, <key>: {q, yes, no, step} | {result, say, step} }
+    $$('[data-decision]', root).forEach((tree) => {
+      let cfg;
+      try { cfg = JSON.parse($('script[type="application/json"]', tree).textContent); } catch { return; }
+      const qEl = $('[data-dq]', tree);
+      const actions = $('[data-dactions]', tree);
+      const dots = $$('.dstep-dot', tree);
+      const outcomes = $$('[data-outcome]', tree);
+      const button = (label, onClick) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'btn';
+        b.textContent = label;
+        if (!interactive) b.disabled = true; else b.addEventListener('click', onClick);
+        return b;
+      };
+      const render = (key, { focus = false } = {}) => {
+        const node = cfg[key];
+        if (!node) return;
+        const done = Boolean(node.result);
+        qEl.textContent = done ? node.say : node.q;
+        qEl.classList.toggle('decision-result', done);
+        dots.forEach((d, i) => d.classList.toggle('is-on', i < (node.step || 0)));
+        outcomes.forEach((o) => {
+          o.classList.toggle('is-picked', done && o.dataset.outcome === node.result);
+          o.classList.toggle('is-dim', done && o.dataset.outcome !== node.result);
+        });
+        actions.replaceChildren(...(done
+          ? [button('Start over', () => render('start', { focus: true }))]
+          : [button('Yes', () => render(node.yes, { focus: true })), button('No', () => render(node.no, { focus: true }))]));
+        if (focus && interactive) actions.querySelector('button')?.focus();
+        if (focus) announce(done ? node.say : node.q);
+      };
+      render('start');
+    });
+    // pilot stepper on Slide 9: syncs the 6 ledger rows with the 6 vector telemetry panels
+    $$('[data-pilot]', root).forEach((viewer) => {
+      const slide = viewer.closest('.slide') || root;
+      const panels = $$('[data-pilot-panel]', viewer);
+      const rows = $$('[data-pilot-step]', slide);
+      const status = $('[data-pilot-status]', viewer);
+      const prevBtn = $('[data-pilot-prev]', viewer);
+      const nextBtn = $('[data-pilot-next]', viewer);
+      let idx = 0;
+      const setStep = (next, { announceStep = false } = {}) => {
+        idx = (next + panels.length) % panels.length;
+        panels.forEach((p, i) => { p.hidden = i !== idx; });
+        rows.forEach((r, i) => {
+          r.classList.toggle('is-active', i === idx);
+          r.setAttribute('aria-pressed', String(i === idx));
+        });
+        if (status) status.textContent = `${idx + 1} / ${panels.length}`;
+        if (announceStep) announce(`Step ${idx + 1} of ${panels.length}`);
+      };
+      if (interactive) {
+        rows.forEach((r, i) => {
+          r.addEventListener('click', () => setStep(i, { announceStep: true }));
+          r.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(i, { announceStep: true }); }
+          });
+        });
+        prevBtn?.addEventListener('click', () => setStep(idx - 1, { announceStep: true }));
+        nextBtn?.addEventListener('click', () => setStep(idx + 1, { announceStep: true }));
+      } else {
+        if (prevBtn) prevBtn.disabled = true;
+        if (nextBtn) nextBtn.disabled = true;
+      }
+      setStep(0);
+    });
+  }
+
+  // ================================================================ PRESENTATION SURFACE
+  function mountPresentation() {
+    const root = $('#presentation');
+    root.hidden = false;
+    document.title = DATA.title;
+    const stage = $('#stage');
+    const deck = $('#deck');
+    const els = new Map();
+    // adopt-or-replace: every pre-rendered section is swapped for the one built from the JSON
+    const prerendered = new Map([...stage.children].filter((el) => el.matches('.slide[data-id]')).map((el) => [el.dataset.id, el]));
+    for (const s of SLIDES) {
+      const el = slideElement(s);
+      const old = prerendered.get(s.id);
+      if (old) { old.replaceWith(el); prerendered.delete(s.id); } else stage.appendChild(el);
+      els.set(s.id, el);
+    }
+    prerendered.forEach((el) => el.remove());
+    mountInteractions(stage);
+    const days = DATA.agenda?.days || [];
+    const dayBadge = days.length > 1 ? null : (days[0]?.label || '');
+    $('#day-badge').textContent = dayBadge || '';
+
+    let currentId = null;
+    let frag = 0;
+    let typed = '';
+
+    function fragmentsOf(id) { return $$('.fragment', els.get(id)); }
+    function applyFragments(id, n) {
+      fragmentsOf(id).forEach((f, i) => f.classList.toggle('visible', i < n));
+    }
+    function show(id, n = 0, { push = true, announceIt = true } = {}) {
+      if (!byId.has(id)) return;
+      const s = byId.get(id);
+      const frags = fragmentsOf(id);
+      frag = clamp(n, 0, frags.length);
+      if (currentId !== id) {
+        if (currentId) els.get(currentId)?.classList.remove('active');
+        currentId = id;
+        els.get(id).classList.add('active');
+      }
+      applyFragments(id, frag);
+      $('#kicker-section').textContent = s.section || '';
+      const lab = $('#lab-badge');
+      lab.hidden = true;
+      if (days.length > 1) $('#day-badge').textContent = s.day ? `Day ${s.day}` : '';
+      $('#counter').textContent = `${s.n} / ${SLIDES.length}`;
+      $('#progress-bar').style.width = `${((s.n - 1) / Math.max(1, SLIDES.length - 1)) * 100}%`;
+      document.title = `${s.n}. ${s.title || s.id} — ${DATA.title}`;
+      const hash = `#/${id}${frag ? '/' + frag : ''}`;
+      if (push && window.location.hash !== hash) history.replaceState(null, '', hash);
+      if (announceIt) announce(`Slide ${s.n} of ${SLIDES.length}: ${s.title || s.id}`);
+      broadcastState();
+    }
+    function broadcastState() {
+      if (!currentId) return;
+      const s = byId.get(currentId);
+      const state = { type: 'state', id: currentId, frag, n: s.n, total: SLIDES.length, fragTotal: fragmentsOf(currentId).length };
+      try { localStorage.setItem(LS_STATE, JSON.stringify(state)); } catch {}
+      send(state);
+    }
+    function next() {
+      const frags = fragmentsOf(currentId);
+      if (frag < frags.length) { show(currentId, frag + 1); return; }
+      const i = byId.get(currentId).n; // n is 1-based, so SLIDES[i] is the next
+      if (SLIDES[i]) show(SLIDES[i].id, 0);
+    }
+    function prev() {
+      if (frag > 0) { show(currentId, frag - 1); return; }
+      const i = byId.get(currentId).n - 2;
+      if (SLIDES[i]) show(SLIDES[i].id, fragmentsOf(SLIDES[i].id).length);
+    }
+
+    // scale the stage to the deck area
+    function fit() {
+      const r = deck.getBoundingClientRect();
+      const scale = Math.min(r.width / 1920, r.height / 1080);
+      stage.style.setProperty('--scale', String(scale));
+    }
+    new ResizeObserver(fit).observe(deck);
+    fit();
+
+    // overlays
+    const dlgHelp = $('#dlg-help');
+    const dlgGrid = $('#dlg-grid');
+    const dlgAgenda = $('#dlg-agenda');
+    function openGrid() {
+      const grid = $('#grid');
+      grid.innerHTML = SLIDES.map((s) => `<button type="button" class="grid-item${s.id === currentId ? ' is-current' : ''}" data-go="${s.id}"><span class="gi-n">${s.n} · ${s.minutes} min</span><span class="gi-t">${escapeHtml(s.title || s.id)}</span><span class="gi-s">${escapeHtml(s.section || '')}</span></button>`).join('');
+      $$('.grid-item', grid).forEach((b) => b.addEventListener('click', () => { dlgGrid.close(); show(b.dataset.go, 0); }));
+      dlgGrid.showModal();
+      $('.is-current', grid)?.focus();
+    }
+    function openAgenda() {
+      renderAgenda(dlgAgenda, { currentId, onGo: (id) => { dlgAgenda.close(); show(id, 0); } });
+      dlgAgenda.showModal();
+      // focus the day tab, not the time-zone select, so the key that opened the dialog cannot type-ahead into it
+      $('#agenda-tabs button[aria-selected="true"]')?.focus();
+    }
+    function closeDialogs() { [dlgHelp, dlgGrid, dlgAgenda].forEach((d) => d.open && d.close()); }
+
+    // speaker window
+    let speakerWin = null;
+    function openSpeaker() {
+      const url = window.location.href.split('#')[0] + '#/speaker';
+      speakerWin = window.open(url, 'ai-sdlc-deck-speaker', 'width=1280,height=800');
+      if (!speakerWin) { announce('The browser blocked the speaker window. Allow pop-ups for this page and press S again.'); return; }
+      peer = speakerWin;
+      setTimeout(broadcastState, 400);
+      setTimeout(broadcastState, 1200);
+    }
+    // fullscreen
+    async function present() {
+      try {
+        if (!document.fullscreenElement) { await document.documentElement.requestFullscreen(); }
+        else await document.exitFullscreen();
+      } catch { announce('Fullscreen is not available here. Use the browser\'s own fullscreen (F11).'); }
+    }
+    document.addEventListener('fullscreenchange', () => { document.body.classList.toggle('presenting', !!document.fullscreenElement); fit(); });
+    // blackout
+    const blackout = $('#blackout');
+    const toggleBlackout = () => { blackout.hidden = !blackout.hidden; };
+
+    // keyboard
+    document.addEventListener('keydown', (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const tag = (e.target && e.target.tagName) || '';
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
+      const anyOpen = [dlgHelp, dlgGrid, dlgAgenda].some((d) => d.open);
+      if (anyOpen) {
+        // the key that opened an overlay closes it again, so a presenter never needs Esc (Esc also leaves fullscreen in every browser)
+        const k = e.key.toLowerCase();
+        if (e.key === 'Escape' || (k === 'g' && dlgGrid.open) || (k === 'a' && dlgAgenda.open) || ((e.key === '?' || e.key === '/') && dlgHelp.open)) { e.preventDefault(); closeDialogs(); }
+        return;
+      }
+      // Enter and Space activate a focused quiz or decision button instead of changing slide
+      if (e.target && e.target.closest && e.target.closest('.quiz, [data-decision]') && ['Enter', ' '].includes(e.key)) return;
+      switch (e.key) {
+        case 'ArrowRight': case ' ': case 'PageDown': case 'ArrowDown': e.preventDefault(); next(); break;
+        case 'ArrowLeft': case 'PageUp': case 'ArrowUp': e.preventDefault(); prev(); break;
+        case 'Home': e.preventDefault(); show(SLIDES[0].id, 0); break;
+        case 'End': e.preventDefault(); show(SLIDES[SLIDES.length - 1].id, 0); break;
+        case 'g': case 'G': openGrid(); break;
+        case 'a': case 'A': openAgenda(); break;
+        case 's': case 'S': openSpeaker(); break;
+        case 'f': case 'F': present(); break;
+        case 'b': case 'B': case '.': toggleBlackout(); break;
+        case 't': case 'T': toggleTheme(); break;
+        case 'p': case 'P': window.print(); break;
+        case '?': case '/': dlgHelp.showModal(); break;
+        case 'Escape': if (!blackout.hidden) toggleBlackout(); break;
+        case 'Enter': if (typed) { const n = Number(typed); typed = ''; if (SLIDES[n - 1]) show(SLIDES[n - 1].id, 0); } break;
+        default:
+          if (/^\d$/.test(e.key)) { typed = (typed + e.key).slice(-3); setTimeout(() => { typed = ''; }, 2500); }
+      }
+    });
+    $('#btn-prev').addEventListener('click', prev);
+    $('#btn-next').addEventListener('click', next);
+    $('#btn-agenda').addEventListener('click', openAgenda);
+    $('#btn-grid').addEventListener('click', openGrid);
+    $('#btn-speaker').addEventListener('click', openSpeaker);
+    $('#btn-theme').addEventListener('click', toggleTheme);
+    $('#btn-fullscreen').addEventListener('click', present);
+    $('#btn-help').addEventListener('click', () => dlgHelp.showModal());
+    // click right/left halves of the stage to advance when presenting (touch friendly)
+    deck.addEventListener('click', (e) => {
+      if (!document.fullscreenElement) return;
+      if (e.target.closest('button, a, .quiz, [data-decision], [data-hl]')) return;
+      const r = deck.getBoundingClientRect();
+      if (e.clientX - r.left > r.width * 0.5) next(); else prev();
+    });
+    // messages from the speaker window
+    onMessage((m) => {
+      if (m.type === 'hello') broadcastState();
+      else if (m.type === 'next') next();
+      else if (m.type === 'prev') prev();
+      else if (m.type === 'goto' && byId.has(m.id)) show(m.id, m.frag || 0);
+    });
+    window.addEventListener('hashchange', () => {
+      const r = route();
+      if (r.kind === 'speaker') { window.location.reload(); return; }
+      if (r.id !== currentId || r.frag !== frag) show(r.id, r.frag, { push: false });
+    });
+    // print mode: reveal everything
+    window.addEventListener('beforeprint', () => document.body.classList.add('print'));
+    window.addEventListener('afterprint', () => document.body.classList.remove('print'));
+
+    const r = route();
+    show(r.id, r.frag, { announceIt: false });
+    if (r.unknown) announce(`Unknown slide "${r.unknown}". Showing the first slide.`);
+    deck.focus();
+  }
+
+  // ---------------------------------------------------------------- agenda rendering (shared)
+  const TZ_CHOICES = [
+    ['America/New_York', 'Eastern (US)'], ['America/Chicago', 'Central (US)'], ['America/Denver', 'Mountain (US)'],
+    ['America/Los_Angeles', 'Pacific (US)'], ['America/Phoenix', 'Arizona'], ['America/Anchorage', 'Alaska'], ['Pacific/Honolulu', 'Hawaii'],
+    ['America/Toronto', 'Toronto'], ['America/Sao_Paulo', 'São Paulo'], ['Europe/London', 'London'], ['Europe/Dublin', 'Dublin'],
+    ['Europe/Paris', 'Paris / Berlin'], ['Europe/Madrid', 'Madrid'], ['Europe/Warsaw', 'Warsaw'], ['Asia/Kolkata', 'India'],
+    ['Asia/Singapore', 'Singapore'], ['Asia/Tokyo', 'Tokyo'], ['Australia/Sydney', 'Sydney'], ['UTC', 'UTC'],
+  ];
+  function tzOffsetMinutes(tz, date) {
+    const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const p = Object.fromEntries(f.formatToParts(date).map((x) => [x.type, x.value]));
+    const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
+    return Math.round((asUTC - date.getTime()) / 60000);
+  }
+  function convertWall(hhmm, dateStr, fromTz, toTz) {
+    if (!fromTz || !toTz || fromTz === toTz) return hhmm;
+    const [h, m] = hhmm.split(':').map(Number);
+    const ref = new Date(`${dateStr || '2026-11-08'}T12:00:00Z`);
+    const base = Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), ref.getUTCDate(), h, m) - tzOffsetMinutes(fromTz, ref) * 60000;
+    const target = new Date(base + tzOffsetMinutes(toTz, new Date(base)) * 60000);
+    return `${pad(target.getUTCHours())}:${pad(target.getUTCMinutes())}`;
+  }
+  function renderAgenda(dlg, { currentId, onGo }) {
+    const ag = DATA.agenda;
+    if (!ag) { $('#agenda-body').innerHTML = '<p class="muted">No agenda in this build.</p>'; return; }
+    const sel = $('#agenda-tz');
+    let tz = ag.baseTz;
+    try { tz = localStorage.getItem(LS_TZ) || ag.baseTz; } catch {}
+    if (!sel.options.length) {
+      const have = new Set();
+      for (const [id, label] of [[ag.baseTz, `${ag.baseTzLabel || ag.baseTz} (briefing)`], ...TZ_CHOICES]) {
+        if (have.has(id)) continue; have.add(id);
+        const o = document.createElement('option'); o.value = id; o.textContent = label; sel.appendChild(o);
+      }
+      sel.addEventListener('change', () => { try { localStorage.setItem(LS_TZ, sel.value); } catch {} draw(sel.value); });
+    }
+    sel.value = tz;
+    const tabs = $('#agenda-tabs');
+    let dayIdx = Math.max(0, ag.days.findIndex((d) => d.blocks.some((b) => (b.slides || []).includes(currentId))));
+    function draw(tzNow) {
+      tabs.innerHTML = ag.days.map((d, i) => `<button type="button" role="tab" aria-selected="${i === dayIdx}">${escapeHtml(d.label || `Day ${d.day}`)}</button>`).join('');
+      $$('button', tabs).forEach((b, i) => b.addEventListener('click', () => { dayIdx = i; draw(tzNow); }));
+      const d = ag.days[dayIdx];
+      const rows = d.blocks.map((b) => {
+        const cur = (b.slides || []).includes(currentId);
+        const icon = b.type === 'break' ? '☕' : b.type === 'lab' ? '🧪' : b.type === 'discussion' ? '💬' : '📖';
+        const first = (b.slides || [])[0];
+        return `<tr class="${cur ? 'is-current ' : ''}ag-${b.type}"><td class="ag-time">${convertWall(b.start, d.date, ag.baseTz, tzNow)}</td><td>${b.minutes} min</td><td>${icon} ${escapeHtml(b.title)}${b.detail ? `<div class="muted">${escapeHtml(b.detail)}</div>` : ''}</td><td>${first ? `<button type="button" class="ag-go" data-go="${first}">go</button>` : ''}</td></tr>`;
+      }).join('');
+      $('#agenda-body').innerHTML = `<p class="muted">${escapeHtml(d.title || '')}${d.date ? ` · ${d.date}` : ''} · times shown in ${escapeHtml(sel.options[sel.selectedIndex]?.textContent || tzNow)}</p><table class="agenda-table"><thead><tr><th>Start</th><th>Length</th><th>Block</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      $$('.ag-go', $('#agenda-body')).forEach((b) => b.addEventListener('click', () => onGo && onGo(b.dataset.go)));
+    }
+    draw(tz);
+  }
+
+  // ================================================================ SPEAKER SURFACE
+  function mountSpeaker() {
+    const root = $('#speaker');
+    root.hidden = false;
+    $('#stage').replaceChildren(); // the pre-rendered slides are not needed here and would duplicate the previews
+    document.title = `Speaker — ${DATA.title}`;
+    $('#sp-deck-title').textContent = DATA.title;
+    const cur = $('#sp-current');
+    const nextWrap = $('#sp-next-preview');
+    const notes = $('#sp-notes');
+    const status = $('#sp-status');
+    if (window.opener && window.opener !== window) peer = window.opener;
+    let state = null;
+    try { state = JSON.parse(localStorage.getItem(LS_STATE) || 'null'); } catch {}
+    let notesSize = 22;
+    try { notesSize = Number(localStorage.getItem(LS_NOTES)) || 22; } catch {}
+    const applyNotesSize = () => { notes.style.setProperty('--notes-size', `${notesSize}px`); try { localStorage.setItem(LS_NOTES, String(notesSize)); } catch {} };
+    applyNotesSize();
+
+    function fitPreview() {
+      for (const el of [cur, nextWrap]) {
+        const w = el.parentElement.getBoundingClientRect().width;
+        el.style.transform = `scale(${w / 1920})`;
+      }
+    }
+    function blockFor(id) {
+      const ag = DATA.agenda; if (!ag) return null;
+      for (const d of ag.days) for (const b of d.blocks) if ((b.slides || []).includes(id)) return { day: d, block: b };
+      return null;
+    }
+    function render(st) {
+      if (!st || !byId.has(st.id)) { notes.innerHTML = '<p class="empty">Waiting for the deck. Open the deck in another window, or press Next here to start it.</p>'; return; }
+      state = st;
+      const s = byId.get(st.id);
+      const nextS = SLIDES[s.n];
+      cur.replaceChildren(slideElement(s, { preview: true }));
+      $$('.fragment', cur).forEach((f, i) => f.classList.toggle('visible', i < (st.frag || 0)));
+      mountInteractions(cur, { interactive: false });
+      nextWrap.replaceChildren(nextS ? slideElement(nextS, { preview: true }) : Object.assign(document.createElement('div'), { className: 'muted', textContent: 'End of deck' }));
+      if (nextS) mountInteractions(nextWrap, { interactive: false });
+      $('#sp-slide-title').textContent = `${s.n}. ${s.title || s.id}`;
+      $('#sp-counter').textContent = `${s.n} / ${SLIDES.length}${st.fragTotal ? ` · step ${st.frag}/${st.fragTotal}` : ''}`;
+      $('#sp-words').textContent = s.words ? `${s.words} words · ~${Math.max(1, Math.round(s.words / 150))} min spoken · budget ${s.minutes || '—'} min` : '';
+      notes.innerHTML = s.notes || '<p class="empty">No notes for this slide.</p>';
+      notes.scrollTop = 0;
+      const bf = blockFor(s.id);
+      $('#sp-budget').textContent = bf ? `${bf.day.label || 'Day ' + bf.day.day} · ${bf.block.title} · ${bf.block.start} · ${bf.block.minutes} min block` : '';
+      fitPreview();
+    }
+    // timer
+    function tickTimer() {
+      const t = readTimer();
+      const el = $('#sp-elapsed');
+      el.textContent = fmtElapsed(elapsedMs(t));
+      $('#sp-timer-toggle').textContent = t.running ? 'Pause' : (t.accumulated ? 'Resume' : 'Start');
+      $('#sp-time').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      // over budget? compare elapsed with the planned minutes up to and including the current slide
+      if (state && byId.has(state.id)) {
+        const s = byId.get(state.id);
+        const planned = SLIDES.filter((x) => x.day === s.day && x.n <= s.n).reduce((n, x) => n + x.minutes, 0);
+        el.classList.toggle('over', planned > 0 && elapsedMs(t) > planned * 60000);
+        el.title = `Planned through this slide: ${planned} min`;
+      }
+    }
+    $('#sp-timer-toggle').addEventListener('click', () => {
+      const t = readTimer();
+      if (t.running) { t.accumulated = elapsedMs(t); t.running = false; t.startedAt = null; }
+      else { t.running = true; t.startedAt = Date.now(); }
+      writeTimer(t); tickTimer();
+    });
+    $('#sp-timer-reset').addEventListener('click', () => { writeTimer({ startedAt: null, accumulated: 0, running: false }); tickTimer(); });
+    setInterval(tickTimer, 1000); tickTimer();
+    // controls
+    $('#sp-prev').addEventListener('click', () => send({ type: 'prev' }));
+    $('#sp-next').addEventListener('click', () => send({ type: 'next' }));
+    $('#sp-font-dec').addEventListener('click', () => { notesSize = clamp(notesSize - 2, 14, 40); applyNotesSize(); });
+    $('#sp-font-inc').addEventListener('click', () => { notesSize = clamp(notesSize + 2, 14, 40); applyNotesSize(); });
+    $('#sp-open-deck').addEventListener('click', () => {
+      const w = window.open(window.location.href.split('#')[0] + `#/${state?.id || SLIDES[0].id}`, 'ai-sdlc-deck-main');
+      if (w) { peer = w; setTimeout(() => send({ type: 'hello' }), 800); }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (['ArrowRight', ' ', 'PageDown'].includes(e.key)) { e.preventDefault(); send({ type: 'next' }); }
+      else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); send({ type: 'prev' }); }
+      else if (e.key === 't' || e.key === 'T') toggleTheme();
+      else if (e.key === '+' || e.key === '=') { notesSize = clamp(notesSize + 2, 14, 40); applyNotesSize(); }
+      else if (e.key === '-') { notesSize = clamp(notesSize - 2, 14, 40); applyNotesSize(); }
+    });
+    onMessage((m) => {
+      if (m.type === 'state') { render(m); status.textContent = `Synchronized with the deck · ${new Date(m.ts).toLocaleTimeString()}`; }
+      else if (m.type === 'timer') tickTimer();
+    });
+    window.addEventListener('resize', fitPreview);
+    render(state);
+    status.textContent = state ? 'Showing the last known deck position. Waiting for the deck to answer…' : 'Waiting for the deck.';
+    send({ type: 'hello' });
+    setTimeout(() => { if (!status.textContent.startsWith('Synchronized')) status.textContent = 'No deck answered yet. Open the deck (button above) and this window will follow it.'; }, 1500);
+  }
+
+  // ================================================================ boot
+  initTheme();
+  const r = route();
+  if (r.kind === 'speaker') mountSpeaker(); else mountPresentation();
+})();
+
+</script>
+</body>
+</html>
