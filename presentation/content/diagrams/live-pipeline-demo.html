@@ -15,12 +15,12 @@
     <text class="d-sub d-mono" x="54" y="406" font-size="22">⊘ conclusion: 0 branches/PRs</text>
     <rect class="d-box" x="562" y="110" width="530" height="404" rx="14"/>
     <text class="d-text" x="588" y="158" font-size="26">Watched Snapshot: 7/7 HTTP 200</text>
-    <text class="d-small d-mono" x="588" y="214" font-size="22">sources/manifest-json:</text>
+    <text class="d-small d-mono" x="588" y="214" font-size="22">sources/manifest.json:</text>
     <text class="d-small d-mono" x="588" y="262" font-size="22">• changelog + enterprise: 200</text>
     <text class="d-small d-mono" x="588" y="310" font-size="22">• admin + billing: 200</text>
     <text class="d-small d-mono" x="588" y="358" font-size="22">• copilot + actions: 200</text>
     <text class="d-small d-mono" x="588" y="406" font-size="22">• code-security: 200</text>
-    <text class="d-sub" x="588" y="464" font-size="22">Mode: rehearsal before live write;</text>
+    <text class="d-sub" x="588" y="464" font-size="22">Mode: rehearsal before live write</text>
   </g>
 
   <g data-pilot-panel="1" hidden>
@@ -32,28 +32,30 @@
     <text class="d-small d-mono" x="54" y="262" font-size="22">1: ghec-source-verifier</text>
     <text class="d-small d-mono" x="54" y="310" font-size="22">2: ghec-curriculum-updater</text>
     <text class="d-small d-mono" x="54" y="358" font-size="22">3: ghec-regression-tester</text>
-    <text class="d-sub" x="54" y="454" font-size="22">Sandbox: GitHub Agentic Workflows Firewall;</text>
+    <text class="d-sub" x="54" y="454" font-size="22">Sandbox: GitHub Agentic Workflows Firewall</text>
     <rect class="d-box" x="562" y="110" width="530" height="404" rx="14"/>
     <text class="d-text" x="588" y="158" font-size="26">Post-Steps: 7 Verification Gates</text>
-    <text class="d-small d-mono" x="588" y="214" font-size="22">✓ 99/99: unit tests passed</text>
-    <text class="d-small d-mono" x="588" y="262" font-size="22">✓ 60/60: freshness (0 warnings)</text>
-    <text class="d-small d-mono" x="588" y="310" font-size="22">✓ 7/7: deck checks passed</text>
-    <text class="d-small d-mono" x="588" y="358" font-size="22">✓ 11/11: validator suites run</text>
-    <text class="d-small d-mono" x="588" y="406" font-size="22">✓ clean: git status --porcelain</text>
-    <text class="d-sub" x="588" y="464" font-size="22">Output: opened #19, superseded #16;</text>
+    <text class="d-small d-mono" x="588" y="210" font-size="22">✓ 1-2: npm ci · build.mjs</text>
+    <text class="d-small d-mono" x="588" y="252" font-size="22">✓ 3: git status --porcelain clean</text>
+    <text class="d-small d-mono" x="588" y="294" font-size="22">✓ 4: 99/99 unit tests passed</text>
+    <text class="d-small d-mono" x="588" y="336" font-size="22">✓ 5: 60/60 freshness (0 warnings)</text>
+    <text class="d-small d-mono" x="588" y="378" font-size="22">✓ 6: 7/7 deck checks passed</text>
+    <text class="d-small d-mono" x="588" y="420" font-size="22">✓ 7: 11/11 suites (--skip-links)</text>
+    <text class="d-sub" x="588" y="468" font-size="22">Output: opened #19, superseded #16</text>
   </g>
 
   <g data-pilot-panel="2" hidden>
     <text class="d-label" x="52" y="65" font-size="24">STEP 3 OF 6: UPSTREAM DRIFT PR</text>
     <text class="d-text" x="1064" y="65" font-size="24" text-anchor="end">gh-admin-msft#19: MERGED</text>
     <rect class="d-box" x="28" y="110" width="1064" height="404" rx="14"/>
-    <text class="d-text" x="56" y="158" font-size="26">chore(sdlc-drift): align GHAS licensing heading</text>
-    <text class="d-small d-mono" x="56" y="214" font-size="22">File: docs/19-licenses-billing-md (1 line)</text>
-    <text class="d-sub d-mono" x="56" y="264" font-size="22">Before: ### GitHub Advanced Security</text>
-    <text class="d-small d-mono" x="56" y="310" font-size="22">After: ### GitHub Advanced Security (Secret Protection &amp; Code Security)</text>
-    <text class="d-text" x="56" y="374" font-size="24">PR Body: Telemetry &amp; Scope Honesty</text>
-    <text class="d-small" x="56" y="422" font-size="22">• Validation: 99/99 unit, 60/60 freshness, 11/11 suites;</text>
-    <text class="d-small" x="56" y="466" font-size="22">• Not confirmed: logged snapshot boundary; merged: 495695012d56;</text>
+    <text class="d-text" x="56" y="158" font-size="25">chore(sdlc-drift): Clarify GHAS cost center heading in licenses &amp; billing doc</text>
+    <text class="d-small d-mono" x="56" y="210" font-size="22">File: docs/19-licenses-billing.md (1 line changed)</text>
+    <text class="d-sub d-mono" x="56" y="258" font-size="22">Before: - ### Tracking GitHub Advanced Security via Cost Centers</text>
+    <text class="d-small d-mono" x="56" y="302" font-size="22">After: + ### Tracking GitHub Advanced Security (now GitHub Secret Protection</text>
+    <text class="d-small d-mono" x="56" y="334" font-size="22">             and Code Security) via Cost Centers</text>
+    <text class="d-text" x="56" y="388" font-size="24">PR Body: Telemetry &amp; Scope Honesty</text>
+    <text class="d-small" x="56" y="432" font-size="22">• Validation: 99/99 unit, 60/60 freshness, 11/11 suites</text>
+    <text class="d-small" x="56" y="472" font-size="22">• Not confirmed: logged snapshot boundary; merged: 495695012d56</text>
   </g>
 
   <g data-pilot-panel="3" hidden>
@@ -64,16 +66,16 @@
     <text class="d-small d-mono" x="54" y="214" font-size="22">Var: SDLC_SYNC_STATE_GH_ADMIN_MSFT</text>
     <text class="d-small d-mono" x="54" y="262" font-size="22">prev SHA: a2f9a3bbbb60</text>
     <text class="d-small d-mono" x="54" y="310" font-size="22">head SHA: 495695012d56 (HTTP 200)</text>
-    <text class="d-small d-mono" x="54" y="358" font-size="22">public/ghec-admin/source-json:</text>
-    <text class="d-sub d-mono" x="54" y="406" font-size="22">commit: a2f9a3bbbb60 (stale);</text>
+    <text class="d-small d-mono" x="54" y="358" font-size="22">public/ghec-admin/source.json:</text>
+    <text class="d-sub d-mono" x="54" y="406" font-size="22">commit: a2f9a3bbbb60 (stale)</text>
     <rect class="d-box" x="562" y="110" width="530" height="404" rx="14"/>
     <text class="d-text" x="588" y="158" font-size="26">Matrix: Per-Edge Isolation</text>
     <text class="d-small d-mono" x="588" y="214" font-size="22">✓ route gh-admin-msft: dispatched</text>
     <text class="d-small d-mono" x="588" y="262" font-size="22">✓ route copilot-lab: noop</text>
     <text class="d-small d-mono" x="588" y="310" font-size="22">✓ route github-intermediate: noop</text>
     <text class="d-sub d-mono" x="588" y="358" font-size="22">✕ route pipeline-showcase: isolated</text>
-    <text class="d-sub" x="588" y="446" font-size="22">fail-fast: false let gh-admin-msft</text>
-    <text class="d-sub" x="588" y="480" font-size="22">dispatch: cascade-mechanical-ghec-admin;</text>
+    <text class="d-sub" x="588" y="446" font-size="22">fail-fast: false isolated peer</text>
+    <text class="d-sub" x="588" y="480" font-size="22">dispatched: cascade-mechanical-ghec-admin</text>
   </g>
 
   <g data-pilot-panel="4" hidden>
@@ -85,15 +87,15 @@
     <text class="d-small d-mono" x="54" y="262" font-size="22">• 61: markdown docs sanitized</text>
     <text class="d-small d-mono" x="54" y="310" font-size="22">• 9: lab tiles linked to reader</text>
     <text class="d-small d-mono" x="54" y="358" font-size="22">• CSP: externalized css + js</text>
-    <text class="d-small d-mono" x="54" y="406" font-size="22">• source-json: 495695012d56;</text>
+    <text class="d-small d-mono" x="54" y="406" font-size="22">• source.json: 495695012d56</text>
     <rect class="d-box" x="562" y="110" width="530" height="404" rx="14"/>
     <text class="d-text" x="588" y="158" font-size="26">Gate: 7-Leg Portfolio Check</text>
-    <text class="d-small d-mono" x="588" y="214" font-size="22">✓ build: npm run build &amp; catalog</text>
-    <text class="d-small d-mono" x="588" y="258" font-size="22">✓ static: typecheck &amp; lint</text>
-    <text class="d-small d-mono" x="588" y="302" font-size="22">✓ unit: test &amp; test:studio</text>
-    <text class="d-small d-mono" x="588" y="346" font-size="22">✓ browser: playwright sites-spec</text>
-    <text class="d-small d-mono" x="588" y="390" font-size="22">✓ state: finalize_poll_state</text>
-    <text class="d-sub" x="588" y="454" font-size="22">max-patch-size: 10240 KB carried HTML;</text>
+    <text class="d-small d-mono" x="588" y="214" font-size="22">✓ 1-2: build &amp; build:catalog</text>
+    <text class="d-small d-mono" x="588" y="258" font-size="22">✓ 3-4: typecheck &amp; lint</text>
+    <text class="d-small d-mono" x="588" y="302" font-size="22">✓ 5-6: test &amp; test:studio</text>
+    <text class="d-small d-mono" x="588" y="346" font-size="22">✓ 7: test:browser (sites.spec.ts)</text>
+    <text class="d-sub d-mono" x="588" y="396" font-size="22">job finalize_poll_state: updated var</text>
+    <text class="d-sub" x="588" y="454" font-size="22">max-patch-size: 10240 KB carried HTML</text>
   </g>
 
   <g data-pilot-panel="5" hidden>
@@ -102,11 +104,11 @@
     <rect class="d-box" x="28" y="110" width="1064" height="404" rx="14"/>
     <text class="d-text" x="56" y="158" font-size="26">chore(cascade): import gh-admin-msft 495695012d56</text>
     <text class="d-small d-mono" x="56" y="214" font-size="22">Branch: sdlc/cascade-ghec-admin -&gt; main (auto-merge: false)</text>
-    <text class="d-small d-mono" x="56" y="264" font-size="22">• public/ghec-admin/source-json: commit 495695012d56</text>
-    <text class="d-small d-mono" x="56" y="310" font-size="22">• public/ghec-admin/labs/index-html: LF SHA-256 digest</text>
-    <text class="d-small d-mono" x="56" y="356" font-size="22">• public/ghec-admin/workshop/index-html: Teaching SPA</text>
+    <text class="d-small d-mono" x="56" y="264" font-size="22">• public/ghec-admin/source.json: commit 495695012d56</text>
+    <text class="d-small d-mono" x="56" y="310" font-size="22">• public/ghec-admin/labs/index.html: LF SHA-256 digest</text>
+    <text class="d-small d-mono" x="56" y="356" font-size="22">• public/ghec-admin/workshop/index.html: Teaching SPA</text>
     <text class="d-text" x="56" y="418" font-size="24">Outcome: End-to-End Loop Closed</text>
-    <text class="d-small" x="56" y="464" font-size="22">SDLC_SYNC_STATE_GH_ADMIN_MSFT: recorded openPrNumber 1; merged;</text>
+    <text class="d-small" x="56" y="464" font-size="22">SDLC_SYNC_STATE_GH_ADMIN_MSFT: recorded openPrNumber 1, merged</text>
   </g>
 
   <g data-pilot-prev role="button" tabindex="0" aria-label="Previous step" style="cursor:pointer">

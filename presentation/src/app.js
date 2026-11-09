@@ -219,7 +219,10 @@
       let idx = 0;
       const setStep = (next, { announceStep = false } = {}) => {
         idx = (next + panels.length) % panels.length;
-        panels.forEach((p, i) => { p.hidden = i !== idx; });
+        panels.forEach((p, i) => {
+          p.toggleAttribute('hidden', i !== idx);
+          p.style.display = i === idx ? '' : 'none';
+        });
         rows.forEach((r, i) => {
           r.classList.toggle('is-active', i === idx);
           r.setAttribute('aria-pressed', String(i === idx));
@@ -234,8 +237,13 @@
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(i, { announceStep: true }); }
           });
         });
+        const onStepKey = (delta) => (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(idx + delta, { announceStep: true }); }
+        };
         prevBtn?.addEventListener('click', () => setStep(idx - 1, { announceStep: true }));
+        prevBtn?.addEventListener('keydown', onStepKey(-1));
         nextBtn?.addEventListener('click', () => setStep(idx + 1, { announceStep: true }));
+        nextBtn?.addEventListener('keydown', onStepKey(1));
       } else {
         if (prevBtn) prevBtn.disabled = true;
         if (nextBtn) nextBtn.disabled = true;
@@ -378,8 +386,9 @@
         if (e.key === 'Escape' || (k === 'g' && dlgGrid.open) || (k === 'a' && dlgAgenda.open) || ((e.key === '?' || e.key === '/') && dlgHelp.open)) { e.preventDefault(); closeDialogs(); }
         return;
       }
-      // Enter and Space activate a focused quiz or decision button instead of changing slide
-      if (e.target && e.target.closest && e.target.closest('.quiz, [data-decision]') && ['Enter', ' '].includes(e.key)) return;
+      // Enter and Space activate a focused quiz, decision, or pilot-stepper control instead of changing slide
+      if (e.defaultPrevented) return;
+      if (e.target && e.target.closest && e.target.closest('.quiz, [data-decision], [data-pilot], [data-pilot-step]') && ['Enter', ' '].includes(e.key)) return;
       switch (e.key) {
         case 'ArrowRight': case ' ': case 'PageDown': case 'ArrowDown': e.preventDefault(); next(); break;
         case 'ArrowLeft': case 'PageUp': case 'ArrowUp': e.preventDefault(); prev(); break;

@@ -29,4 +29,21 @@ test("AI SDLC presentation deck builds cleanly in strict check mode and has up-t
   assert.equal(parsed.slides.length, 12);
   assert.ok(html.includes('<div class="topbar-left">'), "topbar-left hook present for portfolio importer");
   assert.ok(html.includes('<div class="sp-title">'), "sp-title hook present for portfolio importer");
+
+  assert.ok(
+    html.includes("p.toggleAttribute('hidden', i !== idx)"),
+    "Slide 9 SVG pilot stepper toggles the hidden attribute on <g> panels",
+  );
+  for (const expected of [
+    "sources/manifest.json",
+    "docs/19-licenses-billing.md",
+    "Clarify GHAS cost center heading in licenses &amp; billing doc",
+    "Tracking GitHub Advanced Security via Cost Centers",
+    "public/ghec-admin/source.json",
+    "public/ghec-admin/labs/index.html",
+    "public/ghec-admin/workshop/index.html",
+    "sites.spec.ts",
+  ]) {
+    assert.ok(html.includes(expected), `Slide 9 telemetry contains exact artifact text: ${expected}`);
+  }
 });
