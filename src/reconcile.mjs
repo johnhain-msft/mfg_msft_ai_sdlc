@@ -1136,6 +1136,7 @@ function renderDrift(ctx, project) {
     "post-steps": audit.verifyCommands.map((command) => verifyStep(command, checkoutPath)),
     "safe-outputs": {
       "github-app": appBlock(ctx, [CENTRAL_REPOSITORY, checkoutPath]),
+      "report-failure-as-issue": false,
       "threat-detection": { "continue-on-error": false },
       "create-pull-request": {
         "target-repo": project.repo,
@@ -1153,6 +1154,7 @@ function renderDrift(ctx, project) {
         "auto-merge": false,
         "fallback-as-issue": true,
         max: 1,
+        "max-patch-size": 10240,
       },
     },
     engine: engineSection(ctx, { sdk: true }),
@@ -1770,10 +1772,10 @@ function renderCascade(ctx, edge) {
     "exclude-lock-yml": true,
     "protected-files": { policy: "blocked", exclude: [...edge.protectedFilesExclude] },
     max: 1,
+    // Cascade and drift workflows commit whole generated bundles, some of them single lines of several megabytes, and the handler refuses a patch over its
+    // size limit (in KB); 10 MB leaves room for them.
+    "max-patch-size": 10240,
   };
-  // A mechanical import commits whole generated bundles, some of them single lines of several megabytes, and the handler refuses a patch over its
-  // size limit (in KB); 10 MB leaves room for them.
-  if (mechanical) handler["max-patch-size"] = 10240;
   const frontmatter = {
     on: {
       workflow_dispatch: { inputs: inputsOf(mechanical ? MECHANICAL_INPUTS : AI_INPUTS, DISPATCH_DESCRIPTIONS) },
@@ -1809,6 +1811,7 @@ function renderCascade(ctx, edge) {
   }
   frontmatter["safe-outputs"] = {
     "github-app": appBlock(ctx, [CENTRAL_REPOSITORY, down]),
+    "report-failure-as-issue": false,
     "threat-detection": { "continue-on-error": false },
     "create-pull-request": handler,
   };

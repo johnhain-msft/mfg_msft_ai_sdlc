@@ -297,6 +297,43 @@ test("AC19: an upstream-only repository that is not covered produces a warning, 
   }
 });
 
+test("AC18 and AC19: an upstream-only repository under a target account is preselected in that account's installation URL and required on its selected installation", async () => {
+  const fake = await startFakeGitHub({
+    installations: [
+      installationOn("example-owner", { repository_selection: "selected", _repositories: [CENTRAL] }),
+      installationOn("other-org", { repository_selection: "selected", _repositories: ["other-org/lab"] }),
+    ],
+    users: { "other-org": { id: 15, type: "Organization" } },
+    repos: { "other-org/lab": { id: 11 }, "other-org/showcase": { id: 14 } },
+  });
+  try {
+    const urls = [];
+    const harness = pollHarness(fake, {
+      targets: {
+        required: [CENTRAL, "other-org/lab"],
+        optional: ["other-org/showcase", "third-party/gamma-lib"],
+        accounts: ["example-owner", "other-org"],
+      },
+      openForInstall: true,
+      openBrowser: async (url) => urls.push(url),
+      pollIntervalMs: 2,
+      timeoutMs: 40,
+    });
+    await assert.rejects(
+      harness.promise,
+      (error) =>
+        error.message.includes("other-org/showcase: the installation on account 'other-org' does not include the repository") &&
+        !error.message.includes("third-party/gamma-lib"),
+    );
+    assert.deepEqual(urls, [
+      "https://github.com/apps/fixture-app/installations/new",
+      "https://github.com/apps/fixture-app/installations/new/permissions?suggested_target_id=15&repository_ids[]=11&repository_ids[]=14",
+    ]);
+  } finally {
+    await fake.close();
+  }
+});
+
 test("AC19: a suspended installation does not cover anything", async () => {
   const fake = await startFakeGitHub({ installations: [installationOn("example-owner", { suspended_at: "2026-10-01T00:00:00Z" })] });
   try {

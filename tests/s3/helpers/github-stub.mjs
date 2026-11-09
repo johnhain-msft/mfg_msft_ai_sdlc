@@ -188,6 +188,16 @@ export function createGitHubStub(options = {}) {
         issues.push(issue);
         return reply(201, issue);
       }
+      if (rest[0] === "issues" && rest.length === 2 && method === "PATCH") {
+        const issue = issues.find((candidate) => String(candidate.number) === rest[1]);
+        if (!issue) return notFound();
+        const body = JSON.parse(entry.body ?? "{}");
+        if (typeof body.state === "string") issue.state = body.state;
+        if (typeof body.state_reason === "string") issue.state_reason = body.state_reason;
+        if (typeof body.body === "string") issue.body = body.body;
+        issue.closedAuthorization = auth;
+        return reply(200, issue);
+      }
       if (rest[0] === "issues" && rest[2] === "comments" && method === "POST") {
         const issue = issues.find((candidate) => String(candidate.number) === rest[1]);
         if (!issue) return notFound();

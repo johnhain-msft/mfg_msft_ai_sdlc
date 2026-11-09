@@ -23,7 +23,11 @@ for (const key of DRIFT_KEYS) {
 
   test(`AC28: drift-${key}.md gives the agent no way to write to the upstream repository other than the create-pull-request safe output`, () => {
     const { frontmatter } = driftWorkflow(key);
-    assert.deepEqual(Object.keys(frontmatter["safe-outputs"]).sort(), ["create-pull-request", "github-app", "threat-detection"], "the publishing safe outputs are create-pull-request alone");
+    assert.deepEqual(
+      Object.keys(frontmatter["safe-outputs"]).sort(),
+      ["create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"],
+      "the publishing safe outputs are create-pull-request alone",
+    );
     assert.equal(frontmatter["safe-outputs"]["create-pull-request"]["target-repo"], driftPreset(key).repo);
     assert.deepEqual(frontmatter.permissions, { contents: "read", issues: "read", "pull-requests": "read" }, "the agent job's token reads and cannot write a ref or a pull request");
     const bash = frontmatter.tools.bash;

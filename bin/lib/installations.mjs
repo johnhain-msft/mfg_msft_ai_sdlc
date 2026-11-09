@@ -2,7 +2,8 @@
 //
 //   * Required repositories are the central orchestrator repository, every project repository whose
 //     entry has driftAudit.enabled == true and every downstream repository of dependencyEdges[];
-//     an upstream-only repository that is not covered is a warning, not an error.
+//     an upstream-only repository on an account that has an installation (or is a target account) must
+//     also be covered by that installation, while one on an account without an installation is a warning.
 //   * The poll lists GET /app/installations (JWT, every page) every five seconds for at most ten
 //     minutes until each required repository is covered by an installation that holds every entry of
 //     the least-privilege map; every installation it sees must also stay within that map.
@@ -149,9 +150,20 @@ export async function evaluateInstallations({ api, jwt, slug, required, optional
     }
   }
   const uncoveredOptional = [];
-  if (missing.length === 0) {
-    for (const repository of optional) {
-      if (!(await coverage(repository)).covered) uncoveredOptional.push(repository);
+  for (const repository of optional) {
+    const result = await coverage(repository);
+    if (result.covered) {
+      verified.add(result.account);
+      continue;
+    }
+    const { owner } = splitSlug(repository);
+    const hasAccountInstallation =
+      installations.some((candidate) => !candidate.suspended_at && sameOwner(String(candidate.account?.login ?? ""), owner)) ||
+      required.some((entry) => sameOwner(splitSlug(entry).owner, owner));
+    if (hasAccountInstallation) {
+      missing.push({ repository, account: owner, reason: result.reason, permissions: result.permissions });
+    } else if (missing.length === 0) {
+      uncoveredOptional.push(repository);
     }
   }
   return { done: missing.length === 0, missing, verifiedAccounts: [...verified].sort(), uncoveredOptional };
@@ -192,7 +204,8 @@ export async function ensureInstallations({
   map = loadPermissionMap(),
   hooks = {},
 }) {
-  const reposOf = (account) => targets.required.filter((repository) => sameOwner(splitSlug(repository).owner, account));
+  const allRepositories = uniqueBy([...targets.required, ...(targets.optional ?? [])]);
+  const reposOf = (account) => allRepositories.filter((repository) => sameOwner(splitSlug(repository).owner, account));
   if (openForInstall) {
     // After a registration the browser is sent to the installation page of each target account in turn (AC18).
     for (const account of targets.accounts) {

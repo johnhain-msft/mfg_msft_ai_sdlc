@@ -118,7 +118,7 @@ export function routerWorld(options = {}) {
       return stub.variable(edge.stateVariable);
     },
     patches() {
-      return stub.calls("PATCH");
+      return stub.calls("PATCH", "/actions/variables/");
     },
     cleanup() {
       workspace.cleanup();

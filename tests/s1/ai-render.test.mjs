@@ -130,10 +130,12 @@ test("AC45: the create-pull-request handler equals the AI shape for the three pr
       "exclude-lock-yml": true,
       "protected-files": { policy: "blocked", exclude: edge.protectedFilesExclude },
       max: 1,
+      "max-patch-size": 10240,
     };
     const outputs = workflowOf(identity).frontmatter["safe-outputs"];
     assert.deepEqual(outputs["create-pull-request"], expected, identity.edgeId);
     assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", "portfolio"] });
+    assert.equal(outputs["report-failure-as-issue"], false);
     assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
   }
 });

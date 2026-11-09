@@ -75,7 +75,7 @@ const TEN_COMMANDS = [
   "npm run lint",
   "npm test",
   "npm run test:studio",
-  "npm run test:browser",
+  "npx playwright test tests/browser/sites.spec.ts",
 ];
 
 const POST_RUN = {

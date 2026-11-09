@@ -59,7 +59,7 @@ test("AC7: no drift workflow sets safe-outputs.report-failed-jobs: false, and ea
     assert.ok(report, `${key}: the conclusion job carries the Report failed jobs step`);
     assert.equal(report.env.GH_AW_REPORT_FAILED_JOBS, "true", `${key}: and it is on`);
     const handler = jobs.conclusion.steps.find((step) => step.env?.GH_AW_FAILURE_REPORT_AS_ISSUE !== undefined);
-    assert.equal(handler?.env.GH_AW_FAILURE_REPORT_AS_ISSUE, "true", `${key}: failures are reported as an issue`);
+    assert.equal(handler?.env.GH_AW_FAILURE_REPORT_AS_ISSUE, "false", `${key}: duplicate [aw] failure issues are disabled because escalate_failure owns [sdlc-failure]`);
   }
 });
 

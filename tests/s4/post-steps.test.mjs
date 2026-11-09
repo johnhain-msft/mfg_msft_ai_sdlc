@@ -22,7 +22,7 @@ const TEN = [
   "npm run lint",
   "npm test",
   "npm run test:studio",
-  "npm run test:browser",
+  "npx playwright test tests/browser/sites.spec.ts",
 ];
 const PROVENANCE_CHECK = /committed provenance records upstream_sha/;
 
@@ -89,8 +89,8 @@ test("AC68: a full run: every post-step passes after a provenance bump, each one
       assert.equal(env.AGENT_HEAD_SHA, run.head());
       assert.notEqual(env.AGENT_HEAD_SHA, env.BASE_SHA);
       assert.deepEqual(JSON.parse(readText(path.join(run.box.artifacts, "cascade-shas.json"))), { baseSha: run.baseSha, headSha: run.head() }, `${spec.id}: cascade-shas.json`);
-      const npm = run.calls().filter((line) => line.startsWith("npm "));
-      for (const expected of ["npm run test:browser", "npm run typecheck", "npm run lint", "npm test", "npm run test:studio", "npm run build:catalog"]) assert.ok(npm.includes(expected), `${spec.id}: ${expected} ran`);
+      const calls = run.calls();
+      for (const expected of ["npx playwright test tests/browser/sites.spec.ts", "npm run typecheck", "npm run lint", "npm test", "npm run test:studio", "npm run build:catalog"]) assert.ok(calls.includes(expected), `${spec.id}: ${expected} ran`);
     } finally {
       run.cleanup();
     }
@@ -160,17 +160,22 @@ test("AC20: the helper step is the exact command of each workflow, and an edit t
   }
 });
 
-test("AC72: every trigger of a gate failure exits non-zero in post-steps: a failing typecheck, lint, test, test:studio or test:browser, and a dirty worktree", () => {
+test("AC72: every trigger of a gate failure exits non-zero in post-steps: a failing typecheck, lint, test, test:studio or browser gate, and a dirty worktree", () => {
   const run = bumped(LAB);
   try {
     handOff(run);
-    for (const command of ["run typecheck", "run lint", "test", "run test:studio", "run test:browser"]) {
+    for (const command of ["run typecheck", "run lint", "test", "run test:studio"]) {
       const step = postOf(LAB).find((candidate) => candidate.run === `npm ${command}`);
       assert.ok(step, command);
       assert.equal(run.step(step).status, 0, `${command} passes when nothing fails`);
       const result = run.step(step, { STUB_NPM_FAIL: command, STUB_NPM_FAIL_RC: "3" });
       assert.equal(result.status, 3, `${command}: ${result.stderr}`);
     }
+    const browserStep = postOf(LAB).find((candidate) => candidate.run === "npx playwright test tests/browser/sites.spec.ts");
+    assert.ok(browserStep, "browser gate");
+    assert.equal(run.step(browserStep).status, 0, "browser gate passes when nothing fails");
+    const failedBrowser = run.step(browserStep, { STUB_NPX_FAIL: "playwright test tests/browser/sites.spec.ts", STUB_NPX_FAIL_RC: "3" });
+    assert.equal(failedBrowser.status, 3, `browser gate: ${failedBrowser.stderr}`);
     fs.writeFileSync(path.join(run.portfolio, "README.md"), "uncommitted\n");
     const status = postOf(LAB).find((step) => String(step.run ?? "").includes("status --porcelain") && String(step.run).includes("exit 1"));
     assert.equal(run.step(status).status, 1);

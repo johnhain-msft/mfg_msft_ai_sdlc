@@ -46,8 +46,12 @@ test("AC30 every request of the router carries the credential that its kind need
   for (const request of w.stub.requests) {
     const bearer = bearerOf(request);
     const label = `${request.method} ${request.path}`;
-    assert.notEqual(bearer, TOKENS.issues, `${label}: the token of the job authorizes nothing but the issue`);
     assert.notEqual(bearer, WORKFLOW_TOKEN, `${label}: GITHUB_TOKEN is never read`);
+    if (isIssueRequest(request)) {
+      assert.equal(bearer, TOKENS.issues, `${label}: the token of the job authorizes the issue`);
+      continue;
+    }
+    assert.notEqual(bearer, TOKENS.issues, `${label}: the token of the job authorizes nothing but the issue`);
     if (isAppRequest(request)) {
       assert.equal(bearer.split(".").length, 3, `${label}: the App endpoints take the signed JWT`);
     } else if (request.path === "/repos/acme/orchestrator" || request.path.startsWith(central)) {
@@ -88,7 +92,10 @@ test("AC30 the poll-state script authorizes the pull-request, provenance and var
   const ok = await invoke(w, flagsFor(w.edgeValue), { env: { GITHUB_TOKEN: WORKFLOW_TOKEN } });
   assert.equal(ok.code, 0, ok.stderr);
   assert.ok(w.stub.calls("GET", "/pulls").length >= 1 && w.stub.calls("GET", "/contents/").length >= 1 && w.stub.calls("PATCH", "/actions/variables/").length === 1);
-  for (const request of w.stub.requests) assert.equal(bearerOf(request), TOKENS.gh, `${request.method} ${request.path}`);
+  for (const request of w.stub.requests) {
+    const issue = isIssueRequest(request);
+    assert.equal(bearerOf(request), issue ? TOKENS.issues : TOKENS.gh, `${request.method} ${request.path}`);
+  }
 
   // a verification that fails opens the issue: only that request carries the token of the job
   const failing = pollWorld({ pulls: [] });

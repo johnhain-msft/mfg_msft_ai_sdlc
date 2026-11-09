@@ -141,7 +141,7 @@ test("AC28: dry_run true: every gate still runs, a clean tree passes, and a comm
       const post = clean.runPost();
       assert.deepEqual(post.map((result) => result.status), post.map(() => 0), spec.id);
       assert.ok(post.some((result) => /verify-immutable-gates/.test(result.name)), `${spec.id}: the immutable-gate helper still ran`);
-      assert.ok(post.some((result) => /npm run test:browser/.test(result.name)), `${spec.id}: the five checks still ran`);
+      assert.ok(post.some((result) => /sites\.spec\.ts/.test(result.name)), `${spec.id}: the five checks still ran`);
     } finally {
       clean.cleanup();
     }

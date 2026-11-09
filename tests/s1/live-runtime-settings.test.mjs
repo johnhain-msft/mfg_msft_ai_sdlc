@@ -87,11 +87,14 @@ test("9a49f71: the mechanical cascades run the browser gate that ubuntu-latest c
   for (const edge of mechanical) assert.equal(edge.verifyCommands.at(-1), BROWSER_GATE, edge.edgeId);
 });
 
-test("9a49f71: the AI cascades, which no live run has failed, keep the full browser suite", () => {
+test("9a49f71: the AI cascades also run the narrowed browser gate that ubuntu-latest can run, without the full Segoe UI browser suite", () => {
   for (const key of ["copilot-lab", "pipeline-showcase", "github-intermediate"]) {
     for (const [label, workflow] of versions(`cascade-ai-${key}.md`)) {
-      assert.ok(workflow.frontmatter["post-steps"].some((step) => step.run === "npm run test:browser"), `${key} ${label}`);
-      assert.equal(JSON.stringify(workflow.frontmatter["post-steps"]).includes("sites.spec.ts"), false, `${key} ${label}`);
+      assert.ok(workflow.frontmatter["post-steps"].some((step) => step.run === BROWSER_GATE), `${key} ${label}`);
+      assert.equal(JSON.stringify(workflow.frontmatter["post-steps"]).includes("test:browser"), false, `${key} ${label}`);
     }
+    const steps = agentSteps(`cascade-ai-${key}`);
+    assert.ok(steps.some((step) => step.run === BROWSER_GATE && step["working-directory"] === "portfolio"), `${key}: the lock runs the gate`);
+    assert.equal(steps.some((step) => /test:browser/.test(String(step.run ?? ""))), false, `${key}: and not the full suite`);
   }
 });

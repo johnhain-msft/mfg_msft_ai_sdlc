@@ -3,13 +3,13 @@
 // The module is exercised directly, then through the two scripts that use it (the poll-state failure path and a router failure).
 import assert from "node:assert/strict";
 import test from "node:test";
-import { composeFailureBody, composeFailureComment, failureTitle, FAILURE_LABEL, MAX_ISSUE_PAGES, upsertFailureIssue } from "../../src/routing/failure-issue.mjs";
+import { closeFailureIssue, composeFailureBody, composeFailureComment, composeResolutionComment, failureTitle, FAILURE_LABEL, MAX_ISSUE_PAGES, upsertFailureIssue } from "../../src/routing/failure-issue.mjs";
 import { createRestClient } from "../../src/routing/rest.mjs";
 import { createClock } from "../s2/helpers/stub-server.mjs";
-import { createGitHubStub } from "./helpers/github-stub.mjs";
+import { createGitHubStub, pullRequest } from "./helpers/github-stub.mjs";
 import { routerWorld } from "./helpers/harness.mjs";
 import { CENTRAL, mechanicalEdge, NOW, TOKENS } from "./helpers/fixtures.mjs";
-import { invoke, TARGET, world } from "./helpers/poll-state-world.mjs";
+import { flagsFor, invoke, PR_HEAD, TARGET, world } from "./helpers/poll-state-world.mjs";
 
 const MECHANICAL_TITLE = "[sdlc-failure] cascade-mechanical-ghec-admin (johnhain-msft/portfolio)";
 
@@ -137,4 +137,105 @@ test("AC51 router-title: a router failure opens [sdlc-failure] cascade-router (<
   assert.equal(w.stub.issues.length, 1, "the second failure comments on the first issue");
   assert.equal(w.stub.world.comments.length, 1);
   assert.equal(w.stub.world.comments[0].authorization, `Bearer ${TOKENS.issues}`);
+});
+
+test("AC51 closeFailureIssue: closes an open issue with the exact title after posting a resolution comment, and does nothing when none is open", async () => {
+  const { stub } = direct({
+    open: [
+      { title: MECHANICAL_TITLE, number: 41 },
+      { title: "[sdlc-failure] other (acme/other)", number: 42 },
+    ],
+  });
+  const clock = createClock(NOW);
+  const client = createRestClient({ baseUrl: "https://api.github.com", token: TOKENS.issues, fetch: stub.fetch, sleep: clock.sleep, now: clock.now });
+  const comment = composeResolutionComment({
+    workflowId: "cascade-mechanical-ghec-admin",
+    subject: "johnhain-msft/portfolio",
+    correlationId: "c-2",
+    targetSha: TARGET,
+    reason: "resolved: pr-opened",
+    nowIso: "2026-11-07T13:00:00.000Z",
+  });
+  const closed = await closeFailureIssue({ client, central: CENTRAL, title: MECHANICAL_TITLE, comment });
+  assert.equal(closed.action, "closed");
+  assert.equal(closed.number, 41);
+  assert.equal(stub.issues[0].state, "closed");
+  assert.equal(stub.issues[0].state_reason, "completed");
+  assert.equal(stub.issues[0].closedAuthorization, `Bearer ${TOKENS.issues}`);
+  assert.equal(stub.issues[1].state, "open", "other open issues are untouched");
+  assert.equal(stub.world.comments.length, 1);
+  assert.match(stub.world.comments[0].body, /closed automatically because a subsequent run succeeded/);
+
+  const again = await closeFailureIssue({ client, central: CENTRAL, title: MECHANICAL_TITLE, comment });
+  assert.equal(again.action, "none");
+  assert.equal(stub.world.comments.length, 1, "an already-closed issue is not commented on again");
+});
+
+test("AC51 poll-state recovery: a successful finalize_poll_state run automatically comments on and closes an open [sdlc-failure] issue for that workflow and downstream", async (t) => {
+  const edgeValue = mechanicalEdge({ edgeId: "ghec-admin", downstreamRepo: "johnhain-msft/portfolio", upstreamSlug: "GH_ADMIN_MSFT", stateVariable: "SDLC_SYNC_STATE_GH_ADMIN_MSFT" });
+  const w = world({
+    edgeValue,
+    pulls: [pullRequest({ number: 12, headSha: PR_HEAD, headRef: edgeValue.branchName })],
+    files: { [PR_HEAD]: { [edgeValue.provenanceFile]: JSON.stringify({ commit: TARGET }) } },
+  });
+  t.after(() => w.workspace.cleanup());
+  const failed = await invoke(w, ["--record-failure", "--slug", "GH_ADMIN_MSFT", "--target-sha", TARGET, "--workflow-id", "cascade-mechanical-ghec-admin"]);
+  assert.equal(failed.code, 0, failed.stderr);
+  assert.equal(w.stub.issues.length, 1);
+  assert.equal(w.stub.issues[0].state, "open");
+
+  const recovered = await invoke(w, flagsFor(edgeValue));
+  assert.equal(recovered.code, 0, recovered.stderr);
+  assert.equal(w.stub.issues[0].state, "closed");
+  assert.equal(w.stub.issues[0].state_reason, "completed");
+  assert.equal(w.stub.issues[0].closedAuthorization, `Bearer ${TOKENS.issues}`);
+  assert.equal(w.stub.world.comments.length, 1);
+  assert.match(w.stub.world.comments[0].body, /closed automatically because a subsequent run succeeded/);
+});
+
+test("AC51 poll-state noop-no-changes and router noop-blocked-sha do not close an open [sdlc-failure] issue", async (t) => {
+  const edgeValue = mechanicalEdge({ edgeId: "ghec-admin", downstreamRepo: "johnhain-msft/portfolio", upstreamSlug: "GH_ADMIN_MSFT", stateVariable: "SDLC_SYNC_STATE_GH_ADMIN_MSFT" });
+  const w = world({ edgeValue });
+  t.after(() => w.workspace.cleanup());
+  assert.equal((await invoke(w, ["--record-failure", "--slug", "GH_ADMIN_MSFT", "--target-sha", TARGET, "--workflow-id", "cascade-mechanical-ghec-admin"])).code, 0);
+  assert.equal(w.stub.issues[0].state, "open");
+
+  const noopFlags = flagsFor(edgeValue, { "--head-sha": flagsFor(edgeValue)[flagsFor(edgeValue).indexOf("--base-sha") + 1] });
+  assert.equal((await invoke(w, noopFlags)).code, 0);
+  assert.equal(w.stub.issues[0].state, "open", "noop-no-changes does not close an open cascade failure issue");
+
+  const rw = routerWorld();
+  t.after(() => rw.cleanup());
+  rw.stub.inject("GET", "/commits/", () => ({ status: 500, body: { message: "Server Error" } }), { times: 1 });
+  assert.equal((await rw.go()).code, 1);
+  assert.equal(rw.stub.issues[0].state, "open");
+  const current = rw.state();
+  rw.stub.setVariable(rw.edge.stateVariable, {
+    ...current,
+    failedTargetSha: rw.upstreamHead,
+    failedAttempts: 2,
+    blockedTargetSha: rw.upstreamHead,
+    portfolioMainSha: rw.downstreamHead,
+  });
+  assert.equal((await rw.go()).code, 0);
+  assert.equal(rw.decisions().at(-1).action, "noop-blocked-sha");
+  assert.equal(rw.stub.issues[0].state, "open", "noop-blocked-sha does not close an open router failure issue");
+});
+
+test("AC51 router recovery: a successful router run automatically comments on and closes an open [sdlc-failure] cascade-router (<upstreamRepo>) issue", async (t) => {
+  const w = routerWorld();
+  t.after(() => w.cleanup());
+  w.stub.inject("GET", "/commits/", () => ({ status: 500, body: { message: "Server Error" } }), { times: 1 });
+  const failed = await w.go();
+  assert.equal(failed.code, 1);
+  assert.equal(w.stub.issues.length, 1);
+  assert.equal(w.stub.issues[0].state, "open");
+
+  const recovered = await w.go();
+  assert.equal(recovered.code, 0, recovered.stderr);
+  assert.equal(w.stub.issues[0].state, "closed");
+  assert.equal(w.stub.issues[0].state_reason, "completed");
+  assert.equal(w.stub.issues[0].closedAuthorization, `Bearer ${TOKENS.issues}`);
+  assert.equal(w.stub.world.comments.length, 1);
+  assert.match(w.stub.world.comments[0].body, /closed automatically because a subsequent run succeeded/);
 });
