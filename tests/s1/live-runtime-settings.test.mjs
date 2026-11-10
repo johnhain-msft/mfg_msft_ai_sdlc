@@ -87,11 +87,43 @@ test("9a49f71: the mechanical cascades run the browser gate that ubuntu-latest c
   for (const edge of mechanical) assert.equal(edge.verifyCommands.at(-1), BROWSER_GATE, edge.edgeId);
 });
 
-test("9a49f71: the AI cascades, which no live run has failed, keep the full browser suite", () => {
+test("9a49f71: the AI cascades also run the narrowed browser gate that ubuntu-latest can run, without the full Segoe UI browser suite", () => {
   for (const key of ["copilot-lab", "pipeline-showcase", "github-intermediate"]) {
     for (const [label, workflow] of versions(`cascade-ai-${key}.md`)) {
-      assert.ok(workflow.frontmatter["post-steps"].some((step) => step.run === "npm run test:browser"), `${key} ${label}`);
-      assert.equal(JSON.stringify(workflow.frontmatter["post-steps"]).includes("sites.spec.ts"), false, `${key} ${label}`);
+      assert.ok(workflow.frontmatter["post-steps"].some((step) => step.run === BROWSER_GATE), `${key} ${label}`);
+      assert.equal(JSON.stringify(workflow.frontmatter["post-steps"]).includes("test:browser"), false, `${key} ${label}`);
+    }
+    const steps = agentSteps(`cascade-ai-${key}`);
+    assert.ok(steps.some((step) => step.run === BROWSER_GATE && step["working-directory"] === "portfolio"), `${key}: the lock runs the gate`);
+    assert.equal(steps.some((step) => /test:browser/.test(String(step.run ?? ""))), false, `${key}: and not the full suite`);
+  }
+});
+
+test("QA: every rendered and compiled drift or cascade disables automatic failure issues and carries the generated-bundle patch limit", () => {
+  const names = [...rendered.files.keys()].filter((name) => /\/(?:drift-|cascade-(?:ai-|mechanical-)).*\.md$/.test(name));
+  assert.equal(names.length, 8, "all three drift and five cascade workflows are covered");
+  for (const name of names) {
+    const id = name.split("/").pop().replace(/\.md$/, "");
+    for (const [label, workflow] of versions(`${id}.md`)) {
+      assert.equal(workflow.frontmatter["safe-outputs"]["report-failure-as-issue"], false, `${id} ${label}`);
+      assert.equal(workflow.frontmatter["safe-outputs"]["create-pull-request"]["max-patch-size"], 10240, `${id} ${label}`);
+    }
+    const lock = lockOf(id);
+    for (const [job, key] of [
+      ["activation", "GH_AW_BLOCKED_VERSION_REPORT_AS_ISSUE"],
+      ["conclusion", "GH_AW_FAILURE_REPORT_AS_ISSUE"],
+    ]) {
+      const reporting = lock.jobs[job].steps.filter((step) => Object.hasOwn(step.env ?? {}, key));
+      assert.equal(reporting.length, 1, `${id}: ${job} has one reporting control`);
+      assert.equal(reporting[0].env[key], "false", `${id}: ${key} is disabled in the executable workflow`);
+    }
+    for (const [job, key] of [
+      ["agent", "GH_AW_SAFE_OUTPUTS_CONFIG"],
+      ["safe_outputs", "GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG"],
+    ]) {
+      const configs = lock.jobs[job].steps.filter((step) => Object.hasOwn(step.env ?? {}, key));
+      assert.equal(configs.length, 1, `${id}: ${job} has one effective safe-output configuration`);
+      assert.equal(JSON.parse(configs[0].env[key]).create_pull_request.max_patch_size, 10240, `${id}: ${key} enforces the same patch limit`);
     }
   }
 });

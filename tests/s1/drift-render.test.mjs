@@ -92,13 +92,14 @@ function assertContract(frontmatter, project) {
   assert.deepEqual(frontmatter["mcp-servers"], audit.knowledgeSources.mcpServers);
   assert.ok(Array.isArray(frontmatter["pre-agent-steps"]) && Array.isArray(frontmatter["post-steps"]));
   const outputs = frontmatter["safe-outputs"];
-  assert.deepEqual(Object.keys(outputs).sort(), ["create-pull-request", "github-app", "threat-detection"]);
+  assert.deepEqual(Object.keys(outputs).sort(), ["create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"]);
   assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", repoName] });
+  assert.equal(outputs["report-failure-as-issue"], false);
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
   const handler = outputs["create-pull-request"];
   assert.deepEqual(Object.keys(handler).sort(), [
     "auto-merge", "branch-prefix", "close-older-key", "close-older-pull-requests", "draft", "exclude-lock-yml", "fallback-as-issue", "labels", "max",
-    "preserve-branch-name", "protected-files", "recreate-ref", "reviewers", "target-repo", "title-prefix",
+    "max-patch-size", "preserve-branch-name", "protected-files", "recreate-ref", "reviewers", "target-repo", "title-prefix",
   ]);
   assert.equal(handler["target-repo"], project.repo);
   assert.equal(typeof handler["title-prefix"], "string");
@@ -116,6 +117,7 @@ function assertContract(frontmatter, project) {
   assert.equal(handler["auto-merge"], false);
   assert.equal(handler["fallback-as-issue"], true);
   assert.equal(handler.max, 1);
+  assert.equal(handler["max-patch-size"], 10240);
   assert.ok(frontmatter.engine, "an engine key is rendered");
   assert.ok("web-fetch" in frontmatter.tools);
   assert.ok(frontmatter.tools.bash.includes("git"));

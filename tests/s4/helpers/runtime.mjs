@@ -41,6 +41,16 @@ case "$*" in
 esac
 `;
 
+const NPX = `#!/usr/bin/env bash
+# an npx for the runtime tests: it logs the command and can be told to fail one
+printf '%s\\n' "npx $*" >> "$STUB_LOG"
+if [ -n "\${STUB_NPX_FAIL:-}" ] && [ "$*" = "$STUB_NPX_FAIL" ]; then echo "stub npx: $* fails on purpose" >&2; exit "\${STUB_NPX_FAIL_RC:-1}"; fi
+case "$*" in
+  "playwright test tests/browser/sites.spec.ts") : ;;
+  *) echo "stub npx: unexpected command: $*" >&2; exit 97 ;;
+esac
+`;
+
 const ACCEPT = `import fs from "node:fs";
 const sha = process.env.UPSTREAM_SHA;
 for (const [file, fields] of [["experiences/copilot-workshop/provenance.json", ["commit", "documentCommit"]], ["experiences/copilot-workshop/source-inputs.json", ["commit"]]]) {
@@ -163,7 +173,7 @@ export function createRun(spec, options = {}) {
   fs.mkdirSync(stubs, { recursive: true });
   const log = path.join(box.root, "stub-log.txt");
   fs.writeFileSync(log, "");
-  for (const [name, text] of [["gh", GH], ["npm", NPM]]) {
+  for (const [name, text] of [["gh", GH], ["npm", NPM], ["npx", NPX]]) {
     const file = path.join(stubs, name);
     fs.writeFileSync(file, text);
     if (!WINDOWS) fs.chmodSync(file, 0o755);

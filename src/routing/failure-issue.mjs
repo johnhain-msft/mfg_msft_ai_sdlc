@@ -58,6 +58,11 @@ export function composeFailureComment(input) {
   return ["Another failure was recorded for this issue.", "", "| | |", "|---|---|", ...rowsOf(input), ""].join("\n");
 }
 
+/** The comment posted when a subsequent run succeeds and closes an open failure issue. */
+export function composeResolutionComment(input) {
+  return ["This failure issue is being closed automatically because a subsequent run succeeded.", "", "| | |", "|---|---|", ...rowsOf(input), ""].join("\n");
+}
+
 /**
  * Opens the issue, or comments on the open issue with the same title.
  * @param {{ client: ReturnType<import("./rest.mjs").createRestClient>, central: string, title: string, label?: string, body: string, comment: string }} input
@@ -77,4 +82,24 @@ export async function upsertFailureIssue({ client, central, title, label = FAILU
   }
   const created = await client.requestJson("POST", `${base}/issues`, { body: { title, body, labels: [label] }, expect: [201] });
   return { action: "created", number: created.json?.number ?? 0, url: created.json?.html_url ?? "" };
+}
+
+/**
+ * Closes an open failure issue with the exact title after posting a resolution comment, or does nothing when none is open.
+ * @param {{ client: ReturnType<import("./rest.mjs").createRestClient>, central: string, title: string, comment: string }} input
+ * @returns {Promise<{ action: "closed" | "none", number: number, url: string }>}
+ */
+export async function closeFailureIssue({ client, central, title, comment }) {
+  const base = repoPath(central);
+  const { items } = await client.paginate(`${base}/issues?state=open&per_page=${ISSUES_PER_PAGE}`, { maxPages: MAX_ISSUE_PAGES });
+  const existing = items.find((issue) => issue?.title === title && issue?.pull_request === undefined);
+  if (existing === undefined) {
+    return { action: "none", number: 0, url: "" };
+  }
+  await client.requestJson("POST", `${base}/issues/${existing.number}/comments`, { body: { body: comment }, expect: [201] });
+  const closed = await client.requestJson("PATCH", `${base}/issues/${existing.number}`, {
+    body: { state: "closed", state_reason: "completed" },
+    expect: [200],
+  });
+  return { action: "closed", number: existing.number, url: closed.json?.html_url ?? existing.html_url ?? "" };
 }

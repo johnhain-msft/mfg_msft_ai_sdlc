@@ -14,7 +14,11 @@ const BRANCH = /^sdlc\/.+-[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
 for (const key of DRIFT_KEYS) {
   test(`AC25: drift-${key} creates its pull request only through safe-outputs.create-pull-request, with the branch and close-older policy`, () => {
     const outputs = driftWorkflow(key).frontmatter["safe-outputs"];
-    assert.deepEqual(Object.keys(outputs).filter((name) => name !== "github-app" && name !== "threat-detection"), ["create-pull-request"], "the only write handler");
+    assert.deepEqual(
+      Object.keys(outputs).filter((name) => !["github-app", "report-failure-as-issue", "threat-detection"].includes(name)),
+      ["create-pull-request"],
+      "the only write handler",
+    );
     const flags = handler(key);
     assert.equal(flags["branch-prefix"], "sdlc/");
     assert.equal(flags["preserve-branch-name"], true, "no random suffix");

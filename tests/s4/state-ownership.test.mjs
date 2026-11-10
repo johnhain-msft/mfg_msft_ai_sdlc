@@ -108,6 +108,10 @@ test("AC71: no rendered step runs git push, a merge, an issue or pull-request co
     }
     const { frontmatter } = workflowOf(spec);
     assert.equal(frontmatter["safe-outputs"]["create-pull-request"]["auto-merge"], false);
-    assert.deepEqual(Object.keys(frontmatter["safe-outputs"]).filter((name) => name !== "github-app" && name !== "threat-detection").sort(), ["create-pull-request"], `${spec.id}: the only handler`);
+    assert.deepEqual(
+      Object.keys(frontmatter["safe-outputs"]).filter((name) => !["github-app", "report-failure-as-issue", "threat-detection"].includes(name)).sort(),
+      ["create-pull-request"],
+      `${spec.id}: the only handler`,
+    );
   }
 });

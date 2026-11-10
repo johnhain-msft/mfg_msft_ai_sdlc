@@ -134,8 +134,10 @@ test("AC37 exits-without-polling-the-run: after the dispatch the router asks abo
   t.after(() => w.cleanup());
   await w.go();
   assert.equal(w.stub.calls("GET", "/actions/runs").length, 0);
-  const afterDispatch = w.stub.requests.slice(w.stub.requests.findIndex((request) => request.method === "POST" && request.path.endsWith("/dispatches")) + 1);
-  assert.deepEqual(afterDispatch.map((request) => request.method), ["PATCH"], "the only request after the dispatch is the state write");
+  const afterDispatch = w.stub.requests
+    .slice(w.stub.requests.findIndex((request) => request.method === "POST" && request.path.endsWith("/dispatches")) + 1)
+    .filter((request) => !request.path.includes("/issues"));
+  assert.deepEqual(afterDispatch.map((request) => request.method), ["PATCH"], "the only non-issue request after the dispatch is the state write");
 });
 
 test("AC37 five-second-gap-between-dispatches: the router waits five seconds after each dispatch, after the state is written, and not before", async (t) => {

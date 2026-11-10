@@ -9,6 +9,7 @@ import { createLogger } from "../../bin/lib/logger.mjs";
 import {
   assertDownstreamsShareOwner,
   ensureInstallations,
+  evaluateInstallations,
   installationTargets,
   installationUrl,
   POLL_INTERVAL_MS,
@@ -292,6 +293,162 @@ test("AC19: an upstream-only repository that is not covered produces a warning, 
     assert.deepEqual(result.installationsVerified, ["example-owner"]);
     assert.deepEqual(result.warnings, ["third-party/gamma-lib"]);
     assert.match(harness.logs.text, /warning: the upstream-only repository third-party\/gamma-lib is not covered/);
+  } finally {
+    await fake.close();
+  }
+});
+
+test("AC18 and AC19: an upstream-only repository under a target account is preselected in that account's installation URL and required on its selected installation", async () => {
+  const fake = await startFakeGitHub({
+    installations: [
+      installationOn("example-owner", { repository_selection: "selected", _repositories: [CENTRAL] }),
+      installationOn("other-org", { repository_selection: "selected", _repositories: ["other-org/lab"] }),
+    ],
+    users: { "other-org": { id: 15, type: "Organization" } },
+    repos: { "other-org/lab": { id: 11 }, "other-org/showcase": { id: 14 } },
+  });
+  try {
+    const urls = [];
+    const harness = pollHarness(fake, {
+      targets: {
+        required: [CENTRAL, "other-org/lab"],
+        optional: ["other-org/showcase", "third-party/gamma-lib"],
+        accounts: ["example-owner", "other-org"],
+      },
+      openForInstall: true,
+      openBrowser: async (url) => urls.push(url),
+      pollIntervalMs: 2,
+      timeoutMs: 40,
+    });
+    await assert.rejects(
+      harness.promise,
+      (error) =>
+        error.message.includes("other-org/showcase: the installation on account 'other-org' does not include the repository") &&
+        !error.message.includes("third-party/gamma-lib"),
+    );
+    assert.deepEqual(urls, [
+      "https://github.com/apps/fixture-app/installations/new",
+      "https://github.com/apps/fixture-app/installations/new/permissions?suggested_target_id=15&repository_ids[]=11&repository_ids[]=14",
+    ]);
+  } finally {
+    await fake.close();
+  }
+});
+
+test("AC18 QA: required and optional repository IDs are deduplicated case-insensitively and stay on their target account's URL", async () => {
+  const fake = await startFakeGitHub({
+    installations: [installationOn("example-owner"), installationOn("other-org")],
+    users: { "example-owner": { id: 1 }, "other-org": { id: 15 } },
+    repos: { [CENTRAL]: { id: 2 }, "other-org/lab": { id: 11 }, "other-org/showcase": { id: 14 } },
+  });
+  try {
+    const urls = [];
+    const harness = pollHarness(fake, {
+      targets: {
+        required: [CENTRAL, "other-org/lab"],
+        optional: ["EXAMPLE-OWNER/EXAMPLE-REPO", "other-org/showcase", "OTHER-ORG/SHOWCASE", "third-party/gamma-lib"],
+        accounts: ["example-owner", "other-org"],
+      },
+      openForInstall: true,
+      openBrowser: async (url) => urls.push(url),
+    });
+    const result = await harness.promise;
+    assert.deepEqual(urls, [
+      "https://github.com/apps/fixture-app/installations/new/permissions?suggested_target_id=1&repository_ids[]=2",
+      "https://github.com/apps/fixture-app/installations/new/permissions?suggested_target_id=15&repository_ids[]=11&repository_ids[]=14",
+    ]);
+    assert.deepEqual(fake.requests("GET /repos/:owner/:repo").map((entry) => entry.path), [
+      `/repos/${CENTRAL}`, "/repos/other-org/lab", "/repos/other-org/showcase",
+    ], "each repository ID is looked up once, and no upstream-only account becomes an installation target");
+    assert.deepEqual(result.warnings, ["third-party/gamma-lib"]);
+  } finally {
+    await fake.close();
+  }
+});
+
+test("AC18 QA: the 100-repository preselection boundary counts required and optional repositories together", async () => {
+  for (const count of [100, 101]) {
+    const optional = Array.from({ length: count - 1 }, (_, index) => `example-owner/upstream-${index}`);
+    const repositories = [CENTRAL, ...optional];
+    const fake = await startFakeGitHub({
+      installations: [installationOn("example-owner")],
+      users: { "example-owner": { id: 1 } },
+      repos: Object.fromEntries(repositories.map((repo, index) => [repo, { id: index + 10 }])),
+    });
+    try {
+      const urls = [];
+      const harness = pollHarness(fake, {
+        targets: { required: [CENTRAL], optional, accounts: ["example-owner"] },
+        openForInstall: true,
+        openBrowser: async (url) => urls.push(url),
+      });
+      assert.deepEqual((await harness.promise).warnings, []);
+      assert.equal(urls.length, 1);
+      if (count === 100) {
+        assert.deepEqual(new URL(urls[0]).searchParams.getAll("repository_ids[]"), repositories.map((_, index) => String(index + 10)));
+        assert.equal(fake.requests("GET /repos/:owner/:repo").length, 100);
+      } else {
+        assert.equal(urls[0], "https://github.com/apps/fixture-app/installations/new");
+        assert.equal(fake.requests("GET /repos/:owner/:repo").length, 0, "an oversized preselection is never partially looked up");
+        for (const repository of repositories) assert.ok(harness.logs.text.includes(`  ${repository}`), `${repository} is printed for manual selection`);
+      }
+    } finally {
+      await fake.close();
+    }
+  }
+});
+
+test("AC19 QA: an installed upstream-only account must cover selection and permissions before polling succeeds and lists it as verified", async () => {
+  const optionalRepo = "other-org/showcase";
+  for (const incomplete of [
+    installationOn("Other-Org", { repository_selection: "selected", _repositories: [] }),
+    installationOn("Other-Org", {
+      repository_selection: "selected",
+      _repositories: [optionalRepo],
+      permissions: Object.fromEntries(Object.entries(FIXTURE_PERMISSIONS).filter(([key]) => key !== "variables")),
+    }),
+  ]) {
+    const central = installationOn("Example-Owner");
+    const fake = await startFakeGitHub({ installations: [central, incomplete] });
+    try {
+      const harness = pollHarness(fake, {
+        targets: { required: [CENTRAL], optional: [optionalRepo, "third-party/gamma-lib"], accounts: ["example-owner"] },
+        pollIntervalMs: 1,
+        hooks: {
+          onWaiting: (polls) => {
+            assert.equal(polls, 1, "the incomplete installation prevents the first poll from succeeding");
+            fake.setInstallations([central, installationOn("Other-Org", { repository_selection: "selected", _repositories: [optionalRepo] })]);
+          },
+        },
+      });
+      const result = await harness.promise;
+      assert.equal(harness.polls(), 2, "selection and permissions are rechecked after the operator repairs the installation");
+      assert.deepEqual(result.installationsVerified, ["Example-Owner", "Other-Org"]);
+      assert.deepEqual(result.warnings, ["third-party/gamma-lib"]);
+      assert.equal(fake.requests("GET /repos/:owner/:repo/installation").length, 2);
+      assert.ok(fake.requests("GET /repos/:owner/:repo/installation").every((entry) => entry.auth.jwtValid));
+    } finally {
+      await fake.close();
+    }
+  }
+});
+
+test("AC19 QA: upstream-only repositories on a required account are missing, not warnings, even before that account has an installation", async () => {
+  const fake = await startFakeGitHub({ installations: [] });
+  try {
+    const result = await evaluateInstallations({
+      api: createApi({ baseUrl: fake.url, fetch: fake.fetch }),
+      jwt: signAppJwt({ privateKeyPem: fixtureAppKey().privateKeyPem, issuer: "Iv1.fixture" }),
+      slug: "fixture-app",
+      required: [CENTRAL],
+      optional: ["EXAMPLE-OWNER/upstream", "third-party/gamma-lib"],
+      map: FIXTURE_PERMISSIONS,
+    });
+    assert.equal(result.done, false);
+    assert.deepEqual(result.missing.map((entry) => entry.repository), [CENTRAL, "EXAMPLE-OWNER/upstream"]);
+    assert.ok(result.missing.every((entry) => entry.reason.includes("no installation") && entry.permissions.includes("variables: write")));
+    assert.deepEqual(result.verifiedAccounts, []);
+    assert.equal(result.missing.some((entry) => entry.repository === "third-party/gamma-lib"), false);
   } finally {
     await fake.close();
   }

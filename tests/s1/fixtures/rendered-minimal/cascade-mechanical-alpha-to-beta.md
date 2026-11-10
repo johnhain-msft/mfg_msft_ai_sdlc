@@ -151,6 +151,7 @@ safe-outputs:
     repositories:
       - ${{ github.event.repository.name }}
       - beta-docs
+  report-failure-as-issue: false
   threat-detection:
     continue-on-error: false
   create-pull-request:

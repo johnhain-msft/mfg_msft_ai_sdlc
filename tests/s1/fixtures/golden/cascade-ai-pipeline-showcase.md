@@ -212,8 +212,8 @@ post-steps:
   - name: npm run test:studio
     run: npm run test:studio
     working-directory: portfolio
-  - name: npm run test:browser
-    run: npm run test:browser
+  - name: npx playwright test tests/browser/sites.spec.ts
+    run: npx playwright test tests/browser/sites.spec.ts
     working-directory: portfolio
   - name: "post-run check: a dry run must not leave a commit"
     run: |-
@@ -277,6 +277,7 @@ safe-outputs:
     repositories:
       - ${{ github.event.repository.name }}
       - portfolio
+  report-failure-as-issue: false
   threat-detection:
     continue-on-error: false
   create-pull-request:
@@ -308,6 +309,7 @@ safe-outputs:
       policy: blocked
       exclude: []
     max: 1
+    max-patch-size: 10240
 tools:
   bash:
     - cat

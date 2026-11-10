@@ -10,11 +10,11 @@ const validate = new Ajv({ allErrors: true, strict: true }).compile(readJson(abs
 const trackedFiles = (pathspec) =>
   spawnSync("git", ["ls-files", pathspec], { cwd: REPO_ROOT, encoding: "utf8" }).stdout.split("\n").filter((line) => line !== "");
 
-const FIVE_GATES = ["npm run typecheck", "npm run lint", "npm test", "npm run test:studio", "npm run test:browser"];
-// The fifth gate of the two mechanical edges is the specification that covers the pages that they import (SPEC-01 AC7, SPEC-03 AC57). The full browser suite
+// The fifth gate of every cascade edge is the specification that covers the pages that the edge imports or adapts (SPEC-01 AC7, SPEC-03 AC57). The full browser suite
 // of the portfolio needs the Segoe UI font, which the ubuntu-latest runner of the cascade does not have: the ghec-admin cascade failed there until it was narrowed.
 const NARROWED_BROWSER_GATE = "npx playwright test tests/browser/sites.spec.ts";
-const gatesOf = (edge) => (edge.mode === "mechanical" ? [...FIVE_GATES.slice(0, 4), NARROWED_BROWSER_GATE] : FIVE_GATES);
+const FIVE_GATES = ["npm run typecheck", "npm run lint", "npm test", "npm run test:studio", NARROWED_BROWSER_GATE];
+const gatesOf = () => FIVE_GATES;
 const AI_REBUILD = [
   "npm run build:workshop",
   "npm run build:experiences",
@@ -199,12 +199,11 @@ test("AC7: every edge's verifyCommands list the five portfolio gates in order", 
   }
 });
 
-test("AC7: the mechanical edges run the browser gate as the specification that covers their pages, the AI edges the full suite, and no edge runs both", () => {
+test("AC7: every cascade edge runs the narrowed browser gate that ubuntu-latest can run, and no edge runs the full suite", () => {
   assert.deepEqual(manifest.dependencyEdges.filter((edge) => edge.mode === "mechanical").map((edge) => edge.edgeId), ["ghec-admin", "ai-sdlc"]);
   for (const edge of manifest.dependencyEdges) {
-    const mechanical = edge.mode === "mechanical";
-    assert.equal(edge.verifyCommands.includes(NARROWED_BROWSER_GATE), mechanical, `${edge.edgeId}: the narrowed gate`);
-    assert.equal(edge.verifyCommands.includes("npm run test:browser"), !mechanical, `${edge.edgeId}: the full suite`);
+    assert.equal(edge.verifyCommands.includes(NARROWED_BROWSER_GATE), true, `${edge.edgeId}: the narrowed gate`);
+    assert.equal(edge.verifyCommands.includes("npm run test:browser"), false, `${edge.edgeId}: the full suite`);
   }
 });
 

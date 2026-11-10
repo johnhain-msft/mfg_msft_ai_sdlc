@@ -38,7 +38,7 @@ const GATE = [
   "npm run lint",
   "npm test",
   "npm run test:studio",
-  "npm run test:browser",
+  "npx playwright test tests/browser/sites.spec.ts",
 ];
 
 test("AC18: the acknowledgment has exactly the five members, and the workflow ids and lock paths are those of the three workflows, in order", () => {

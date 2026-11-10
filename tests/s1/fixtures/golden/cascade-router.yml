@@ -97,7 +97,7 @@ jobs:
               - npm run lint
               - npm test
               - npm run test:studio
-              - npm run test:browser
+              - npx playwright test tests/browser/sites.spec.ts
               - |
                 # post-run check: a dry run must not leave a commit
                 if [ "${DRY_RUN:-}" = "true" ] && [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then
@@ -165,7 +165,7 @@ jobs:
               - npm run lint
               - npm test
               - npm run test:studio
-              - npm run test:browser
+              - npx playwright test tests/browser/sites.spec.ts
               - |
                 # post-run check: a dry run must not leave a commit
                 if [ "${DRY_RUN:-}" = "true" ] && [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then
@@ -247,7 +247,7 @@ jobs:
               - npm run lint
               - npm test
               - npm run test:studio
-              - npm run test:browser
+              - npx playwright test tests/browser/sites.spec.ts
               - |
                 # post-run check: a dry run must not leave a commit
                 if [ "${DRY_RUN:-}" = "true" ] && [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then

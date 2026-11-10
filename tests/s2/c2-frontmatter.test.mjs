@@ -58,8 +58,9 @@ function assertContract(frontmatter, project) {
 
   // safe-outputs
   const outputs = frontmatter["safe-outputs"];
-  assert.deepEqual(Object.keys(outputs).sort(), ["create-pull-request", "github-app", "threat-detection"]);
+  assert.deepEqual(Object.keys(outputs).sort(), ["create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"]);
   assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", checkout.path] }, "the token of the safe outputs reaches the central repository and the target repository");
+  assert.equal(outputs["report-failure-as-issue"], false);
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
   const handler = outputs["create-pull-request"];
   assert.deepEqual(Object.keys(handler).sort(), [
@@ -72,6 +73,7 @@ function assertContract(frontmatter, project) {
     "fallback-as-issue",
     "labels",
     "max",
+    "max-patch-size",
     "preserve-branch-name",
     "protected-files",
     "recreate-ref",
@@ -96,6 +98,7 @@ function assertContract(frontmatter, project) {
   assert.equal(handler["auto-merge"], false);
   assert.equal(handler["fallback-as-issue"], true);
   assert.equal(handler.max, 1);
+  assert.equal(handler["max-patch-size"], 10240);
   assert.equal(typeof handler.max, "number");
   assert.equal(handler.draft, audit.draft);
   assert.equal(handler["target-repo"], project.repo);

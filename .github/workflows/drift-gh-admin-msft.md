@@ -99,6 +99,7 @@ safe-outputs:
     repositories:
       - ${{ github.event.repository.name }}
       - gh-admin-msft
+  report-failure-as-issue: false
   threat-detection:
     continue-on-error: false
   create-pull-request:
@@ -123,6 +124,7 @@ safe-outputs:
     auto-merge: false
     fallback-as-issue: true
     max: 1
+    max-patch-size: 10240
 engine:
   id: copilot
   copilot-sdk: true

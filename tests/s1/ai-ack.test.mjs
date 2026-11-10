@@ -24,7 +24,7 @@ const THIRTEEN = [
   "npm run lint",
   "npm test",
   "npm run test:studio",
-  "npm run test:browser",
+  "npx playwright test tests/browser/sites.spec.ts",
 ];
 
 test("AC50: the ack has the three workflow ids, three lock paths and the three allowedFilesByWorkflow keys, in manifest order", () => {

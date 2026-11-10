@@ -31,7 +31,7 @@ import { parseFlags, UsageError } from "./drift/lib/args.mjs";
 import { resolveIo, runAsMain, workspaceOf } from "./drift/lib/cli.mjs";
 import { CORRELATION_ID as CORRELATION_ID_SHAPE, runCorrelationId } from "./drift/lib/correlation.mjs";
 import { cascadeWorkflowId, findEdgeBySlug, resolveJsonPointer, splitSlug } from "./routing/edges.mjs";
-import { composeFailureBody, composeFailureComment, failureTitle, upsertFailureIssue } from "./routing/failure-issue.mjs";
+import { closeFailureIssue, composeFailureBody, composeFailureComment, composeResolutionComment, failureTitle, upsertFailureIssue } from "./routing/failure-issue.mjs";
 import { createRedactor, secretsOfEnvironment } from "./routing/redact.mjs";
 import { assertInstallationToken, createRestClient, encodePath, repoPath, resolveApiBase } from "./routing/rest.mjs";
 import { assertShape, RoutingDataError } from "./routing/schema.mjs";
@@ -216,21 +216,26 @@ function correlationIdOf(io, log) {
   return runCorrelationId(io.env) ?? "";
 }
 
+function issuesClientOf(io, log) {
+  const token = String(io.env.ISSUES_TOKEN ?? "").trim();
+  if (token === "") return null;
+  assertInstallationToken(token, "the issues token");
+  return createRestClient({
+    baseUrl: resolveApiBase(io.env),
+    token,
+    fetch: io.fetch,
+    sleep: io.sleep,
+    now: io.now,
+    log,
+    deadlineMs: io.now() + WAIT_BUDGET_MS,
+  });
+}
+
 /** Opens or updates the deduplicated issue; returns an error message, or null when it was written. */
 async function reportFailureIssue({ io, central, edge, workflowId, targetSha, reason, log }) {
-  const token = String(io.env.ISSUES_TOKEN ?? "").trim();
-  if (token === "") return "the token of the job (issues: write) is not set, so no [sdlc-failure] issue was opened";
   try {
-    assertInstallationToken(token, "the issues token");
-    const client = createRestClient({
-      baseUrl: resolveApiBase(io.env),
-      token,
-      fetch: io.fetch,
-      sleep: io.sleep,
-      now: io.now,
-      log,
-      deadlineMs: io.now() + WAIT_BUDGET_MS,
-    });
+    const client = issuesClientOf(io, log);
+    if (client === null) return "the token of the job (issues: write) is not set, so no [sdlc-failure] issue was opened";
     const input = {
       workflowId,
       subject: edge.downstreamRepo,
@@ -252,6 +257,33 @@ async function reportFailureIssue({ io, central, edge, workflowId, targetSha, re
     return null;
   } catch (error) {
     return error?.message ?? String(error);
+  }
+}
+
+/** Closes any open [sdlc-failure] issue for this workflow and downstream repository once verification succeeds. */
+async function resolveFailureIssue({ io, central, edge, workflowId, targetSha, outcome, log }) {
+  try {
+    const client = issuesClientOf(io, log);
+    if (client === null) return;
+    const input = {
+      workflowId,
+      subject: edge.downstreamRepo,
+      correlationId: correlationIdOf(io, log),
+      targetSha,
+      reason: `resolved (${outcome})`,
+      runUrl: runUrlOf(io),
+      nowIso: nowIsoOf(io),
+    };
+    const redact = io.redact ?? ((text) => text);
+    const closed = await closeFailureIssue({
+      client,
+      central,
+      title: failureTitle(workflowId, edge.downstreamRepo),
+      comment: redact(composeResolutionComment(input)),
+    });
+    if (closed.action === "closed") log(`closed issue #${closed.number} ${closed.url}`.trim());
+  } catch (error) {
+    log(`the [sdlc-failure] issue could not be closed: ${error?.message ?? error}`);
   }
 }
 
@@ -388,6 +420,7 @@ async function verifyAndRecord({ io, log, edge, flags, central, client }) {
     updatedAt,
   };
   await writeWhenChanged({ client, central, edge, before: state, next });
+  await resolveFailureIssue({ io, central, edge, workflowId, targetSha: target, outcome: result.outcome, log });
   io.stdout(`${JSON.stringify(result)}\n`);
   return 0;
 }

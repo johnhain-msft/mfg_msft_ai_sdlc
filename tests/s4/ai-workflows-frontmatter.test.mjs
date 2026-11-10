@@ -98,6 +98,7 @@ test("AC10/AC11: the pull-request handler carries the thirteen keys of the spec 
       "auto-merge": false,
       "fallback-as-issue": false,
       max: 1,
+      "max-patch-size": 10240,
       "allowed-files": edge.allowedFiles,
     };
     const { "target-repo": target, "exclude-lock-yml": excludeLock, "protected-files": protectedFiles, ...rest } = handler;

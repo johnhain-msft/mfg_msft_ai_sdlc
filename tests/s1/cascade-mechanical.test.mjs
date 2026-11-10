@@ -206,8 +206,9 @@ test("AC34: the create-pull-request handler equals the mechanical shape, deep eq
   for (const { frontmatter: candidate } of [committed, fresh]) {
     assert.deepEqual(candidate["safe-outputs"]["create-pull-request"], expected);
     assert.deepEqual(candidate["safe-outputs"]["github-app"], scoped("${{ github.event.repository.name }}", "portfolio"));
+    assert.equal(candidate["safe-outputs"]["report-failure-as-issue"], false);
     assert.deepEqual(candidate["safe-outputs"]["threat-detection"], { "continue-on-error": false });
-    assert.deepEqual(Object.keys(candidate["safe-outputs"]).sort(), ["create-pull-request", "github-app", "threat-detection"]);
+    assert.deepEqual(Object.keys(candidate["safe-outputs"]).sort(), ["create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"]);
   }
 });
 
@@ -233,14 +234,14 @@ test("AC34: target-repo, reviewers, close-older-key and allowed-files come from 
   }
 });
 
-test("AC34: a mechanical handler raises the patch size limit to 10240 KB for the generated bundles that an import commits; an AI adaptation handler keeps the default", () => {
+test("AC34: every cascade handler (mechanical and AI adaptation) raises the patch size limit to 10240 KB for generated bundles", () => {
   for (const { frontmatter: candidate } of [committed, fresh]) {
     assert.equal(candidate["safe-outputs"]["create-pull-request"]["max-patch-size"], 10240);
   }
   const rendered = renderFleet(request).files;
   for (const edgeId of ["copilot-lab", "pipeline-showcase", "github-intermediate"]) {
     const handler = parseWorkflow(rendered.get(`${W}/cascade-ai-${edgeId}.md`)).frontmatter["safe-outputs"]["create-pull-request"];
-    assert.equal(Object.hasOwn(handler, "max-patch-size"), false, edgeId);
+    assert.equal(handler["max-patch-size"], 10240, edgeId);
   }
 });
 

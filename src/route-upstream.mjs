@@ -32,7 +32,7 @@ import { readSyncState, writeSyncState } from "./update-poll-state.mjs";
 import { mintRouterTokens } from "./routing/app-auth.mjs";
 import { DISPATCH_GAP_MS, dispatchInputs, dispatchWorkflow } from "./routing/dispatch.mjs";
 import { cascadeWorkflowFile, loadManifestEdges, parseEdgeJson, resolveJsonPointer } from "./routing/edges.mjs";
-import { composeFailureBody, composeFailureComment, failureTitle, upsertFailureIssue } from "./routing/failure-issue.mjs";
+import { closeFailureIssue, composeFailureBody, composeFailureComment, composeResolutionComment, failureTitle, upsertFailureIssue } from "./routing/failure-issue.mjs";
 import { planPreflight, runPreflight, STUDIO_PROVENANCE } from "./routing/preflight.mjs";
 import { createRedactor, secretsOfEnvironment } from "./routing/redact.mjs";
 import { assertInstallationToken, createRestClient, encodePath, repoPath, resolveApiBase, RestError } from "./routing/rest.mjs";
@@ -371,6 +371,7 @@ async function route(ctx) {
     const next = poll.status === 200 ? { ...working, etag: poll.heldEtag, lastObservedHeadSha: target } : working;
     await persist(next);
     settle(terminal);
+    if (terminal !== "noop-blocked-sha") await resolveFailureIssue(ctx, terminal);
     return;
   }
 
@@ -397,6 +398,7 @@ async function route(ctx) {
   if (!verdict.drift) {
     await persist({ ...working, etag: poll.heldEtag, lastObservedHeadSha: target, lastNoopHeadSha: target, portfolioMainSha: downstream.mainSha });
     settle(verdict.noopAction);
+    await resolveFailureIssue(ctx, verdict.noopAction);
     return;
   }
 
@@ -417,7 +419,9 @@ async function route(ctx) {
   ctx.dispatched = { runId: details.workflow_run_id, file };
   log(`dispatched ${file} as run ${details.workflow_run_id} for ${target}`);
   await persist({ ...working, inFlightRunId: details.workflow_run_id, inFlightTargetSha: target });
-  settle(edge.mode === "mechanical" ? "dispatch-mechanical" : "dispatch-ai-adaptation", file);
+  const action = edge.mode === "mechanical" ? "dispatch-mechanical" : "dispatch-ai-adaptation";
+  settle(action, file);
+  await resolveFailureIssue(ctx, action);
   // the queued cascade run takes the lock of this upstream once this job ends; consecutive dispatches stay five seconds apart [F65]
   await sleep(DISPATCH_GAP_MS);
 }
@@ -458,6 +462,18 @@ function evidenceOf(error) {
   return extra;
 }
 
+function issuesContextOf(ctx) {
+  const { io } = ctx;
+  const token = String(io.env.ISSUES_TOKEN ?? "").trim();
+  const central = ctx.central ?? String(io.env.GITHUB_REPOSITORY ?? "").trim();
+  if (token === "" || !/^[^/]+\/[^/]+$/.test(central)) return null;
+  assertInstallationToken(token, "the issues token");
+  const client = createRestClient({ baseUrl: resolveApiBase(io.env), token, fetch: io.fetch, sleep: io.sleep ?? defaultSleep, now: io.now, log: (line) => io.stderr(`route-upstream: ${line}\n`), deadlineMs: io.now() + FAILURE_RESERVE_MS });
+  const run = String(io.env.GITHUB_RUN_ID ?? "").trim();
+  const server = String(io.env.GITHUB_SERVER_URL ?? "").trim() || "https://github.com";
+  return { client, central, runUrl: run === "" ? "" : `${server.replace(/\/+$/, "")}/${central}/actions/runs/${run}` };
+}
+
 /** Writes nothing to the state, opens or updates the one issue of this upstream, and returns the exit code. */
 async function fail(ctx, error) {
   const { io } = ctx;
@@ -467,38 +483,25 @@ async function fail(ctx, error) {
   const subject = ctx.edge?.upstreamRepo ?? (String(io.env.UPSTREAM_KEY ?? "").trim() || "unknown upstream");
   const extra = evidenceOf(error);
   if (ctx.dispatched) extra["Dispatched run"] = `${ctx.dispatched.file} run ${ctx.dispatched.runId}`;
-  const token = String(io.env.ISSUES_TOKEN ?? "").trim();
-  const central = ctx.central ?? String(io.env.GITHUB_REPOSITORY ?? "").trim();
-  if (token === "" || !/^[^/]+\/[^/]+$/.test(central)) {
-    io.stderr("route-upstream: no [sdlc-failure] issue was opened: the token of the job (issues: write) or the repository is not set\n");
-    return usage ? 2 : 1;
-  }
   try {
-    assertInstallationToken(token, "the issues token");
-    const client = createRestClient({
-      baseUrl: resolveApiBase(io.env),
-      token,
-      fetch: io.fetch,
-      sleep: io.sleep ?? defaultSleep,
-      now: io.now,
-      log: (line) => io.stderr(`route-upstream: ${line}\n`),
-      deadlineMs: io.now() + FAILURE_RESERVE_MS,
-    });
-    const run = String(io.env.GITHUB_RUN_ID ?? "").trim();
-    const server = String(io.env.GITHUB_SERVER_URL ?? "").trim() || "https://github.com";
+    const issues = issuesContextOf(ctx);
+    if (issues === null) {
+      io.stderr("route-upstream: no [sdlc-failure] issue was opened: the token of the job (issues: write) or the repository is not set\n");
+      return usage ? 2 : 1;
+    }
     const input = {
       workflowId: "cascade-router",
       subject,
       correlationId: ctx.correlationId,
       targetSha: ctx.targetSha,
       reason: message,
-      runUrl: run === "" ? "" : `${server.replace(/\/+$/, "")}/${central}/actions/runs/${run}`,
+      runUrl: issues.runUrl,
       nowIso: new Date(io.now()).toISOString(),
       extra,
     };
     const outcome = await upsertFailureIssue({
-      client,
-      central,
+      client: issues.client,
+      central: issues.central,
       title: failureTitle("cascade-router", subject),
       body: ctx.redactor.redact(composeFailureBody(input)),
       comment: ctx.redactor.redact(composeFailureComment(input)),
@@ -508,6 +511,35 @@ async function fail(ctx, error) {
     io.stderr(`route-upstream: the [sdlc-failure] issue could not be written: ${issueError?.message ?? issueError}\n`);
   }
   return usage ? 2 : 1;
+}
+
+/** Closes any open [sdlc-failure] issue for this upstream once a routing run succeeds. */
+async function resolveFailureIssue(ctx, action) {
+  const { io } = ctx;
+  const subject = ctx.edge?.upstreamRepo;
+  if (!subject) return;
+  try {
+    const issues = issuesContextOf(ctx);
+    if (issues === null) return;
+    const input = {
+      workflowId: "cascade-router",
+      subject,
+      correlationId: ctx.correlationId,
+      targetSha: ctx.targetSha,
+      reason: `resolved (${action})`,
+      runUrl: issues.runUrl,
+      nowIso: new Date(io.now()).toISOString(),
+    };
+    const outcome = await closeFailureIssue({
+      client: issues.client,
+      central: issues.central,
+      title: failureTitle("cascade-router", subject),
+      comment: ctx.redactor.redact(composeResolutionComment(input)),
+    });
+    if (outcome.action === "closed") ctx.log(`closed issue #${outcome.number} ${outcome.url}`.trim());
+  } catch (issueError) {
+    io.stderr(`route-upstream: the [sdlc-failure] issue could not be closed: ${issueError?.message ?? issueError}\n`);
+  }
 }
 
 await runAsMain(import.meta.url, run);
