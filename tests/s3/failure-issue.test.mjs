@@ -8,8 +8,8 @@ import { createRestClient } from "../../src/routing/rest.mjs";
 import { createClock } from "../s2/helpers/stub-server.mjs";
 import { createGitHubStub, pullRequest } from "./helpers/github-stub.mjs";
 import { routerWorld } from "./helpers/harness.mjs";
-import { CENTRAL, mechanicalEdge, NOW, TOKENS } from "./helpers/fixtures.mjs";
-import { flagsFor, invoke, PR_HEAD, TARGET, world } from "./helpers/poll-state-world.mjs";
+import { CENTRAL, edge, mechanicalEdge, NOW, state, TOKENS } from "./helpers/fixtures.mjs";
+import { ETAG, flagsFor, invoke, PR_HEAD, TARGET, world } from "./helpers/poll-state-world.mjs";
 
 const MECHANICAL_TITLE = "[sdlc-failure] cascade-mechanical-ghec-admin (johnhain-msft/portfolio)";
 
@@ -20,8 +20,10 @@ function direct({ pageSize = 100, open = [] } = {}) {
   const clock = createClock(NOW);
   const client = createRestClient({ baseUrl: "https://api.github.com", token: TOKENS.issues, fetch: stub.fetch, sleep: clock.sleep, now: clock.now });
   const upsert = (title, extra = {}) => upsertFailureIssue({ client, central: CENTRAL, title, body: composeFailureBody({ workflowId: "wf", subject: "s", correlationId: "c-1", reason: "because", nowIso: "2026-11-07T12:00:00.000Z" }), comment: composeFailureComment({ workflowId: "wf", subject: "s", correlationId: "c-1", reason: "again", nowIso: "2026-11-07T12:00:00.000Z" }), ...extra });
-  return { stub, upsert };
+  return { stub, client, upsert };
 }
+
+const openFailure = (title, number = 41) => ({ title, number, state: "open", html_url: `https://github.com/${CENTRAL}/issues/${number}` });
 
 test("AC51 creates-when-absent: no open issue has the title, so one is opened with the title, the label and the token of the job", async () => {
   const { stub, upsert } = direct({ open: [{ title: "[sdlc-failure] something else (acme/other)" }] });
@@ -165,6 +167,10 @@ test("AC51 closeFailureIssue: closes an open issue with the exact title after po
   assert.equal(stub.issues[1].state, "open", "other open issues are untouched");
   assert.equal(stub.world.comments.length, 1);
   assert.match(stub.world.comments[0].body, /closed automatically because a subsequent run succeeded/);
+  assert.equal(stub.world.comments[0].authorization, `Bearer ${TOKENS.issues}`);
+  for (const value of ["cascade-mechanical-ghec-admin", "johnhain-msft/portfolio", "c-2", TARGET, "resolved: pr-opened", "2026-11-07T13:00:00.000Z"]) {
+    assert.ok(stub.world.comments[0].body.includes(value), `${value} remains in the resolution evidence`);
+  }
 
   const again = await closeFailureIssue({ client, central: CENTRAL, title: MECHANICAL_TITLE, comment });
   assert.equal(again.action, "none");
@@ -238,4 +244,158 @@ test("AC51 router recovery: a successful router run automatically comments on an
   assert.equal(w.stub.issues[0].closedAuthorization, `Bearer ${TOKENS.issues}`);
   assert.equal(w.stub.world.comments.length, 1);
   assert.match(w.stub.world.comments[0].body, /closed automatically because a subsequent run succeeded/);
+});
+
+test("AC51 QA closeFailureIssue: pagination finds only the exact open issue, never a near match, closed issue or pull request, and comments before closing", async () => {
+  const { stub, client } = direct({
+    pageSize: 2,
+    open: [
+      { title: `${MECHANICAL_TITLE} `, number: 31 },
+      { title: MECHANICAL_TITLE.toUpperCase(), number: 32 },
+      { title: MECHANICAL_TITLE.replace("portfolio", "other"), number: 33 },
+      { title: MECHANICAL_TITLE, number: 34, state: "closed" },
+      { title: MECHANICAL_TITLE, number: 35, pull_request: { url: `https://api.github.com/repos/${CENTRAL}/pulls/35` } },
+      { title: MECHANICAL_TITLE, number: 41 },
+    ],
+  });
+  const result = await closeFailureIssue({ client, central: CENTRAL, title: MECHANICAL_TITLE, comment: "Recovered with verified provenance." });
+  assert.equal(result.number, 41);
+  assert.equal(stub.calls("GET", "/issues?").length, 3, "the exact issue is on the last page");
+  assert.deepEqual(stub.issues.filter((issue) => issue.closedAuthorization).map((issue) => issue.number), [41]);
+  assert.equal(stub.issues.find((issue) => issue.number === 35).state, "open", "a pull request is never closed through the issues API");
+  assert.deepEqual(stub.world.comments.map((comment) => [comment.issue, comment.body]), [[41, "Recovered with verified provenance."]]);
+  assert.deepEqual(stub.requests.filter((request) => request.method !== "GET").map((request) => `${request.method} ${request.path}`), [
+    `POST /repos/${CENTRAL}/issues/41/comments`,
+    `PATCH /repos/${CENTRAL}/issues/41`,
+  ]);
+  assert.ok(stub.requests.every((request) => request.headers.authorization === `Bearer ${TOKENS.issues}`));
+});
+
+test("AC51 QA closeFailureIssue: listing, comment and close API failures propagate without falsely closing the issue", async () => {
+  for (const [method, requestPath, status, comments] of [
+    ["GET", "/issues", 500, 0],
+    ["POST", "/issues/41/comments", 403, 0],
+    ["PATCH", "/issues/41", 403, 1],
+  ]) {
+    const { stub, client } = direct({ open: [{ title: MECHANICAL_TITLE, number: 41 }] });
+    stub.inject(method, requestPath, { status, body: { message: status === 500 ? "Server Error" : "Resource not accessible by integration" } });
+    await assert.rejects(
+      closeFailureIssue({ client, central: CENTRAL, title: MECHANICAL_TITLE, comment: "Recovered." }),
+      new RegExp(String(status)),
+      `${method} ${requestPath}`,
+    );
+    assert.equal(stub.issues[0].state, "open");
+    assert.equal(stub.world.comments.length, comments);
+    assert.equal(stub.calls("PATCH", "/issues/41").length, method === "PATCH" ? 1 : 0, "a failed listing or resolution comment must prevent closing");
+  }
+});
+
+test("AC51 QA poll-state recovery: an AI pr-updated run closes its issue even when sync state is already current, and replay is idempotent", async (t) => {
+  const edgeValue = edge();
+  const title = failureTitle("cascade-ai-widgets-to-portal", edgeValue.downstreamRepo);
+  const start = state({ etag: ETAG, lastObservedHeadSha: TARGET, openPrNumber: 7, openPrTargetSha: TARGET }, edgeValue);
+  const w = world({
+    edgeValue,
+    start,
+    stubOptions: { issues: [openFailure(title), openFailure(MECHANICAL_TITLE, 42)] },
+  });
+  t.after(() => w.workspace.cleanup());
+  const recovered = await invoke(w, flagsFor(edgeValue), { env: { CORRELATION_ID: "routed-correlation", GITHUB_SERVER_URL: "https://github.example.com/" } });
+  assert.equal(recovered.code, 0, recovered.stderr);
+  assert.equal(JSON.parse(recovered.stdout).outcome, "pr-updated");
+  assert.deepEqual(w.stub.variable(edgeValue.stateVariable), start);
+  assert.equal(w.stub.calls("PATCH", "/actions/variables/").length, 0, "closing is independent of whether the sync state needed a write");
+  assert.equal(w.stub.issues[0].state, "closed");
+  assert.equal(w.stub.issues[0].state_reason, "completed");
+  assert.equal(w.stub.issues[1].state, "open", "another workflow's failure is not this workflow's recovery");
+  assert.equal(w.stub.world.comments.length, 1);
+  for (const value of ["resolved (pr-updated)", "routed-correlation", TARGET, `https://github.example.com/${CENTRAL}/actions/runs/77`]) {
+    assert.ok(w.stub.world.comments[0].body.includes(value), value);
+  }
+  const replay = await invoke(w, flagsFor(edgeValue));
+  assert.equal(replay.code, 0, replay.stderr);
+  assert.equal(w.stub.world.comments.length, 1, "a closed failure never receives duplicate recovery comments");
+});
+
+test("AC51 QA router recovery: terminal and preflight noops close only this upstream's issue without dispatching", async (t) => {
+  for (const kind of ["terminal", "preflight"]) {
+    const w = routerWorld({ edge: edge({ preflightCommands: kind === "preflight" ? ['git -C <checkout> diff --quiet "$LAST_MERGED_SHA" "$TARGET_SHA" -- labs'] : [] }) });
+    t.after(() => w.cleanup());
+    const title = failureTitle("cascade-router", w.edge.upstreamRepo);
+    w.stub.issues.push(openFailure(title), openFailure("[sdlc-failure] cascade-router (other/upstream)", 42));
+    if (kind === "terminal") w.stub.setVariable(w.edge.stateVariable, { ...w.state(), lastNoopHeadSha: w.upstreamHead });
+    const result = await w.go({
+      preflightDeps: {
+        ensureCheckout: async () => {},
+        execute: async () => ({ code: 0, error: null, timedOut: false, stdout: "", stderr: "" }),
+      },
+    });
+    assert.equal(result.code, 0, result.stderr);
+    const action = kind === "terminal" ? "noop-304" : "noop-no-material-drift";
+    assert.equal(w.decisions().at(-1).action, action);
+    assert.equal(w.state().lastObservedHeadSha, w.upstreamHead);
+    assert.equal(w.state().lastNoopHeadSha, w.upstreamHead);
+    assert.equal(w.stub.world.dispatches.length, 0);
+    assert.equal(w.stub.issues[0].state, "closed", `${kind}: a successful noop resolves the router's failure`);
+    assert.equal(w.stub.issues[1].state, "open");
+    assert.equal(w.stub.world.comments.length, 1);
+    assert.ok(w.stub.world.comments[0].body.includes(`resolved (${action})`));
+  }
+});
+
+test("AC51 QA recovery: unavailable issue APIs or missing issues credentials never undo successful routing or finalization", async (t) => {
+  for (const problem of ["forbidden", "missing-token", "invalid-token"]) {
+    const issueEnv = problem === "missing-token" ? { ISSUES_TOKEN: "" } : problem === "invalid-token" ? { ISSUES_TOKEN: "ghp_operatorPATnotAnInstallationToken" } : {};
+    const router = routerWorld({ env: issueEnv });
+    t.after(() => router.cleanup());
+    router.stub.issues.push(openFailure(failureTitle("cascade-router", router.edge.upstreamRepo)));
+    if (problem === "forbidden") router.stub.inject("GET", "/issues", { status: 403, body: { message: "Resource not accessible by integration" } });
+    const routed = await router.go();
+    assert.equal(routed.code, 0, `${problem}: ${routed.stderr}`);
+    assert.equal(router.stub.world.dispatches.length, 1);
+    assert.equal(router.state().inFlightRunId, router.stub.world.dispatches[0].runId);
+    assert.equal(router.state().inFlightTargetSha, router.upstreamHead);
+    assert.equal(router.stub.issues[0].state, "open");
+    assert.equal(router.stub.calls("PATCH", "/issues/").length, 0);
+    assert.equal(router.stub.calls("GET", "/issues").length, problem === "forbidden" ? 1 : 0);
+
+    const poll = world();
+    t.after(() => poll.workspace.cleanup());
+    poll.stub.issues.push(openFailure(failureTitle("cascade-ai-widgets-to-portal", poll.edgeValue.downstreamRepo)));
+    if (problem === "forbidden") poll.stub.inject("GET", "/issues", { status: 403, body: { message: "Resource not accessible by integration" } });
+    const finalized = await invoke(poll, flagsFor(poll.edgeValue), { env: issueEnv });
+    assert.equal(finalized.code, 0, `${problem}: ${finalized.stderr}`);
+    assert.equal(poll.stub.variable(poll.edgeValue.stateVariable).openPrNumber, 7);
+    assert.equal(poll.stub.variable(poll.edgeValue.stateVariable).openPrTargetSha, TARGET);
+    assert.equal(poll.stub.issues[0].state, "open");
+    assert.equal(poll.stub.calls("PATCH", "/issues/").length, 0);
+    assert.equal(poll.stub.calls("GET", "/issues").length, problem === "forbidden" ? 1 : 0);
+  }
+});
+
+test("AC51 QA recovery: a failed sync-state write must not close a failure issue even after dispatch or PR verification", async (t) => {
+  const router = routerWorld();
+  t.after(() => router.cleanup());
+  const beforeRouter = router.state();
+  router.stub.issues.push(openFailure(failureTitle("cascade-router", router.edge.upstreamRepo)));
+  router.stub.inject("PATCH", "/actions/variables/", { status: 403, body: { message: "Resource not accessible by integration" } });
+  const routed = await router.go();
+  assert.equal(routed.code, 1, routed.stderr);
+  assert.equal(router.stub.world.dispatches.length, 1, "the dispatch happened, but its state write did not");
+  assert.deepEqual(router.state(), beforeRouter);
+  assert.equal(router.stub.issues[0].state, "open");
+  assert.equal(router.stub.calls("PATCH", "/issues/").length, 0);
+  assert.equal(router.stub.world.comments.length, 1, "the issue records another failure, not a recovery");
+
+  const poll = world();
+  t.after(() => poll.workspace.cleanup());
+  const beforePoll = poll.stub.variable(poll.edgeValue.stateVariable);
+  poll.stub.issues.push(openFailure(failureTitle("cascade-ai-widgets-to-portal", poll.edgeValue.downstreamRepo)));
+  poll.stub.inject("PATCH", "/actions/variables/", { status: 403, body: { message: "Resource not accessible by integration" } });
+  const finalized = await invoke(poll, flagsFor(poll.edgeValue));
+  assert.equal(finalized.code, 1, finalized.stderr);
+  assert.deepEqual(poll.stub.variable(poll.edgeValue.stateVariable), beforePoll);
+  assert.equal(poll.stub.issues[0].state, "open");
+  assert.equal(poll.stub.calls("PATCH", "/issues/").length, 0);
+  assert.equal(poll.stub.world.comments.length, 1);
 });
