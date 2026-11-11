@@ -80,7 +80,7 @@ test("AC57: every change of the manifest is applied by one run, and an immediate
     };
 
     const baseline = await reconcileTwice("baseline");
-    assert.equal(baseline.created.length, 20, "nine pairs, the router and aw.json");
+    assert.equal(baseline.created.length, 22, "ten pairs, the router and aw.json");
 
     manifest.projects.push(NEW_PROJECT);
     write(manifest);

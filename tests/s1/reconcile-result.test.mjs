@@ -13,6 +13,7 @@ const PRESET_PAIRS = [
   "cascade-ai-github-intermediate",
   "cascade-ai-pipeline-showcase",
   "cascade-mechanical-ai-sdlc",
+  "cascade-mechanical-copilot-config",
   "cascade-mechanical-ghec-admin",
   "drift-copilot-lab",
   "drift-gh-admin-msft",
@@ -207,7 +208,7 @@ test("AC12: `node src/reconcile.mjs --request <file>` prints the result as JSON 
     assert.equal(outcome.code, 0, outcome.stderr);
     assert.equal(outcome.json?.status, "ok");
     assertResultShape(outcome.json);
-    assert.equal(outcome.json.generatedWorkflows.length, 9);
+    assert.equal(outcome.json.generatedWorkflows.length, 10);
     assert.equal(outcome.stdout.trim().startsWith("{"), true, "stdout holds only the JSON object");
   });
 });

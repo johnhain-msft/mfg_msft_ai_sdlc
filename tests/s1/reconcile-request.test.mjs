@@ -124,7 +124,7 @@ test("AC9: every generated workflow allowlists the App sender and references the
     const result = await workspace.reconcile(referenceRequest());
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
     const workflows = readAll(workspace);
-    assert.equal(workflows.length, 9);
+    assert.equal(workflows.length, 10);
     for (const { name, frontmatter } of workflows) {
       assert.deepEqual(frontmatter.on.bots, ["mfg-msft-ai-sdlc[bot]"], `${name} on.bots`);
       const blocks = collectKey(frontmatter, "github-app");
@@ -242,7 +242,7 @@ test("AC10: with dryRun true no file of the working tree changes, generatedWorkf
       result = await workspace.reconcile(withRequest({ dryRun: true }));
     });
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
-    assert.equal(result.generatedWorkflows.length, 9);
+    assert.equal(result.generatedWorkflows.length, 10);
     assert.equal(workspace.hash(), hashBefore, ".github/workflows is identical");
     assert.equal(workspace.hash(["."]), treeBefore, "the whole working tree is identical");
     assert.equal(workspace.status(), statusBefore);

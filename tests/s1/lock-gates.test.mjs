@@ -12,7 +12,8 @@ import { createWorkspace } from "./helpers/workspace.mjs";
 const W = ".github/workflows";
 const request = referenceRequest();
 const ids = [
-  "drift-gh-admin-msft", "drift-copilot-lab", "drift-self-improving-agents", "cascade-mechanical-ghec-admin", "cascade-mechanical-ai-sdlc",
+  "drift-gh-admin-msft", "drift-copilot-lab", "drift-self-improving-agents",
+  "cascade-mechanical-ghec-admin", "cascade-mechanical-ai-sdlc", "cascade-mechanical-copilot-config",
   "cascade-ai-copilot-lab", "cascade-ai-pipeline-showcase", "cascade-ai-github-intermediate", "sdlc-onboard",
 ];
 const lockOf = (id) => YAML.parse(readText(abs(W, `${id}.lock.yml`)));

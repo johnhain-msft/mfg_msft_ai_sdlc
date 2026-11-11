@@ -30,6 +30,7 @@ jobs:
           - pipeline-showcase
           - github-intermediate
           - ai-sdlc
+          - copilot-config
         include:
           - edgeId: ghec-admin
             upstreamRepo: johnhain-msft/gh-admin-msft
@@ -304,6 +305,33 @@ jobs:
               - npm test
               - npm run test:studio
               - npx playwright test tests/browser/sites.spec.ts
+          - edgeId: copilot-config
+            upstreamRepo: johnhain-msft/copilot-config
+            upstreamKey: copilot-config
+            upstreamSlug: COPILOT_CONFIG
+            upstreamDefaultBranch: main
+            initialBaselineSha: d47e218e9d5cff8741c687c72b2c12df1bf53905
+            downstreamRepo: johnhain-msft/ai_asset_management
+            mode: mechanical
+            schedule: 0 */6 * * *
+            onCommitOnlyAdvance: noop
+            stateVariable: SDLC_SYNC_STATE_COPILOT_CONFIG
+            provenanceFile: governance/upstream-provenance.json
+            provenanceJsonPointer: /commit
+            onBots:
+              - mfg-msft-ai-sdlc[bot]
+            branchName: sdlc/cascade-copilot-config
+            closeOlderKey: sdlc-cascade-copilot-config
+            reviewers:
+              - johnhain-msft
+            importCommands:
+              - aiam sync-upstream --from <checkout>
+            preflightCommands: []
+            buildCommands: []
+            verifyCommands:
+              - aiam validate
+              - pytest -q
+              - aiam release build --out /tmp/aiam-verify-dist
     concurrency:
       group: sdlc-state-${{ matrix.upstreamKey }}
       cancel-in-progress: false

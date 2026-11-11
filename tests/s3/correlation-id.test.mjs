@@ -119,7 +119,7 @@ const JOBS = ["finalize_poll_state", "escalate_failure"];
 const edges = presetEdges();
 
 test("AC52 every cascade workflow binds CORRELATION_ID to the dispatch input in the step that runs update-poll-state.mjs: both custom jobs, source and compiled lock", () => {
-  assert.equal(edges.length, 5, "the preset has five edges");
+  assert.equal(edges.length, 6, "the preset has six edges");
   for (const entry of edges) {
     const workflowId = cascadeId(entry);
     for (const [label, workflow] of [["source", authoredOf(workflowId)], ["lock", lockOf(workflowId)]]) {

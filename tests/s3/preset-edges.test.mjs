@@ -19,6 +19,7 @@ const WORKFLOW_FILE = {
   "pipeline-showcase": "cascade-ai-pipeline-showcase.lock.yml",
   "github-intermediate": "cascade-ai-github-intermediate.lock.yml",
   "ai-sdlc": "cascade-mechanical-ai-sdlc.lock.yml",
+  "copilot-config": "cascade-mechanical-copilot-config.lock.yml",
 };
 const MAIN = sha("downstream-main");
 const headOf = (key) => sha(`head-of-${key}`);
@@ -32,6 +33,7 @@ const drifting = (key) => ({
   "pipeline-showcase": fakePreflight([]),
   "github-intermediate": fakePreflight([{ match: /diff --quiet/, code: 1 }]),
   "ai-sdlc": fakePreflight([]),
+  "copilot-config": fakePreflight([]),
 })[key];
 
 const CENTRAL_OF_PRESET = "johnhain-msft/mfg_msft_ai_sdlc";
@@ -49,8 +51,8 @@ function world(key, { stored, upstream = {}, downstream = {} } = {}) {
   });
 }
 
-test("AC66 the committed router has the five preset edges, and the workflow file of each dispatch exists on disk", () => {
-  assert.deepEqual(matrix.map((entry) => entry.upstreamKey), ["gh-admin-msft", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc"]);
+test("AC66 the committed router has the six preset edges, and the workflow file of each dispatch exists on disk", () => {
+  assert.deepEqual(matrix.map((entry) => entry.upstreamKey), ["gh-admin-msft", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc", "copilot-config"]);
   assert.deepEqual(matrix.map((entry) => entry.upstreamKey), manifest.map((entry) => entry.upstreamKey));
   for (const [key, file] of Object.entries(WORKFLOW_FILE)) assert.equal(fs.existsSync(abs(".github", "workflows", file)), true, `${key}: ${file}`);
 });

@@ -83,8 +83,13 @@ test("9a49f71: the mechanical cascades run the browser gate that ubuntu-latest c
   }
   const router = YAML.parse(readText(abs(W, "cascade-router.yml")));
   const mechanical = router.jobs.route.strategy.matrix.include.filter((edge) => edge.mode === "mechanical");
-  assert.deepEqual(mechanical.map((edge) => edge.edgeId), ["ghec-admin", "ai-sdlc"]);
-  for (const edge of mechanical) assert.equal(edge.verifyCommands.at(-1), BROWSER_GATE, edge.edgeId);
+  assert.deepEqual(mechanical.map((edge) => edge.edgeId), ["ghec-admin", "ai-sdlc", "copilot-config"]);
+  for (const edge of mechanical.filter((e) => e.downstreamRepo === "johnhain-msft/portfolio")) assert.equal(edge.verifyCommands.at(-1), BROWSER_GATE, edge.edgeId);
+  assert.deepEqual(mechanical.find((e) => e.edgeId === "copilot-config").verifyCommands, [
+    "aiam validate",
+    "pytest -q",
+    "aiam release build --out /tmp/aiam-verify-dist",
+  ]);
 });
 
 test("9a49f71: the AI cascades also run the narrowed browser gate that ubuntu-latest can run, without the full Segoe UI browser suite", () => {
@@ -101,7 +106,7 @@ test("9a49f71: the AI cascades also run the narrowed browser gate that ubuntu-la
 
 test("QA: every rendered and compiled drift or cascade disables automatic failure issues and carries the generated-bundle patch limit", () => {
   const names = [...rendered.files.keys()].filter((name) => /\/(?:drift-|cascade-(?:ai-|mechanical-)).*\.md$/.test(name));
-  assert.equal(names.length, 8, "all three drift and five cascade workflows are covered");
+  assert.equal(names.length, 9, "all three drift and six cascade workflows are covered");
   for (const name of names) {
     const id = name.split("/").pop().replace(/\.md$/, "");
     for (const [label, workflow] of versions(`${id}.md`)) {

@@ -42,7 +42,7 @@ test("the committed workflows compile under gh aw compile --strict --purge --jso
     const outcome = spawnSync("gh", ["aw", "compile", "--strict", "--purge", "--json"], { cwd: directory, env, encoding: "utf8", timeout: 600000 });
     assert.equal(outcome.status, 0, outcome.stderr);
     const elements = JSON.parse(outcome.stdout);
-    assert.equal(elements.length, 9);
+    assert.equal(elements.length, 10);
     for (const element of elements) {
       assert.equal(element.valid, true, `${element.workflow}: ${JSON.stringify(element.errors)}`);
       assert.deepEqual(element.errors, []);
@@ -83,7 +83,7 @@ test("reconcile() with the real compiler regenerates exactly the committed fleet
     fs.copyFileSync(abs(".github", "aw", "actions-lock.json"), path.join(directory, ".github", "aw", "actions-lock.json"));
     const first = await reconcile(referenceRequest(), { cwd: directory, env: process.env });
     assert.equal(first.status, "ok", JSON.stringify(first.validationResults));
-    assert.equal(first.generatedWorkflows.length, 9);
+    assert.equal(first.generatedWorkflows.length, 10);
     const snapshot = workflowFiles(directory).map((file) => [file, fs.readFileSync(path.join(directory, file), "utf8")]);
     for (const [file, text] of snapshot) {
       if (file === ".github/workflows/aw.json") continue;
@@ -106,7 +106,7 @@ test("reconcile() with the real compiler reconciles a non-empty protectedFilesEx
     const notes = [];
     const result = await reconcile(referenceRequest(), { cwd: directory, env: process.env, log: (line) => notes.push(line) });
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
-    assert.equal(result.generatedWorkflows.length, 9);
+    assert.equal(result.generatedWorkflows.length, 10);
     assert.equal(notes.length, 1, "the rejected key is reported");
     assert.equal(fs.readFileSync(path.join(directory, ".github", "workflows", "aw.json"), "utf8"), '{\n  "strict": true\n}\n');
     for (const name of ["drift-gh-admin-msft", "drift-copilot-lab", "drift-self-improving-agents", "sdlc-onboard"]) {
