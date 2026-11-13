@@ -171,7 +171,10 @@ Each `drift-<projectKey>` workflow, on its schedule or dispatched by hand:
 
 A first run, or a run whose baseline artifact has expired, has no previous index: its work list holds the most recent
 entries of each changelog, feed and release source, and pages are compared from the next run on. Dispatch a drift workflow
-with `dry_run: true` to rehearse it without creating a branch, pull request or issue.
+with `dry_run: true` to rehearse it without creating a branch, pull request or issue. A dry run is not a baseline, and it
+keeps what it would have filed (the pull request under `proposal`, the drift report under `report`) in
+`/tmp/gh-aw/agent/dry-run-proposal.json` on the runner, which no artifact includes: download the run's `agent` artifact
+and read the agent's edit of that file in its session log, `sandbox/agent/logs/copilot-session-state/*/events.jsonl`.
 
 ## Tests
 
