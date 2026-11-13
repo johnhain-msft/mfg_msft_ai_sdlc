@@ -1,4 +1,4 @@
-// AC24: network.allowed is the exact, lower-cased, de-duplicated, sorted hostname list of the watched URLs.
+// AC24: network.allowed is the exact, lower-cased, de-duplicated, sorted hostname list of the watched URLs and of the hosts of citedPages.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildAcks, renderFleet } from "../../src/reconcile.mjs";
@@ -7,9 +7,13 @@ import { createWorkspace } from "./helpers/workspace.mjs";
 
 const entry = (url) => ({ url, label: `watch ${url}`, kind: "docs" });
 
-async function render(urls, { mutateManifest } = {}) {
+/** The preset with gh-admin-msft watching `urls` and, unless a test gives one, without cited pages, so that the watched URLs are its only hosts. */
+async function render(urls, { mutateManifest, citedPages } = {}) {
   const manifest = mutate(presetManifest(), (copy) => {
-    projectOf(copy, "gh-admin-msft").driftAudit.knowledgeSources.watchUrls = urls.map(entry);
+    const sources = projectOf(copy, "gh-admin-msft").driftAudit.knowledgeSources;
+    sources.watchUrls = urls.map(entry);
+    if (citedPages === undefined) delete sources.citedPages;
+    else sources.citedPages = citedPages;
     mutateManifest?.(copy);
   });
   const workspace = createWorkspace({ manifestText: toYaml(manifest), instructions: true });
@@ -60,13 +64,30 @@ test("AC24: allowedNetworkDomains in the acknowledgement is network.allowed as r
   }
 });
 
-test("AC24: the watched URLs are the only source of network.allowed (MCP server hosts are not added)", () => {
+test("AC24: the watched URLs and the hosts of citedPages are the only sources of network.allowed (MCP server hosts are not added)", () => {
   const manifest = presetManifest();
   const project = projectOf(manifest, "gh-admin-msft");
   assert.ok(JSON.stringify(project.driftAudit.knowledgeSources.mcpServers).includes("learn.microsoft.com"));
+  assert.deepEqual(project.driftAudit.knowledgeSources.citedPages.hosts, ["docs.github.com"]);
+  assert.equal(project.driftAudit.knowledgeSources.watchUrls.some((item) => new URL(item.url).hostname === "docs.github.com"), false, "docs.github.com comes from citedPages alone");
   const rendered = renderFleet(referenceRequest(), { cwd: process.cwd() });
   const { frontmatter } = parseWorkflow(rendered.files.get(".github/workflows/drift-gh-admin-msft.md"));
   assert.deepEqual(frontmatter.network.allowed, ["docs.github.com", "github.blog"]);
+});
+
+test("AC24: the hosts of citedPages join the hosts of the watched URLs, lower-cased, de-duplicated and sorted, and the acknowledgement reports the same list", async () => {
+  const citedPages = { include: ["docs/**/*.md"], hosts: ["Learn.Microsoft.com", "GITHUB.BLOG", "docs.github.com"], maxPages: 5 };
+  const { workspace } = await render(["https://github.blog/changelog/"], { citedPages });
+  try {
+    const rendered = renderFleet(referenceRequest(), { cwd: workspace.dir });
+    assert.ok(rendered.ok, JSON.stringify(rendered.result));
+    const { frontmatter } = parseWorkflow(rendered.files.get(".github/workflows/drift-gh-admin-msft.md"));
+    assert.deepEqual(frontmatter.network.allowed, ["docs.github.com", "github.blog", "learn.microsoft.com"]);
+    const ack = buildAcks(referenceRequest(), { cwd: workspace.dir }).drift.find((item) => item.workflowId === "drift-gh-admin-msft");
+    assert.deepEqual(ack.allowedNetworkDomains, frontmatter.network.allowed);
+  } finally {
+    workspace.cleanup();
+  }
 });
 
 test("AC24: a project without watched URLs gets an empty list", async () => {

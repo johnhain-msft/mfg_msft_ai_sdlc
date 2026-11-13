@@ -7,7 +7,7 @@ import {
   digestSnapshot,
   extractCitations,
   FIRST_RUN_ENTRY_LIMIT,
-  htmlToText,
+  textFromHtml,
   rankCitations,
   renderChangesMarkdown,
 } from "../../src/drift/lib/watch-digest.mjs";
@@ -52,8 +52,8 @@ const ATOM = `<?xml version="1.0" encoding="UTF-8"?><feed xmlns="http://www.w3.o
 <content type="html">&lt;ul&gt;&lt;li&gt;Add regular expression support to permission rules&lt;/li&gt;&lt;/ul&gt;</content></entry>
 </feed>`;
 
-test("htmlToText drops scripts, styles and SVG, breaks lines at block elements, decodes entities and collapses whitespace", () => {
-  const text = htmlToText("<div>Fish &amp; chips<script>alert(1)</script><style>p{}</style></div><svg><text>logo</text></svg><p>A&nbsp;&nbsp;b &#8212; c &#x2019;d&#039;</p><br>tail");
+test("textFromHtml drops scripts, styles and SVG, breaks lines at block elements, decodes entities and collapses whitespace", () => {
+  const text = textFromHtml("<div>Fish &amp; chips<script>alert(1)</script><style>p{}</style></div><svg><text>logo</text></svg><p>A&nbsp;&nbsp;b &#8212; c &#x2019;d&#039;</p><br>tail");
   assert.equal(text, "Fish & chips\nA b \u2014 c \u2019d'\ntail");
 });
 

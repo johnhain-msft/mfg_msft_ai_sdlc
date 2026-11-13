@@ -687,6 +687,12 @@ const BASE_BASH = ["cat", "date", "find", "git", "grep", "head", "ls", "tail", "
  */
 const MECHANICAL_BASH = ["cd", "echo", "git", "node"];
 /**
+ * What the agent of a drift workflow may run besides the base list, the first words of its build commands and its `agentSandbox.bashCommands`.
+ * Dry runs of drift-copilot-lab (43497657653 and, on main, 43499249738) showed the agent opening with `cd` into the artifact directory and into
+ * its checkout; the allowlist refused the whole command and the agent gave up the shell, so it wrote no audit report and failed its validator.
+ */
+const DRIFT_BASH = ["cd", "git", "node"];
+/**
  * Executables that no manifest may add to the bash tool of a drift agent: each of them reaches the network or the GitHub API, and a drift agent
  * publishes only through its safe outputs, the `create_pull_request` of its changes and the `create_issue` of its drift report (SPEC-02 AC28).
  */
@@ -1127,7 +1133,7 @@ function driftBody(ctx, project) {
   );
   lines.push("");
   lines.push(
-    "When the registration instructions above define a report of their own (such as `docs/_meta/audit-report.md` or `self-improvement-report.md`), the body of the issue is that report followed by the `## Watched-source changes` section below. Otherwise the body has these sections, in this order:",
+    "When the registration instructions above define a report of their own (such as `docs/_meta/audit-report.md` or `self-improvement-report.md`), write that report as they say on every run, a dry run and a run that changes nothing included, because the checks that run after you look for it; the body of the issue is that report followed by the `## Watched-source changes` section below. Otherwise the body has these sections, in this order:",
   );
   lines.push("");
   lines.push("- `## Summary`: the baseline run, what changed upstream since then and what this run did, including the pull request that it opened, if any.");
@@ -1140,7 +1146,7 @@ function driftBody(ctx, project) {
   lines.push("- `## Limitations`: the sources that could not be fetched and the checks that could not run.");
   lines.push("");
   lines.push(
-    `Call \`create_pull_request\` before \`create_issue\` and name the pull request in the report. In a dry run call neither: put the report that you would have filed (\`title\` and \`body\`) under the key \`report\` of \`${AGENT_DIR}/dry-run-proposal.json\` as well.`,
+    `Call \`create_pull_request\` before \`create_issue\` and name the pull request in the report. In a dry run call neither: \`${AGENT_DIR}/dry-run-proposal.json\` exists already with \`null\` under \`proposal\` and \`report\`; replace the \`null\` of \`report\` with the report that you would have filed, \`{ "title": ..., "body": ... }\`, using the edit tool: the shell of this workflow refuses a redirection or a heredoc.`,
   );
   lines.push("");
   lines.push("## Package manifests");
@@ -1242,7 +1248,7 @@ function renderDrift(ctx, project) {
       },
     },
     engine: engineSection(ctx, { sdk: true }),
-    tools: { "web-fetch": {}, bash: bashTool(ctx, ["git", "node", ...audit.buildCommands, ...agentSandboxOf(audit).bashCommands]), edit: {} },
+    tools: { "web-fetch": {}, bash: bashTool(ctx, [...DRIFT_BASH, ...audit.buildCommands, ...agentSandboxOf(audit).bashCommands]), edit: {} },
     jobs: { ...agentSuccessGuards({ drift: true }), escalate_failure: driftEscalation(ctx, project, workflowId) },
   };
   return { id: workflowId, kind: "drift", project, text: serializeWorkflow(frontmatter, driftBody(ctx, project)) };
@@ -2461,7 +2467,7 @@ export function buildAcks(request, options = {}) {
       workflowId: `drift-${project.projectKey}`,
       lockPath: `${WORKFLOWS_DIR}/drift-${project.projectKey}.lock.yml`,
       targetRepo: project.repo,
-      allowedNetworkDomains: watchHostnames(project.driftAudit.knowledgeSources.watchUrls),
+      allowedNetworkDomains: driftHostnames(project.driftAudit.knowledgeSources),
       gateCommands: [...project.driftAudit.verifyCommands],
     }));
   const edges = manifest.dependencyEdges;

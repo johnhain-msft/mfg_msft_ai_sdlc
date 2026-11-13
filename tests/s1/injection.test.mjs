@@ -57,7 +57,7 @@ for (const [index, value] of TRICKY.entries()) {
     const drift = parseWorkflow(files.get(`${W}/drift-alpha-service.md`)).frontmatter;
     assert.deepEqual(Object.keys(drift).sort(), DRIFT_KEYS);
     assert.deepEqual(Object.keys(drift.jobs).sort(), ["conclusion", "detection", "escalate_failure", "safe_outputs"], "no job is added to the three guard sections and the one custom job");
-    assert.equal(drift["pre-agent-steps"].length, 3);
+    assert.equal(drift["pre-agent-steps"].length, 5, "the five S2 steps of SPEC-01 AC25 and no install, which the minimal manifest does not ask for");
     assert.equal(drift["post-steps"].length, 2, "one step per verify command, however many lines it has");
     assert.deepEqual(drift["safe-outputs"]["create-pull-request"].reviewers, [value], "the reviewer is a scalar");
     assert.equal("github-token" in drift["safe-outputs"], false);

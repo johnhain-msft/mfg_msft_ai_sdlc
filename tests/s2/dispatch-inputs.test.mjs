@@ -89,6 +89,9 @@ test("AC8: when dry_run is true the run leaves the file for the pull request it 
   const proposal = JSON.parse(fs.readFileSync(path.join(dry, "dry-run-proposal.json"), "utf8"));
   assert.equal(proposal.dry_run, true);
   assert.equal(proposal.proposal, null, "the agent fills the proposal in");
+  assert.equal(proposal.report, null, "and the drift report that it would have filed (SPEC-02 AC44)");
+  assert.match(proposal.instructions, /Replace `proposal` with the pull request you would have proposed: \{ branch, title, body, draft, labels, reviewers, files \}, and `report` with the drift report you would have filed: \{ title, body \}\./);
+  assert.match(proposal.instructions, /Change this file with the edit tool\. Do not call create_pull_request or create_issue\./);
   for (const value of ["TRUE", " True "]) {
     const out = nextOut();
     assert.equal((await prepare(out, ["--dry-run", value])).code, 0, value);

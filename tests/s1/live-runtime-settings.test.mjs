@@ -28,6 +28,7 @@ function shellCommands(id) {
 }
 
 const INSTALL_STEP = { name: "Install target checkout dependencies for in-sandbox validation", "working-directory": "gh-admin-msft", run: "npm ci --ignore-scripts" };
+const UPLOAD_STEP_NAME = "Upload the watch index";
 const GH_ADMIN_MSFT_BASH = [
   "awk", "cat", "cd", "cut", "date", "diff", "echo", "find", "git", "grep", "head", "jq", "ls", "mkdir", "node", "npm", "python3", "rg", "sed", "sort", "tail", "tr", "uniq", "wc", "xargs",
 ];
@@ -36,21 +37,23 @@ const BROWSER_GATE = "npx playwright test tests/browser/sites.spec.ts";
 test("ae32bf1: drift-gh-admin-msft installs the dependencies of its target after the snapshot and before the agent starts, so that the validators run inside the sandbox", () => {
   for (const [label, workflow] of versions("drift-gh-admin-msft.md")) {
     const steps = workflow.frontmatter["pre-agent-steps"];
-    assert.equal(steps.length, 4, label);
-    assert.ok(steps[2].run.includes("snapshot-watch-sources.mjs"), `${label}: the snapshot is the third step`);
-    assert.deepEqual(steps[3], INSTALL_STEP, label);
+    assert.equal(steps.length, 6, label);
+    assert.ok(steps[3].run.includes("snapshot-watch-sources.mjs"), `${label}: the snapshot is the fourth step`);
+    assert.equal(steps[4].name, UPLOAD_STEP_NAME, `${label}: the upload of the watch index follows it`);
+    assert.deepEqual(steps[5], INSTALL_STEP, label);
   }
   const steps = agentSteps("drift-gh-admin-msft");
   const at = steps.findIndex((step) => step.name === INSTALL_STEP.name);
   assert.ok(at > 0, "the lock runs the step");
   assert.deepEqual({ name: steps[at].name, "working-directory": steps[at]["working-directory"], run: steps[at].run }, INSTALL_STEP);
-  assert.ok(String(steps[at - 1].run).includes("snapshot-watch-sources.mjs"), "right after the snapshot");
+  assert.equal(steps[at - 1].name, UPLOAD_STEP_NAME, "right after the upload of the watch index");
+  assert.ok(String(steps[at - 2].run).includes("snapshot-watch-sources.mjs"), "which follows the snapshot");
   assert.ok(at < steps.findIndex(isAgentStep), "and before the step that executes the agent");
 });
 
-test("ae32bf1: the drift workflows of the projects that did not ask for the install keep their three pre-agent steps", () => {
+test("ae32bf1: the drift workflows of the projects that did not ask for the install keep their five pre-agent steps", () => {
   for (const key of ["copilot-lab", "self-improving-agents"]) {
-    for (const [label, workflow] of versions(`drift-${key}.md`)) assert.equal(workflow.frontmatter["pre-agent-steps"].length, 3, `${key} ${label}`);
+    for (const [label, workflow] of versions(`drift-${key}.md`)) assert.equal(workflow.frontmatter["pre-agent-steps"].length, 5, `${key} ${label}`);
     assert.equal(agentSteps(`drift-${key}`).some((step) => step.run === "npm ci --ignore-scripts" && step["working-directory"] !== undefined), false, `${key}: the lock installs nothing`);
   }
 });
@@ -62,11 +65,15 @@ test("61f0678: drift-gh-admin-msft lets its agent run the text tools of its vali
   for (const word of ["gh", "curl", "wget"]) assert.equal(commands.includes(word), false, `the lock does not let the agent run ${word}`);
 });
 
-test("61f0678: the other drift workflows keep the allowlist that git, node and their build commands give them", () => {
+// Dry runs 43497657653 (this branch) and 43499249738 (main) of drift-copilot-lab: the agent opened with `cd` into the artifact directory and into
+// its checkout, the allowlist refused the whole command, and the agent gave up the shell, wrote no audit report and failed the validator. `cd`
+// reaches nothing, so every drift workflow allows it, as the mechanical cascades do.
+test("61f0678: the other drift workflows keep the allowlist that cd, git, node and their build commands give them", () => {
   for (const key of ["copilot-lab", "self-improving-agents"]) {
     for (const [label, workflow] of versions(`drift-${key}.md`)) {
-      assert.deepEqual(workflow.frontmatter.tools.bash, ["cat", "date", "find", "git", "grep", "head", "ls", "node", "tail", "wc"], `${key} ${label}`);
+      assert.deepEqual(workflow.frontmatter.tools.bash, ["cat", "cd", "date", "find", "git", "grep", "head", "ls", "node", "tail", "wc"], `${key} ${label}`);
     }
+    assert.ok(shellCommands(`drift-${key}`).includes("cd"), `${key}: the lock lets the agent run cd`);
   }
 });
 

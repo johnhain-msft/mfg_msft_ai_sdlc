@@ -67,7 +67,13 @@ for (const key of DRIFT_KEYS) {
     assert.ok(body.includes(`Title it \`Drift report: ${key} YYYY-MM-DD\``));
     for (const section of ["## Summary", "## Watched-source changes", "## Recommendations", "## Limitations"]) assert.ok(body.includes(`- \`${section}\``), section);
     assert.match(body, /content that the sources announce and this repository does not cover yet/, "recommendations include what to add, not only what to fix");
-    assert.match(body, /In a dry run call neither: put the report that you would have filed \(`title` and `body`\) under the key `report` of `\/tmp\/gh-aw\/agent\/dry-run-proposal\.json`/);
+    assert.match(body, /In a dry run call neither: `\/tmp\/gh-aw\/agent\/dry-run-proposal\.json` exists already with `null` under `proposal` and `report`; replace the `null` of `report` with the report that you would have filed/);
+    assert.match(body, /`report` with the report that you would have filed, `\{ "title": \.\.\., "body": \.\.\. \}`, using the edit tool: the shell of this workflow refuses a redirection or a heredoc\./, "the dry run names the tool that can write the file");
+    assert.match(
+      body,
+      /When the registration instructions above define a report of their own \(such as `docs\/_meta\/audit-report\.md` or `self-improvement-report\.md`\), write that report as they say on every run, a dry run and a run that changes nothing included, because the checks that run after you look for it;/,
+      "a project's own report is written on every run, so that its validator finds it",
+    );
     assert.equal(/call `noop`/.test(body), false, "the report replaces a silent no-op");
     const order = ["## Watched sources", "## What changed since the last run", "## Drift report", "## Operating rules"].map((heading) => body.indexOf(heading));
     assert.deepEqual([...order].sort((a, b) => a - b), order, "the sections come in this order");

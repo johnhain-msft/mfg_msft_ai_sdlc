@@ -12,7 +12,8 @@
 // (`baseSha`). The verification steps that run after the agent do not read that file for the base commit, because the agent can
 // edit anything under <out>: when the runner provides GITHUB_ENV, this step also appends SDLC_BASE_SHA=<base commit> to it, and
 // the runner hands that variable to every later step (the validator of the lab audit compares the checkout against it). For a
-// dry run it also leaves <out>/dry-run-proposal.json, the file in which the agent records the pull request it would have proposed.
+// dry run it also leaves <out>/dry-run-proposal.json, the file in which the agent records the pull request it would have proposed and the
+// drift report it would have filed (both null until it does).
 // The same holds for the code that the verification steps run: when the runner provides RUNNER_TEMP, this step copies the validator of the
 // lab audit (src/validate-*.mjs) and the modules that it imports (src/drift/lib/) to ${RUNNER_TEMP}/gh-aw/sdlc-validator/, read-only. The
 // compiled agent step mounts ${RUNNER_TEMP}/gh-aw read-only and the workspace, where those files also are, read-write, so an agent that
@@ -196,8 +197,9 @@ export async function run(argv, ioInput = {}) {
           version: 1,
           dry_run: true,
           proposal: null,
+          report: null,
           instructions:
-            "Replace `proposal` with the pull request you would have proposed: { branch, title, body, draft, labels, reviewers, files }. Do not call create_pull_request.",
+            "Replace `proposal` with the pull request you would have proposed: { branch, title, body, draft, labels, reviewers, files }, and `report` with the drift report you would have filed: { title, body }. Change this file with the edit tool. Do not call create_pull_request or create_issue.",
         }),
       });
     }

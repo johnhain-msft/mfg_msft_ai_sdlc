@@ -48,7 +48,7 @@ function dropElements(html, names) {
 }
 
 /** The visible text of an HTML fragment: one line per block element, entities decoded, whitespace collapsed, empty lines dropped. */
-export function htmlToText(html) {
+export function textFromHtml(html) {
   return decodeEntities(dropElements(html, DROPPED_ELEMENTS).replace(BLOCK_TAG, "\n").replace(/<[^>]*>/g, ""))
     .replace(/\u00a0/g, " ")
     .split("\n")
@@ -88,7 +88,7 @@ function anchorsOf(html, base) {
     const href = hrefOf(match[1]);
     if (!href) continue;
     const url = normalizeUrl(href[1] ?? href[2] ?? href[3], base);
-    if (url !== null) anchors.push({ url, title: htmlToText(match[2]).replace(/\n/g, " ") });
+    if (url !== null) anchors.push({ url, title: textFromHtml(match[2]).replace(/\n/g, " ") });
   }
   return anchors;
 }
@@ -111,7 +111,7 @@ function excerptOf(text) {
 
 function digestHtml(html, pageUrl) {
   const page = normalizeUrl(pageUrl, pageUrl);
-  const text = htmlToText(dropElements(mainOf(html), CHROME_ELEMENTS));
+  const text = textFromHtml(dropElements(mainOf(html), CHROME_ELEMENTS));
   const entries = [];
   const seen = new Set();
   const push = (entry) => {
@@ -142,7 +142,7 @@ const field = (xml, name) => {
   return match ? cdata(match[1]) : null;
 };
 /** The text of a feed field that holds HTML, escaped (Atom type="html", RSS description) or in CDATA (content:encoded). */
-const feedText = (value) => htmlToText(/<[a-z!]/i.test(value) ? value : decodeEntities(value));
+const feedText = (value) => textFromHtml(/<[a-z!]/i.test(value) ? value : decodeEntities(value));
 
 function digestFeed(xml, pageUrl) {
   const entries = [];
@@ -162,7 +162,7 @@ function digestFeed(xml, pageUrl) {
     const url = normalizeUrl(link ?? cdata(field(item, "guid") ?? ""), pageUrl);
     if (url === null || seen.has(url)) continue;
     seen.add(url);
-    const title = htmlToText(decodeEntities(field(item, "title") ?? "")).replace(/\n/g, " ");
+    const title = textFromHtml(decodeEntities(field(item, "title") ?? "")).replace(/\n/g, " ");
     const date = isoDate(field(item, "pubDate") ?? field(item, "published") ?? field(item, "updated") ?? field(item, "dc:date"));
     const body = field(item, "content:encoded") ?? field(item, "content") ?? field(item, "description") ?? field(item, "summary") ?? "";
     entries.push({ url, title, date, excerpt: excerptOf(feedText(body)) });

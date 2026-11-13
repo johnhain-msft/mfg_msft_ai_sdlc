@@ -140,6 +140,7 @@ tools:
   web-fetch: {}
   bash:
     - cat
+    - cd
     - date
     - find
     - git
@@ -256,14 +257,14 @@ That list is your work list, and every item of it gets a decision. Triage each i
 
 End every run with exactly one `create_issue` call: the drift report, which a human reads whether or not you also open a pull request. File it also when the work list is empty and nothing needs to change: then the report says that nothing changed since the baseline, so that no run is silent. Title it `Drift report: copilot-lab YYYY-MM-DD` with the current UTC date (the `[sdlc-drift] ` prefix is added for you).
 
-When the registration instructions above define a report of their own (such as `docs/_meta/audit-report.md` or `self-improvement-report.md`), the body of the issue is that report followed by the `## Watched-source changes` section below. Otherwise the body has these sections, in this order:
+When the registration instructions above define a report of their own (such as `docs/_meta/audit-report.md` or `self-improvement-report.md`), write that report as they say on every run, a dry run and a run that changes nothing included, because the checks that run after you look for it; the body of the issue is that report followed by the `## Watched-source changes` section below. Otherwise the body has these sections, in this order:
 
 - `## Summary`: the baseline run, what changed upstream since then and what this run did, including the pull request that it opened, if any.
 - `## Watched-source changes`: one line for each item of the work list: the item (linked), its decision (`applied` in the pull request, `recommended`, `not relevant` or `could not confirm`) and the source or the reason.
 - `## Recommendations`: what a human should consider that this run did not change: content that the sources announce and this repository does not cover yet (a new feature, setting, limit or retirement that deserves a lab step, a slide or a reference note), judgement calls, and claims that you could not corroborate, each with its source URL and the files that it concerns.
 - `## Limitations`: the sources that could not be fetched and the checks that could not run.
 
-Call `create_pull_request` before `create_issue` and name the pull request in the report. In a dry run call neither: put the report that you would have filed (`title` and `body`) under the key `report` of `/tmp/gh-aw/agent/dry-run-proposal.json` as well.
+Call `create_pull_request` before `create_issue` and name the pull request in the report. In a dry run call neither: `/tmp/gh-aw/agent/dry-run-proposal.json` exists already with `null` under `proposal` and `report`; replace the `null` of `report` with the report that you would have filed, `{ "title": ..., "body": ... }`, using the edit tool: the shell of this workflow refuses a redirection or a heredoc.
 
 ## Package manifests
 
