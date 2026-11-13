@@ -28,7 +28,7 @@ test("the lock of every generated workflow loses its permission-checks: read lin
   try {
     const result = await workspace.reconcile(request);
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
-    assert.equal(result.generatedWorkflows.length, 9);
+    assert.equal(result.generatedWorkflows.length, 10);
     for (const pair of result.generatedWorkflows) {
       const text = workspace.read(pair.lockYml);
       assert.equal(text.includes("permission-checks"), false, `${pair.lockYml} still asks for the Checks permission`);

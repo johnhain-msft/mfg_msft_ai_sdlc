@@ -30,7 +30,7 @@ test("QA2 token floor: each cascade job rejects every omitted permission and Var
   assert.equal(rendered.ok, true);
   assert.deepEqual(checkRendered(rendered.files, request, manifest).filter((entry) => !entry.valid), []);
   const files = [...rendered.files].filter(([file]) => /\/cascade-(?:ai|mechanical)-.*\.md$/.test(file));
-  assert.equal(files.length, 5);
+  assert.equal(files.length, 6);
   for (const [file, text] of files) {
     for (const job of ["finalize_poll_state", "escalate_failure"]) {
       for (const [permission, replacement] of [

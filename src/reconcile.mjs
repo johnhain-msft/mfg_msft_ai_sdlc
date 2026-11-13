@@ -1188,6 +1188,17 @@ function cascadeCheckout(ctx, edge) {
 
 function cascadeSteps(edge) {
   const down = downstreamName(edge);
+  if (edge.pythonVersion) {
+    const steps = [{ name: `Set up Python ${edge.pythonVersion}`, uses: "actions/setup-python@v5", with: { "python-version": edge.pythonVersion } }];
+    for (const directory of edge.installDirectories) {
+      steps.push({
+        name: directory === "." ? "Install dependencies (root)" : `Install dependencies (${directory})`,
+        run: 'python -m pip install -e ".[dev]"',
+        "working-directory": directory === "." ? down : `${down}/${directory}`,
+      });
+    }
+    return steps;
+  }
   const steps = [{ name: "Set up Node.js 24", uses: "actions/setup-node@v4", with: { "node-version": "24" } }];
   for (const directory of edge.installDirectories) {
     steps.push({

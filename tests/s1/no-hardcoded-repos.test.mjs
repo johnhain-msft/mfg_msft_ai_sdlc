@@ -38,7 +38,7 @@ test("AC59: the engine and its imports are exactly the files this test inspects"
 });
 
 test("AC59: no repo, upstreamRepo or downstreamRepo value of sdlc.yaml appears in the engine files", () => {
-  assert.equal(new Set(repositories).size, 6, "six distinct repositories in the preset");
+  assert.equal(new Set(repositories).size, 8, "eight distinct repositories in the preset");
   for (const file of engineFiles()) {
     const text = readText(abs(file));
     for (const repository of new Set(repositories)) {

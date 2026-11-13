@@ -16,11 +16,15 @@ function acksFor(manifest) {
   }
 }
 
-test("AC37: for the preset the cascade ack is the router path, the two mechanical workflows and five edges", () => {
+test("AC37: for the preset the cascade ack is the router path, the three mechanical workflows and six edges", () => {
   assert.deepEqual(buildAcks(request).cascade, {
     routerWorkflowPath: ".github/workflows/cascade-router.yml",
-    mechanicalWorkflowPaths: [".github/workflows/cascade-mechanical-ghec-admin.md", ".github/workflows/cascade-mechanical-ai-sdlc.md"],
-    dependencyEdgesCount: 5,
+    mechanicalWorkflowPaths: [
+      ".github/workflows/cascade-mechanical-ghec-admin.md",
+      ".github/workflows/cascade-mechanical-ai-sdlc.md",
+      ".github/workflows/cascade-mechanical-copilot-config.md",
+    ],
+    dependencyEdgesCount: 6,
   });
 });
 
@@ -47,6 +51,7 @@ test("AC37: adding a fixture edge raises the count by one and a mechanical edge 
     ".github/workflows/cascade-mechanical-ghec-admin.md",
     ".github/workflows/cascade-mechanical-second-mechanical.md",
     ".github/workflows/cascade-mechanical-ai-sdlc.md",
+    ".github/workflows/cascade-mechanical-copilot-config.md",
   ]);
 });
 

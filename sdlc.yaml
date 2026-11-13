@@ -259,6 +259,46 @@ projects:
       draft: false
       reviewers: []
 
+  - projectKey: copilot-config
+    repo: johnhain-msft/copilot-config
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+
+  - projectKey: ai-asset-management
+    repo: johnhain-msft/ai_asset_management
+    defaultBranch: main
+    deconflictInRepoSchedules: none
+    deconflictWorkflowIds: []
+    driftAudit:
+      enabled: false
+      schedule: "0 6 * * 1"
+      upkeepStrategy: content-and-docs-sync
+      instructions: ""
+      instructionsFile: null
+      knowledgeSources:
+        watchUrls: []
+        packageManifests: []
+        mcpServers: {}
+      buildCommands: []
+      verifyCommands: []
+      draft: false
+      reviewers: []
+
 dependencyEdges:
   - edgeId: ghec-admin
     upstreamRepo: johnhain-msft/gh-admin-msft
@@ -814,3 +854,42 @@ dependencyEdges:
     autoMerge: false
     immutableGates:
       zeroDiffPaths: []
+
+  - edgeId: copilot-config
+    upstreamRepo: johnhain-msft/copilot-config
+    upstreamKey: copilot-config
+    upstreamSlug: COPILOT_CONFIG
+    upstreamDefaultBranch: main
+    initialBaselineSha: d47e218e9d5cff8741c687c72b2c12df1bf53905
+    downstreamRepo: johnhain-msft/ai_asset_management
+    mode: mechanical
+    schedule: "0 */6 * * *"
+    onCommitOnlyAdvance: noop
+    stateVariable: SDLC_SYNC_STATE_COPILOT_CONFIG
+    provenanceFile: governance/upstream-provenance.json
+    provenanceJsonPointer: /commit
+    branchName: sdlc/cascade-copilot-config
+    closeOlderKey: sdlc-cascade-copilot-config
+    reviewers:
+      - johnhain-msft
+    pythonVersion: "3.12"
+    importCommands:
+      - aiam sync-upstream --from <checkout>
+    preflightCommands: []
+    acceptCommands: []
+    buildCommands: []
+    verifyCommands:
+      - aiam validate
+      - pytest -q
+      - aiam release build --out /tmp/aiam-verify-dist
+    adaptationInstructions: ""
+    allowedFiles:
+      - assets/**
+      - governance/upstream-provenance.json
+      - governance/cowork-preferences-source.md
+      - .github/CODEOWNERS
+    protectedFilesExclude: []
+    autoMerge: false
+    immutableGates:
+      zeroDiffPaths: []
+

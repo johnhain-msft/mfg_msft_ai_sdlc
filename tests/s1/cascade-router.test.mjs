@@ -60,6 +60,7 @@ test("AC31: on.schedule holds one cron per distinct non-null edge schedule, sort
     copy.dependencyEdges[2].schedule = null;
     copy.dependencyEdges[3].schedule = "30 8 * * *";
     copy.dependencyEdges[4].schedule = "30 8 * * *";
+    copy.dependencyEdges[5].schedule = "30 8 * * *";
   });
   assert.deepEqual(routerFor(varied).on.schedule, [{ cron: "0 */2 * * *" }, { cron: "30 8 * * *" }]);
   const unscheduled = mutate(preset, (copy) => copy.dependencyEdges.forEach((edge) => (edge.schedule = null)));
@@ -78,7 +79,7 @@ test("AC31: a workflow-level permissions block exists and lists contents: read",
 
 test("AC31: matrix.upstreamKey equals the edges' upstreamKey values in manifest order", () => {
   const expected = preset.dependencyEdges.map((edge) => edge.upstreamKey);
-  assert.deepEqual(expected, ["gh-admin-msft", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc"]);
+  assert.deepEqual(expected, ["gh-admin-msft", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc", "copilot-config"]);
   for (const router of [committed, rendered]) assert.deepEqual(jobOf(router).strategy.matrix.upstreamKey, expected);
 });
 

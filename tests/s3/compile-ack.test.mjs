@@ -40,7 +40,7 @@ test("AC6 dependencyEdgesCount equals the length of the router matrix and the nu
   assert.equal(ack.dependencyEdgesCount, matrix.upstreamKey.length);
   assert.equal(ack.dependencyEdgesCount, matrix.include.length);
   assert.equal(ack.dependencyEdgesCount, manifest.dependencyEdges.length);
-  assert.equal(ack.dependencyEdgesCount, 5, "the default preset");
+  assert.equal(ack.dependencyEdgesCount, 6, "the default preset");
 });
 
 test("AC6 the acknowledgement is derived without writing: asking for it leaves the committed workflows as they are", () => {

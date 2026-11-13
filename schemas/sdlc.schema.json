@@ -234,6 +234,11 @@
           "uniqueItems": true,
           "items": { "$ref": "#/definitions/relativePath" }
         },
+        "pythonVersion": {
+          "description": "Optional Python version for Python-based downstream repositories; when set, cascade setup installs Python and runs pip install -e .[dev] instead of npm ci.",
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+(?:\\.\\d+)?$"
+        },
         "immutableGates": { "$ref": "#/definitions/immutableGates" },
         "adaptation": { "$ref": "#/definitions/adaptation" }
       }
