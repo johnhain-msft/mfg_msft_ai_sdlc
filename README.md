@@ -102,7 +102,8 @@ node bin/sdlc-onboard.mjs --repo <owner/repo-or-path> [--downstream <owner/repo>
   [--instructions <text-or-path>] [--manifest sdlc.yaml]
 ```
 
-The repository may also be given as one positional `<owner/repo>`. The command inspects the target read-only
+The repository may also be given as one positional `<owner/repo>`. Without `--schedule` the project's upkeep runs on
+Mondays at 06:23 UTC (`23 6 * * 1`), off the top of the hour (see "Change detection: the router polls"). The command inspects the target read-only
 (`package.json` and other language manifests, `.github/workflows/`, test and build scripts, provenance files and
 `.github/CODEOWNERS`), then writes the project entry, an optional dependency edge and `instructions/<projectKey>.md`. It never
 invents a command: a command is only written when it is a script of the target's manifest. Existing entries are preserved
@@ -135,6 +136,42 @@ entry in `sdlc.yaml` yourself with its `verifyCommands`; a later run keeps what 
 `SDLC_SYNC_STATE_<SLUG>` variables are owned by `cascade-router.yml`; the bootstrap and onboarding commands only create
 a missing one. A blocked sync state is reset only by dispatching `cascade-router.yml` with `reset_blocked: true`, never
 by editing a `SDLC_SYNC_STATE_<SLUG>` variable.
+
+## Change detection: the router polls
+
+`cascade-router.yml` polls every upstream of `sdlc.yaml` on the schedules of its edges (`17 */6 * * *` in the preset:
+four times a day, at 17 minutes past the hour), with one matrix job per edge. GitHub delays scheduled runs when Actions is
+busy, most at the start of every hour, and may drop some of them, so no schedule of the fleet starts on the hour; even so a
+scheduled run can start hours late. To route at once instead of waiting for the next poll:
+
+```
+gh workflow run cascade-router.yml
+```
+
+`.github/workflows/sdlc-bridge-dispatch.yml` wakes the router when a pull request merges in this repository (the
+self-cascade of the `ai-sdlc` edge), where the App's credentials already are. Do not copy that workflow, or the App's
+private key, into an upstream repository: the key can mint a token for every installation of the App, so each copy would
+hand the whole fleet to everyone who can run a workflow in that repository, and a personal access token in its place would
+need `Contents: write` on this repository. Upstream repositories need no credential of the orchestrator; they are polled.
+
+## Drift upkeep: what the agent sees and what it reports
+
+Each `drift-<projectKey>` workflow, on its schedule or dispatched by hand:
+
+* snapshots the project's `watchUrls` (changelog indexes and feeds, the Atom feeds of release pages, documentation pages)
+  and, with `knowledgeSources.citedPages` (`include` patterns, `hosts`, `maxPages`), the documentation pages that the
+  target's own files cite most;
+* compares those snapshots with the watch index of the last successful run that was not a dry run (the run artifact
+  `sdlc-watch-index-<projectKey>`, kept as long as the repository keeps artifacts) and gives the agent a work list,
+  `changes.md`: the entries that are new since then and the pages that changed, with the files that cite them;
+* files one issue in the target repository on every run that is not a dry run, `[sdlc-drift] Drift report: <projectKey>
+  <date>`, with a decision on every item of the work list and a `## Recommendations` section for what the sources announce
+  and the target does not cover yet, and opens a pull request only for the changes that a source corroborates. Each report
+  closes the previous report of the same workflow.
+
+A first run, or a run whose baseline artifact has expired, has no previous index: its work list holds the most recent
+entries of each changelog, feed and release source, and pages are compared from the next run on. Dispatch a drift workflow
+with `dry_run: true` to rehearse it without creating a branch, pull request or issue.
 
 ## Tests
 

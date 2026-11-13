@@ -1,3 +1,10 @@
+# The merge bridge of the orchestrator's own repository, for the ai-sdlc self-cascade: a pull request merged into the default branch wakes the
+# cascade router at once instead of at its next scheduled poll.
+#
+# It belongs only in the orchestrator repository, where the GitHub App's private key already is. Never copy this workflow, or the App's
+# private key, into an upstream repository: the key can mint a token for every installation of the App, so each copy would hand the fleet to
+# everyone who can run a workflow there. The router polls every upstream on its own schedule (cascade-router.yml), and
+# `gh workflow run cascade-router.yml` routes at once when a cascade should not wait for it.
 name: SDLC Merge Bridge Dispatch
 
 on:
@@ -18,8 +25,7 @@ jobs:
         env:
           APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-          SDLC_DISPATCH_TOKEN: ${{ secrets.SDLC_ORCHESTRATOR_DISPATCH_TOKEN }}
-          ORCHESTRATOR_REPO: johnhain-msft/mfg_msft_ai_sdlc
+          ORCHESTRATOR_REPO: ${{ github.repository }}
           UPSTREAM_REPO: ${{ github.repository }}
           MERGED_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -29,11 +35,11 @@ jobs:
         run: |
           node --input-type=module -e '
           import crypto from "node:crypto";
+          import fs from "node:fs";
 
           const {
             APP_CLIENT_ID,
             APP_PRIVATE_KEY,
-            SDLC_DISPATCH_TOKEN,
             ORCHESTRATOR_REPO,
             UPSTREAM_REPO,
             MERGED_SHA,
@@ -41,7 +47,12 @@ jobs:
             MERGED_AT,
             DEFAULT_BRANCH,
             GITHUB_RUN_ID,
+            GITHUB_STEP_SUMMARY,
           } = process.env;
+
+          const summary = (text) => {
+            if (GITHUB_STEP_SUMMARY) fs.appendFileSync(GITHUB_STEP_SUMMARY, `${text}\n`);
+          };
 
           const headers = (token) => ({
             Accept: "application/vnd.github+json",
@@ -75,14 +86,13 @@ jobs:
             return token;
           }
 
-          let token = (SDLC_DISPATCH_TOKEN || "").trim();
-          if (!token && APP_CLIENT_ID && APP_PRIVATE_KEY) {
-            token = await mintInstallationToken(APP_CLIENT_ID.trim(), APP_PRIVATE_KEY, ORCHESTRATOR_REPO);
-          }
-          if (!token) {
-            console.log("::notice::Neither APP_CLIENT_ID/APP_PRIVATE_KEY nor SDLC_ORCHESTRATOR_DISPATCH_TOKEN is configured; relying on the 6-hour ETag poll in johnhain-msft/mfg_msft_ai_sdlc.");
+          if (!(APP_CLIENT_ID ?? "").trim() || !(APP_PRIVATE_KEY ?? "").trim()) {
+            const note = `The GitHub App credentials (variable APP_CLIENT_ID, secret APP_PRIVATE_KEY) are not configured in ${ORCHESTRATOR_REPO}, so the cascade router was not woken. It picks up this merge at its next scheduled poll; run \`gh workflow run cascade-router.yml\` to route now.`;
+            console.log(`::warning::${note}`);
+            summary(`### Router not woken\n\n${note}`);
             process.exit(0);
           }
+          const token = await mintInstallationToken(APP_CLIENT_ID.trim(), APP_PRIVATE_KEY, ORCHESTRATOR_REPO);
 
           const payload = {
             event_type: "upstream_pr_merged",
@@ -106,4 +116,5 @@ jobs:
             throw new Error(`POST /repos/${ORCHESTRATOR_REPO}/dispatches failed: HTTP ${res.status} ${text}`);
           }
           console.log(`Dispatched upstream_pr_merged for PR #${PR_NUMBER} (${MERGED_SHA}) to ${ORCHESTRATOR_REPO}.`);
+          summary(`### Router woken\n\nDispatched \`upstream_pr_merged\` for PR #${PR_NUMBER} (\`${MERGED_SHA}\`) to ${ORCHESTRATOR_REPO}.`);
           '
