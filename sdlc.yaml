@@ -110,10 +110,12 @@ projects:
           - url: https://github.blog/changelog/feed/
             label: GitHub changelog feed
             kind: feed
-          - url: https://github.com/github/gh-aw/releases.atom
+          # The release pages and not their Atom feeds: releases.atom also lists the bare tags of the repository (9 of the 10 entries of
+          # github/gh-aw's were gh-aw/work-queue/<sha> tags on 2026-11-13), and a page names its older page, which a run reads to reach the last.
+          - url: https://github.com/github/gh-aw/releases
             label: GitHub Agentic Workflows releases
             kind: release-notes
-          - url: https://github.com/github/copilot-cli/releases.atom
+          - url: https://github.com/github/copilot-cli/releases
             label: GitHub Copilot CLI releases
             kind: release-notes
         citedPages:
@@ -168,7 +170,7 @@ projects:
           - url: https://docs.github.com/en/copilot
             label: GitHub Copilot documentation
             kind: docs
-          - url: https://github.com/github/gh-aw/releases.atom
+          - url: https://github.com/github/gh-aw/releases
             label: GitHub Agentic Workflows releases
             kind: release-notes
         packageManifests: []

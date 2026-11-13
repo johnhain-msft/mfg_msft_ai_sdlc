@@ -158,19 +158,25 @@ need `Contents: write` on this repository. Upstream repositories need no credent
 
 Each `drift-<projectKey>` workflow, on its schedule or dispatched by hand:
 
-* snapshots the project's `watchUrls` (changelog indexes and feeds, the Atom feeds of release pages, documentation pages)
-  and, with `knowledgeSources.citedPages` (`include` patterns, `hosts`, `maxPages`), the documentation pages that the
-  target's own files cite most;
+* snapshots the project's `watchUrls` (changelog indexes and feeds, release pages, documentation pages) and, with
+  `knowledgeSources.citedPages` (`include` patterns, `hosts`, `maxPages`), the documentation pages that the target's own
+  files cite most;
 * compares those snapshots with the watch index of the last successful run that was not a dry run (the run artifact
-  `sdlc-watch-index-<projectKey>`, kept as long as the repository keeps artifacts) and gives the agent a work list,
-  `changes.md`: the entries that are new since then and the pages that changed, with the files that cite them;
+  `sdlc-watch-index-<projectKey>`) and gives the agent a work list, `changes.md`: the entries that are new since then
+  and the pages that changed, with the files that cite them. A source whose first page no longer reaches that run is read
+  back through its older pages (up to ten); one that still does not is listed under `## Possible gaps` with the period
+  that neither run saw, so nothing published between two runs is dropped in silence;
 * files one issue in the target repository on every run that is not a dry run, `[sdlc-drift] Drift report: <projectKey>
   <date>`, with a decision on every item of the work list and a `## Recommendations` section for what the sources announce
   and the target does not cover yet, and opens a pull request only for the changes that a source corroborates. Each report
   closes the previous report of the same workflow.
 
 A first run, or a run whose baseline artifact has expired, has no previous index: its work list holds the most recent
-entries of each changelog, feed and release source, and pages are compared from the next run on. Dispatch a drift workflow
+entries of each changelog, feed and release source, and pages are compared from the next run on. The artifact expires
+after the `retention-days` that the compiler gives the upload step, `vars.GH_AW_DEFAULT_ARTIFACT_RETENTION_DAYS` or, when
+that variable is unset, the repository's artifact retention (90 days by default); keep it longer than the longest drift
+schedule, a month for `drift-self-improving-agents`, or every run of that workflow starts without a baseline.
+Dispatch a drift workflow
 with `dry_run: true` to rehearse it without creating a branch, pull request or issue. A dry run is not a baseline, and it
 keeps what it would have filed (the pull request under `proposal`, the drift report under `report`) in
 `/tmp/gh-aw/agent/dry-run-proposal.json` on the runner, which no artifact includes: download the run's `agent` artifact

@@ -278,6 +278,8 @@ The snapshot step also saved the text of the pages that this repository cites mo
 
 Start with `/tmp/gh-aw/agent/sources/changes.md`. It compares this run's snapshots with the watch index of the last successful run (its first line names that run, or says that there is none and why) and lists the changelog, feed and release entries that are new since then, each once with the sources that list it, the pages and cited pages whose text changed, with the files of this repository that cite them, and the sources that could not be fetched.
 
+When a source's first page lists none of the entries that the baseline knew, the snapshot step has read its older pages until one does, up to a limit; a source that still does not reach the baseline is listed under `## Possible gaps` with the period that neither run saw. Open the older pages of that source for that period yourself, decide those entries as well, and name the gap under `## Limitations` when you cannot.
+
 That list is your work list, and every item of it gets a decision. Triage each item first from its title and excerpt: search this repository for the feature, setting or product that it names. Open, read and corroborate the items that touch something this repository covers or should cover, and fetch an entry or a page whenever its excerpt is not enough to decide; an item that does not concern this repository needs one line that says why. A long list is no reason to skip items: decide each one.
 
 ## Drift report
@@ -289,7 +291,7 @@ When the registration instructions above define a report of their own (such as `
 - `## Summary`: the baseline run, what changed upstream since then and what this run did, including the pull request that it opened, if any.
 - `## Watched-source changes`: one line for each item of the work list: the item (linked), its decision (`applied` in the pull request, `recommended`, `not relevant` or `could not confirm`) and the source or the reason.
 - `## Recommendations`: what a human should consider that this run did not change: content that the sources announce and this repository does not cover yet (a new feature, setting, limit or retirement that deserves a lab step, a slide or a reference note), judgement calls, and claims that you could not corroborate, each with its source URL and the files that it concerns.
-- `## Limitations`: the sources that could not be fetched and the checks that could not run.
+- `## Limitations`: the sources that could not be fetched, the possible gaps that you could not close and the checks that could not run.
 
 Call `create_pull_request` before `create_issue` and name the pull request in the report. In a dry run call neither: `/tmp/gh-aw/agent/dry-run-proposal.json` exists already with `null` under `proposal` and `report`; replace the `null` of `report` with the report that you would have filed, `{ "title": ..., "body": ... }`, using the edit tool: the shell of this workflow refuses a redirection or a heredoc.
 

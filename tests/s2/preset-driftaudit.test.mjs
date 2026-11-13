@@ -56,10 +56,14 @@ test("AC40: every watched URL has a literal hostname, and both MCP servers are d
   }
 });
 
-test("AC40: the lab watches the github/gh-aw releases (their Atom feed) and its package manifests cover node/package.json and **/*.csproj", () => {
+test("AC40: the lab watches the github/gh-aw releases page and its package manifests cover node/package.json and **/*.csproj", () => {
   for (const key of ["copilot-lab", "self-improving-agents"]) {
-    const releases = driftPreset(key).driftAudit.knowledgeSources.watchUrls.filter((entry) => entry.kind === "release-notes" && /^\/github\/gh-aw\/releases(?:\.atom)?$/.test(new URL(entry.url).pathname));
-    assert.equal(releases.length, 1, `${key} has one release-notes entry for the github/gh-aw releases`);
+    const watched = driftPreset(key).driftAudit.knowledgeSources.watchUrls;
+    const releases = watched.filter((entry) => entry.kind === "release-notes" && new URL(entry.url).pathname === "/github/gh-aw/releases");
+    assert.equal(releases.length, 1, `${key} has one release-notes entry for the github/gh-aw releases page`);
+    // the Atom feed of a release page also lists the bare tags of the repository: on 2026-11-13, 9 of the 10 entries of github/gh-aw's were
+    // gh-aw/work-queue/<sha> tags, so the feed showed one release where the page shows ten
+    for (const entry of watched) assert.doesNotMatch(new URL(entry.url).pathname, /\/releases\.atom$/, `${key}: ${entry.url} is the release page, not its Atom feed`);
   }
   const manifests = driftPreset("copilot-lab").driftAudit.knowledgeSources.packageManifests;
   assert.ok(manifests.includes("node/package.json"), "node/package.json");

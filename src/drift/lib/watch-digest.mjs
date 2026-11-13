@@ -4,11 +4,15 @@
 //  - the text of the page: the main content of an HTML page (its <main>, else its <body>) without scripts, styles, SVG and the site's
 //    navigation, header and footer, or every entry of a feed, so that a new build id, a tracking script or a changed product menu is not a
 //    change of the page, and its SHA-256;
-//  - its entries: one per <article> of a changelog index (the permalink, its title and the date of its <time>), one per item of an RSS or Atom
-//    feed (the link, the title, the date and an excerpt of the content), else the same-host links of the main content.
+//  - its entries: one per <article> of a changelog index (the permalink, its title and the date of its <time>), one per release section of a GitHub
+//    release page (the link of its tag, its name, its date and an excerpt of its notes: the page lists releases only, where its Atom feed also
+//    lists bare tags), one per item of an RSS or Atom feed (the link, the title, the date and an excerpt of the content), else the same-host links
+//    of the main content; and the older page that a page names with rel="next", which the snapshot step reads when the first page no longer
+//    reaches the previous run. A URL that carries credentials is never an entry, a citation or an older page.
 // buildIndex() keeps of those the hashes and the entry URLs (watch-index.json), and compareWithPrevious() compares them with the index of the
-// previous run: the new entries, each once with every source that lists it, the documentation pages whose text changed and the links that
-// appeared on them, the cited pages that changed, and the sources that could not be fetched. renderChangesMarkdown() writes that comparison as
+// previous run: the new entries, each once with every source that lists it, the possible gaps (a stream of sources that no longer reaches any
+// entry the previous run knew), the documentation pages whose text changed and the links that appeared on them, the cited pages that changed,
+// and the sources that could not be fetched. renderChangesMarkdown() writes that comparison as
 // the agent's work list (changes.md). Every function is pure and every output is ordered, so the same input always gives the same bytes.
 
 import crypto from "node:crypto";
@@ -65,7 +69,7 @@ function mainOf(html) {
   return body ? body[1] : html;
 }
 
-/** An absolute http(s) URL without its fragment and without a trailing slash on a path other than the root; null for anything else. */
+/** An absolute http(s) URL without its fragment and without a trailing slash on a path other than the root; null for anything else, and for a URL that carries credentials. */
 export function normalizeUrl(href, base) {
   let parsed;
   try {
@@ -74,6 +78,7 @@ export function normalizeUrl(href, base) {
     return null;
   }
   if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return null;
+  if (parsed.username !== "" || parsed.password !== "") return null;
   parsed.hash = "";
   if (parsed.pathname.length > 1 && parsed.pathname.endsWith("/")) parsed.pathname = parsed.pathname.replace(/\/+$/, "");
   return parsed.href;
@@ -109,6 +114,73 @@ function excerptOf(text) {
   return `${(space > EXCERPT_LIMIT / 2 ? cut.slice(0, space) : cut).replace(/[\s.,;:]+$/, "")}\u2026`;
 }
 
+/** The content of the `name` element whose start tag begins at `start`, up to its matching end tag (elements of the same name nest), or to the end. */
+function contentOf(html, start, name) {
+  const tags = new RegExp(`<(\\/?)${name}\\b[^>]*>`, "gi");
+  tags.lastIndex = start;
+  let depth = 0;
+  let from = -1;
+  for (let match = tags.exec(html); match !== null; match = tags.exec(html)) {
+    if (match[1] === "") {
+      depth += 1;
+      if (from === -1) from = tags.lastIndex;
+    } else if (from !== -1 && (depth -= 1) === 0) {
+      return html.slice(from, match.index);
+    }
+  }
+  return from === -1 ? "" : html.slice(from);
+}
+
+const attributeOf = (attributes, name) => {
+  const match = new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "i").exec(attributes);
+  return match ? (match[1] ?? match[2] ?? match[3]) : null;
+};
+
+/** An older-page link as an absolute URL without its fragment, kept as written otherwise; null when it is not http(s) or carries credentials. */
+function olderPageUrl(href, base) {
+  let url;
+  try {
+    url = new URL(decodeEntities(String(href).trim()), base);
+  } catch {
+    return null;
+  }
+  if ((url.protocol !== "https:" && url.protocol !== "http:") || url.username !== "" || url.password !== "") return null;
+  url.hash = "";
+  return url.href;
+}
+
+/** The href of the first rel="next" <a>, <link> or <atom:link> of `html` that is a usable older page, or null. */
+function relNextOf(html, base) {
+  for (const match of html.matchAll(/<(?:a|link|atom:link)\b([^>]*)>/gi)) {
+    const rel = attributeOf(match[1], "rel");
+    const href = attributeOf(match[1], "href");
+    if (rel === null || href === null || !rel.toLowerCase().split(/\s+/).includes("next")) continue;
+    const url = olderPageUrl(href, base);
+    if (url !== null) return url;
+  }
+  return null;
+}
+
+/** The older page that a page names with a rel="next" <link> (github.blog's changelog) or <a> (a GitHub release page), or null. */
+const nextPageOf = (html, pageUrl) => relNextOf(html, pageUrl);
+
+const RELEASE_SECTION = /<section\b[^>]*\bdata-release-anchor\b[^>]*>([\s\S]*?)<\/section\s*>/gi;
+const MARKDOWN_BODY = /<div\b[^>]*\bclass\s*=\s*["'][^"']*\bmarkdown-body\b[^"']*["'][^>]*>/i;
+
+/** One entry per release section of a GitHub release page: the link of its tag, its name, the date of its first <relative-time> and its notes. */
+function releaseEntryOf(section, pageUrl) {
+  const tag = anchorsOf(dropElements(section, DROPPED_ELEMENTS), pageUrl).find((anchor) => anchor.title !== "" && new URL(anchor.url).pathname.includes("/releases/tag/"));
+  if (!tag) return null;
+  const time = /<(?:relative-time|time)\b[^>]*\bdatetime\s*=\s*["']([^"']+)["']/i.exec(section);
+  const entry = { url: tag.url, title: tag.title, date: time ? isoDate(time[1]) : null };
+  const notes = MARKDOWN_BODY.exec(section);
+  if (notes) {
+    const excerpt = excerptOf(textFromHtml(contentOf(section, notes.index, "div")));
+    if (excerpt !== "") entry.excerpt = excerpt;
+  }
+  return entry;
+}
+
 function digestHtml(html, pageUrl) {
   const page = normalizeUrl(pageUrl, pageUrl);
   const text = textFromHtml(dropElements(mainOf(html), CHROME_ELEMENTS));
@@ -120,6 +192,7 @@ function digestHtml(html, pageUrl) {
     entries.push(entry);
   };
   const articles = [...html.matchAll(/<article\b[^>]*>([\s\S]*?)<\/article\s*>/gi)].map((match) => match[1]);
+  const releases = articles.length > 0 ? [] : [...html.matchAll(RELEASE_SECTION)].map((match) => match[1]);
   if (articles.length > 0) {
     for (const article of articles) {
       const first = anchorsOf(dropElements(article, DROPPED_ELEMENTS), pageUrl).find((anchor) => anchor.title !== "" && anchor.url !== page);
@@ -127,13 +200,19 @@ function digestHtml(html, pageUrl) {
       const time = /<time\b[^>]*\bdatetime\s*=\s*["']([^"']+)["']/i.exec(article);
       push({ url: first.url, title: first.title, date: time ? isoDate(time[1]) : null });
     }
+  } else if (releases.length > 0) {
+    // a release page lists releases only; its Atom feed (releases.atom) also lists the bare tags of the repository
+    for (const section of releases) {
+      const entry = releaseEntryOf(section, pageUrl);
+      if (entry !== null) push(entry);
+    }
   } else {
     const host = new URL(pageUrl).host;
     for (const anchor of anchorsOf(dropElements(mainOf(html), [...DROPPED_ELEMENTS, ...CHROME_ELEMENTS]), pageUrl)) {
       if (new URL(anchor.url).host === host) push({ url: anchor.url, title: anchor.title, date: null });
     }
   }
-  return { text, entries };
+  return { text, entries, nextPage: nextPageOf(html, pageUrl) };
 }
 
 const cdata = (value) => String(value ?? "").replace(/^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/, "$1");
@@ -143,6 +222,23 @@ const field = (xml, name) => {
 };
 /** The text of a feed field that holds HTML, escaped (Atom type="html", RSS description) or in CDATA (content:encoded). */
 const feedText = (value) => textFromHtml(/<[a-z!]/i.test(value) ? value : decodeEntities(value));
+
+/**
+ * The older page of a feed: the URL of a feed-level rel="next" link (RFC 5005), else, for a WordPress feed (its <generator> names wordpress.org),
+ * the same URL with `paged` one higher, which is where WordPress serves the older items of a feed (github.blog's changelog: ten items a page).
+ */
+function nextFeedPageOf(xml, pageUrl) {
+  const first = xml.search(/<(?:item|entry)\b/i);
+  const head = first === -1 ? xml : xml.slice(0, first);
+  const linked = relNextOf(head, pageUrl);
+  if (linked !== null) return linked;
+  if (!/wordpress\.org/i.test(field(head, "generator") ?? "")) return null;
+  const url = new URL(pageUrl);
+  const page = Number.parseInt(url.searchParams.get("paged") ?? "1", 10);
+  url.searchParams.set("paged", String((Number.isInteger(page) && page > 0 ? page : 1) + 1));
+  url.hash = "";
+  return url.href;
+}
 
 function digestFeed(xml, pageUrl) {
   const entries = [];
@@ -168,7 +264,7 @@ function digestFeed(xml, pageUrl) {
     entries.push({ url, title, date, excerpt: excerptOf(feedText(body)) });
   }
   const text = entries.map((entry) => [entry.url, entry.title, entry.date ?? "", entry.excerpt].join("\t")).join("\n");
-  return { text, entries };
+  return { text, entries, nextPage: nextFeedPageOf(xml, pageUrl) };
 }
 
 /** True when the bytes are an RSS, RDF or Atom document, whatever content type the server named. */
@@ -179,7 +275,7 @@ export function isFeed(contentType, text) {
 
 /**
  * The digest of one saved snapshot.
- * @returns {{ text: string, textSha256: string, entries: { url: string, title: string, date: string|null, excerpt?: string }[] }}
+ * @returns {{ text: string, textSha256: string, entries: { url: string, title: string, date: string|null, excerpt?: string }[], nextPage: string|null }}
  */
 export function digestSnapshot({ url, contentType, bytes }) {
   const text = Buffer.from(bytes).toString("utf8").replace(/^\uFEFF/, "");
@@ -187,7 +283,7 @@ export function digestSnapshot({ url, contentType, bytes }) {
   if (isFeed(contentType, text)) digest = digestFeed(text, url);
   else if (/html/i.test(String(contentType ?? "")) || /<html\b|<body\b|<main\b/i.test(text.slice(0, 4096))) digest = digestHtml(text, url);
   else digest = { text: text.replace(/\r\n?/g, "\n").trim(), entries: [] };
-  return { text: digest.text, textSha256: sha256(digest.text), entries: digest.entries };
+  return { text: digest.text, textSha256: sha256(digest.text), entries: digest.entries, nextPage: digest.nextPage ?? null };
 }
 
 const CITATION = /https?:\/\/[^\s<>"'`()[\]{}|\\^]+/gi;
@@ -247,6 +343,50 @@ export function usableIndex(value) {
   const sources = value.sources.filter((source) => source && typeof source.url === "string" && Array.isArray(source.entries));
   const citedPages = Array.isArray(value.citedPages) ? value.citedPages.filter((page) => page && typeof page.url === "string") : [];
   return { ...value, sources, citedPages };
+}
+
+/**
+ * The possible gaps of a comparison. Sources that list the same entries are one stream (the changelog index and its feed); a stream whose sources
+ * listed entries in the baseline and list none of them now no longer reaches the baseline, so entries published after the baseline run and before
+ * the oldest entry listed now may have been seen by neither run. A stream with no entry known to the baseline (first seen, or failed then) has
+ * nothing to reach back to.
+ */
+function possibleGapsOf(sources, priorSource, baseline) {
+  const listing = sources.filter((source) => source.state === "ok" && ENTRY_KINDS.has(source.kind));
+  const parent = listing.map((_, index) => index);
+  const root = (index) => {
+    while (parent[index] !== index) index = parent[index] = parent[parent[index]];
+    return index;
+  };
+  const listedBy = new Map();
+  listing.forEach((source, index) => {
+    for (const item of source.entries) {
+      if (listedBy.has(item.url)) parent[root(index)] = root(listedBy.get(item.url));
+      else listedBy.set(item.url, index);
+    }
+  });
+  const streams = new Map();
+  listing.forEach((source, index) => streams.set(root(index), [...(streams.get(root(index)) ?? []), source]));
+  const gaps = [];
+  for (const members of streams.values()) {
+    const known = new Set();
+    for (const source of members) {
+      const prior = priorSource.get(source.url);
+      if (prior && prior.state === "ok") for (const url of prior.entries) known.add(url);
+    }
+    if (known.size === 0) continue;
+    const listed = new Set(members.flatMap((source) => source.entries.map((item) => item.url)));
+    if ([...listed].some((url) => known.has(url))) continue;
+    const dates = members.flatMap((source) => source.entries.map((item) => item.date)).filter((date) => typeof date === "string" && date !== "").sort(compare);
+    gaps.push({
+      sources: members.map((source) => ({ url: source.url, label: source.label, pagesRead: source.pagesRead ?? 1 })),
+      listed: listed.size,
+      known: known.size,
+      since: baseline?.found && baseline.createdAt ? baseline.createdAt : null,
+      oldestListed: dates[0] ?? null,
+    });
+  }
+  return gaps;
 }
 
 /**
@@ -317,6 +457,7 @@ export function compareWithPrevious({ current, previous, baseline }) {
       return item;
     });
   const count = (list, status) => list.filter((item) => item.status === status).length;
+  const possibleGaps = possibleGapsOf(sources, priorSource, baseline);
   return {
     version: INDEX_VERSION,
     project: current.project,
@@ -328,8 +469,10 @@ export function compareWithPrevious({ current, previous, baseline }) {
       firstSeenSources: count(outSources, "first-seen"),
       firstSeenCitedPages: count(citedPages, "first-seen"),
       failed: failed.length,
+      possibleGaps: possibleGaps.length,
     },
     newEntries,
+    possibleGaps,
     sources: outSources,
     citedPages,
     failed,
@@ -357,6 +500,17 @@ export function renderChangesMarkdown(changes) {
     lines.push(`${index + 1}. [${linkText(title)}](${entry.url})${entry.date ? ` — ${entry.date}` : ""} — ${entry.sources.join(", ")}`);
     if (entry.excerpt) lines.push(`   > ${entry.excerpt}`);
   });
+  const gaps = changes.possibleGaps ?? [];
+  lines.push("", `## Possible gaps (${gaps.length})`, "");
+  if (gaps.length === 0) lines.push("None.");
+  for (const gap of gaps) {
+    const names = gap.sources.map((source) => `[${linkText(source.label)}](${source.url})${source.pagesRead > 1 ? ` (${source.pagesRead} pages read)` : ""}`);
+    const from = `${gap.since ?? "the baseline run"} (the baseline run)`;
+    const period = gap.oldestListed ? `between ${from} and ${gap.oldestListed} (the oldest entry listed now)` : `since ${from}`;
+    lines.push(
+      `- ${names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`}: none of the ${plural(gap.listed, "entry", "entries")} listed now is one of the ${gap.known} that the baseline listed, so entries published ${period} may be missing above. Open the older pages of this source for that period, decide those entries too, and name the gap under Limitations if you cannot.`,
+    );
+  }
   const changedPages = changes.sources.filter((source) => !ENTRY_KINDS.has(source.kind) && source.status === "changed");
   lines.push("", `## Changed pages (${changedPages.length})`, "");
   if (changedPages.length === 0) lines.push("None.");

@@ -17,6 +17,10 @@
 // run compares with, and <out>/sources/changes.json and changes.md say what changed since the watch index under --previous (the one that
 // drift/previous-watch-index.mjs fetched from the last successful run, with its baseline.json): the new entries, the changed pages and cited
 // pages, and the sources that could not be fetched. Without a previous index every source is seen for the first time.
+// A changelog, feed, release-notes or blog source whose first page lists none of the entries that the previous run listed is read back through
+// the older pages that it names (a rel="next" link, or ?paged=N+1 for a WordPress feed), on its own origin and keeping the query of the watched
+// URL, until a page lists one of them or nothing new, at most --max-older-pages pages (default 10); each is saved and recorded under its watched
+// URL as olderPages, and a source that still does not reach the previous run is a possible gap of the work list.
 // The target checkout is only read; every file is written atomically, and a failed run leaves nothing behind.
 
 import crypto from "node:crypto";
@@ -28,7 +32,7 @@ import { outDirectory, resolveIo, runAsMain, stableJson } from "./drift/lib/cli.
 import { parseManifestFile } from "./drift/lib/dependencies.mjs";
 import { listFiles, matchesGlob } from "./drift/lib/glob.mjs";
 import { readProjectSources } from "./drift/lib/manifest.mjs";
-import { buildIndex, compareWithPrevious, digestSnapshot, extractCitations, rankCitations, renderChangesMarkdown } from "./drift/lib/watch-digest.mjs";
+import { buildIndex, compareWithPrevious, digestSnapshot, ENTRY_KINDS, extractCitations, rankCitations, renderChangesMarkdown, usableIndex } from "./drift/lib/watch-digest.mjs";
 
 const OPTIONS = {
   out: { type: "string" },
@@ -39,12 +43,19 @@ const OPTIONS = {
   "timeout-ms": { type: "string" },
   "max-bytes": { type: "string" },
   "cited-budget-ms": { type: "string" },
+  "max-older-pages": { type: "string" },
 };
 
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MAX_BYTES = 10 * 1024 * 1024;
 /** The cited pages share one time budget, so that a slow documentation site cannot hold the job for maxPages times the timeout. */
 const DEFAULT_CITED_BUDGET_MS = 8 * 60 * 1000;
+/**
+ * How many older pages of one source a run reads to reach back to the previous run. On 2026-11-13 a page held 11 days of github.blog's changelog,
+ * 12 of the github/gh-aw releases and 3.5 of the github/copilot-cli releases, so ten older pages cover a monthly schedule, or a weekly one after
+ * a failed run (a failed run is never a baseline).
+ */
+const DEFAULT_MAX_OLDER_PAGES = 10;
 const MAX_CITING_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_LISTED_CITING_FILES = 10;
 const MAX_MATCHES_PER_PATTERN = 500;
@@ -203,6 +214,67 @@ async function snapshotCitedPages(cited, checkout, { fetch, fs, now, timeoutMs, 
   return { scannedFiles, citedUrls, records, files, limitations };
 }
 
+/**
+ * The URL of the older page `next` when the run may read it: on the origin of the watched URL, without credentials, and keeping every query
+ * parameter of the watched URL (the next link of github.blog's ?label= view drops the label and leads to the whole changelog); else null.
+ */
+function followable(next, watched) {
+  if (typeof next !== "string") return null;
+  let candidate;
+  try {
+    candidate = new URL(next);
+  } catch {
+    return null;
+  }
+  if (candidate.origin !== watched.origin || candidate.username !== "" || candidate.password !== "") return null;
+  for (const [key, value] of watched.searchParams) if (!candidate.searchParams.getAll(key).includes(value)) return null;
+  return candidate.href;
+}
+
+/**
+ * The older pages of an entry source whose first page lists none of the entries `known` to the previous run: read one after the other through
+ * the older page that each names (followable() decides) until a page lists a known entry, there is no older page, a page lists nothing new, one
+ * cannot be fetched, or `maxPages` were read (SPEC-02 AC42). What still does not reach the previous run is a possible gap of the comparison,
+ * never a silent one.
+ */
+async function readOlderPages(entry, first, known, { fetch, timeoutMs, maxBytes, maxPages }) {
+  const entries = [...first.entries];
+  const listed = new Set(entries.map((item) => item.url));
+  const pages = [];
+  const files = [];
+  const limitations = [];
+  const watched = new URL(entry.url);
+  const visited = new Set([watched.href]);
+  let reached = entries.some((item) => known.has(item.url));
+  let next = first.nextPage;
+  while (!reached && pages.length < maxPages) {
+    const url = followable(next, watched);
+    if (url === null || visited.has(url)) break;
+    visited.add(url);
+    const { record, file } = await snapshotUrl({ url, label: entry.label, kind: entry.kind }, { fetch, timeoutMs, maxBytes });
+    if (!file) {
+      pages.push({ url, state: "failed", status: record.status, snapshot: null, entries: 0, error: record.error });
+      limitations.push(`${url} (older page of ${entry.url}): ${record.error}`);
+      break;
+    }
+    files.push(file);
+    const digest = digestSnapshot({ url, kind: entry.kind, contentType: record.contentType, bytes: file.data });
+    pages.push({ url, state: "ok", status: record.status, snapshot: record.snapshot, entries: digest.entries.length, error: null });
+    let added = 0;
+    for (const item of digest.entries) {
+      if (listed.has(item.url)) continue;
+      listed.add(item.url);
+      entries.push(item);
+      added += 1;
+    }
+    reached = digest.entries.some((item) => known.has(item.url));
+    // a page that lists nothing new is the end: github.blog serves its first changelog page at every /changelog/page/N/
+    if (added === 0) break;
+    next = digest.nextPage;
+  }
+  return { entries, pages, files, limitations };
+}
+
 /** What --previous holds: the baseline that drift/previous-watch-index.mjs found (or why there is none) and, when found, its watch index. */
 function readPrevious(directory, fs) {
   if (directory === null) return { baseline: { found: false, reason: "no previous watch index was given (--previous)" }, index: null };
@@ -237,9 +309,11 @@ export async function run(argv, ioInput = {}) {
     const timeoutMs = flags["timeout-ms"] === undefined ? DEFAULT_TIMEOUT_MS : Number(flags["timeout-ms"]);
     const maxBytes = flags["max-bytes"] === undefined ? DEFAULT_MAX_BYTES : Number(flags["max-bytes"]);
     const citedBudgetMs = flags["cited-budget-ms"] === undefined ? DEFAULT_CITED_BUDGET_MS : Number(flags["cited-budget-ms"]);
+    const maxOlderPages = flags["max-older-pages"] === undefined ? DEFAULT_MAX_OLDER_PAGES : Number(flags["max-older-pages"]);
     if (!Number.isInteger(timeoutMs) || timeoutMs < 1) throw new UsageError("--timeout-ms must be a positive whole number");
     if (!Number.isInteger(maxBytes) || maxBytes < 1) throw new UsageError("--max-bytes must be a positive whole number");
     if (!Number.isInteger(citedBudgetMs) || citedBudgetMs < 0) throw new UsageError("--cited-budget-ms must be a whole number of milliseconds");
+    if (!Number.isInteger(maxOlderPages) || maxOlderPages < 0) throw new UsageError("--max-older-pages must be a whole number");
 
     const workspace = io.env.GITHUB_WORKSPACE ? path.resolve(io.env.GITHUB_WORKSPACE) : io.cwd;
     const manifestPath = path.resolve(io.cwd, flags.manifest ?? path.join(io.env.GITHUB_WORKSPACE ? workspace : ORCHESTRATOR_ROOT, "sdlc.yaml"));
@@ -254,6 +328,10 @@ export async function run(argv, ioInput = {}) {
       if (!io.fs.existsSync(checkout) || !io.fs.statSync(checkout).isDirectory()) throw new SnapshotFailure(`the target checkout '${checkout}' does not exist`);
     }
 
+    const previous = readPrevious(flags.previous === undefined ? null : path.resolve(io.cwd, flags.previous), io.fs);
+    /** The entries that the previous run listed, per watched URL: what an older page has to reach. */
+    const knownEntries = new Map((usableIndex(previous.index)?.sources ?? []).filter((source) => source.state === "ok").map((source) => [source.url, new Set(source.entries)]));
+
     const writes = new Map();
     const urlRecords = [];
     const limitations = [];
@@ -265,7 +343,18 @@ export async function run(argv, ioInput = {}) {
       if (file) {
         writes.set(file.relative, file.data);
         const digest = digestSnapshot({ url: entry.url, kind: entry.kind, contentType: record.contentType, bytes: file.data });
-        sources.push({ url: entry.url, label: entry.label, kind: entry.kind, state: "ok", textSha256: digest.textSha256, entries: digest.entries });
+        let entries = digest.entries;
+        let pagesRead = 1;
+        const known = knownEntries.get(entry.url);
+        if (ENTRY_KINDS.has(entry.kind) && known !== undefined && known.size > 0) {
+          const older = await readOlderPages(entry, digest, known, { fetch: io.fetch, timeoutMs, maxBytes, maxPages: maxOlderPages });
+          entries = older.entries;
+          pagesRead += older.pages.filter((page) => page.state === "ok").length;
+          for (const page of older.files) writes.set(page.relative, page.data);
+          limitations.push(...older.limitations);
+          if (older.pages.length > 0) record.olderPages = older.pages;
+        }
+        sources.push({ url: entry.url, label: entry.label, kind: entry.kind, state: "ok", textSha256: digest.textSha256, entries, pagesRead });
       } else {
         limitations.push(`${entry.url}: ${record.error}`);
         sources.push({ url: entry.url, label: entry.label, kind: entry.kind, state: "failed", error: record.error });
@@ -289,7 +378,6 @@ export async function run(argv, ioInput = {}) {
       manifest.citedPages = { include: config.citedPages.include, hosts: config.citedPages.hosts, maxPages: config.citedPages.maxPages, scannedFiles: cited.scannedFiles, citedUrls: cited.citedUrls, pages: cited.records };
     }
 
-    const previous = readPrevious(flags.previous === undefined ? null : path.resolve(io.cwd, flags.previous), io.fs);
     const current = { project, sources, citedPages: cited?.records ?? [] };
     const changes = compareWithPrevious({ current, previous: previous.index, baseline: previous.baseline });
     writes.set("sources/watch-index.json", stableJson(buildIndex(current)));
@@ -302,12 +390,14 @@ export async function run(argv, ioInput = {}) {
 
     const failed = urlRecords.filter((record) => record.state === "failed").length;
     const citedLine = cited === null ? "" : `, ${cited.records.filter((record) => record.state === "ok").length} of ${cited.records.length} cited page(s) saved`;
+    const olderPages = urlRecords.reduce((total, record) => total + (record.olderPages ?? []).filter((page) => page.state === "ok").length, 0);
+    const olderLine = olderPages > 0 ? `, ${olderPages} older page(s) read to reach the previous run` : "";
     const since = previous.baseline.found ? `run ${previous.baseline.runId}` : "no previous watch index";
     io.stdout(
-      `snapshot-watch-sources: ${urlRecords.length - failed} of ${urlRecords.length} watched URL(s) saved, ${patternRecords.reduce((total, record) => total + record.files.length, 0)} package manifest file(s) saved${citedLine}, ${limitations.length} limitation(s), record in ${path.join(out, "sources", "manifest.json")}\n`,
+      `snapshot-watch-sources: ${urlRecords.length - failed} of ${urlRecords.length} watched URL(s) saved${olderLine}, ${patternRecords.reduce((total, record) => total + record.files.length, 0)} package manifest file(s) saved${citedLine}, ${limitations.length} limitation(s), record in ${path.join(out, "sources", "manifest.json")}\n`,
     );
     io.stdout(
-      `snapshot-watch-sources: since ${since}: ${changes.summary.newEntries} new entr${changes.summary.newEntries === 1 ? "y" : "ies"}, ${changes.summary.changedSources} changed source(s), ${changes.summary.changedCitedPages} changed cited page(s); work list in ${path.join(out, "sources", "changes.md")}\n`,
+      `snapshot-watch-sources: since ${since}: ${changes.summary.newEntries} new entr${changes.summary.newEntries === 1 ? "y" : "ies"}, ${changes.summary.changedSources} changed source(s), ${changes.summary.changedCitedPages} changed cited page(s), ${changes.summary.possibleGaps} possible gap(s); work list in ${path.join(out, "sources", "changes.md")}\n`,
     );
     return 0;
   } catch (error) {

@@ -61,6 +61,12 @@ for (const key of DRIFT_KEYS) {
     const { body } = driftWorkflow(key);
     assert.match(body, /## What changed since the last run\n\nStart with `\/tmp\/gh-aw\/agent\/sources\/changes\.md`\./);
     assert.match(body, /That list is your work list, and every item of it gets a decision\./);
+    assert.match(
+      body,
+      /When a source's first page lists none of the entries that the baseline knew, the snapshot step has read its older pages until one does, up to a limit; a source that still does not reach the baseline is listed under `## Possible gaps` with the period that neither run saw\. Open the older pages of that source for that period yourself, decide those entries as well, and name the gap under `## Limitations` when you cannot\./,
+      "a possible gap is work too, never a silent hole in the list",
+    );
+    assert.match(body, /- `## Limitations`: the sources that could not be fetched, the possible gaps that you could not close and the checks that could not run\./);
     assert.match(body, /A long list is no reason to skip items: decide each one\./);
     assert.match(body, /## Drift report\n\nEnd every run with exactly one `create_issue` call: the drift report/);
     assert.match(body, /File it also when the work list is empty and nothing needs to change/);
