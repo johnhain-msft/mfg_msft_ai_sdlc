@@ -1,18 +1,18 @@
-// AC28: contract C5 state ownership. external:upstream-repos owns the git refs, pull requests and CI status checks of the target repositories; S2
-// owns the audit report and the proposed commit bundle before the push. S2 never creates, updates, deletes or merges a ref, pull request,
-// review or status check on an upstream repository except through safe-outputs.create-pull-request: the agent's commits stay in the target
-// checkout, are packaged as a bundle that the safe_outputs job pushes, and the report is written by S2 (the agent and the post-steps) before
-// that push.
+// AC28: contract C5 state ownership. external:upstream-repos owns the git refs, pull requests, issues and CI status checks of the target repositories;
+// S2 owns the audit report and the proposed commit bundle before the push. S2 never creates, updates, deletes or merges a ref, pull request,
+// review or status check on an upstream repository except through safe-outputs.create-pull-request, and opens an issue there only through
+// safe-outputs.create-issue, the drift report (AC44): the agent's commits stay in the target checkout, are packaged as a bundle that the
+// safe_outputs job pushes, and the report is written by S2 (the agent and the post-steps) before that push.
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
 import { abs, DRIFT_KEYS, driftLock, driftPreset, driftWorkflow, listTree, readText } from "./helpers/fixtures.mjs";
 
-const FORBIDDEN_OPERATIONS = /Never run `git push`, `gh pr` or a write-method `gh api` call and never merge: the pull request is created only through the `create_pull_request` safe output\./;
+const FORBIDDEN_OPERATIONS = /Never run `git push`, `gh pr` or a write-method `gh api` call and never merge: pull requests and issues are created only through the `create_pull_request` and `create_issue` safe outputs\./;
 const S2_SOURCES = () => [abs("src", "snapshot-watch-sources.mjs"), abs("src", "validate-copilot-lab-audit.mjs"), ...listTree(abs("src", "drift")).map((file) => abs("src", "drift", file))];
 
 for (const key of DRIFT_KEYS) {
-  test(`AC28: the prompt body of drift-${key}.md forbids git push, gh pr, write-method gh api calls and merging, and names create_pull_request as the only way`, () => {
+  test(`AC28: the prompt body of drift-${key}.md forbids git push, gh pr, write-method gh api calls and merging, and names create_pull_request and create_issue as the only ways`, () => {
     const { body } = driftWorkflow(key);
     assert.match(body, FORBIDDEN_OPERATIONS);
     const rules = body.slice(body.indexOf("## Operating rules"));
@@ -21,15 +21,17 @@ for (const key of DRIFT_KEYS) {
     assert.match(rules, /Commit rebuilt outputs and source edits to the working branch before you call `create_pull_request`/, "the commits are made in the checkout, ahead of the safe output");
   });
 
-  test(`AC28: drift-${key}.md gives the agent no way to write to the upstream repository other than the create-pull-request safe output`, () => {
+  test(`AC28: drift-${key}.md gives the agent no way to write to the upstream repository other than the create-pull-request safe output and the create-issue drift report`, () => {
     const { frontmatter } = driftWorkflow(key);
     assert.deepEqual(
       Object.keys(frontmatter["safe-outputs"]).sort(),
-      ["create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"],
-      "the publishing safe outputs are create-pull-request alone",
+      ["create-issue", "create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"],
+      "the publishing safe outputs are create-pull-request and the create-issue of the drift report",
     );
     assert.equal(frontmatter["safe-outputs"]["create-pull-request"]["target-repo"], driftPreset(key).repo);
-    assert.deepEqual(frontmatter.permissions, { contents: "read", issues: "read", "pull-requests": "read" }, "the agent job's token reads and cannot write a ref or a pull request");
+    assert.equal(frontmatter["safe-outputs"]["create-issue"]["target-repo"], driftPreset(key).repo, "the report goes to the same target repository");
+    assert.equal(frontmatter["safe-outputs"]["create-issue"].max, 1, "one report per run");
+    assert.deepEqual(frontmatter.permissions, { actions: "read", contents: "read", issues: "read", "pull-requests": "read" }, "the agent job's token reads and cannot write a ref, an issue or a pull request");
     const bash = frontmatter.tools.bash;
     for (const tool of ["gh", "curl", "wget"]) assert.equal(bash.includes(tool), false, `the agent may not run ${tool}`);
     assert.ok(bash.includes("git"), "git stays allowed: the agent commits in the checkout, and the safe_outputs job pushes");
@@ -45,7 +47,7 @@ for (const key of DRIFT_KEYS) {
     assert.deepEqual(jobs.safe_outputs.permissions, { contents: "write", issues: "write", "pull-requests": "write" }, "safe_outputs is the job that publishes");
     for (const needed of ["agent", "detection"]) assert.ok([].concat(jobs.safe_outputs.needs).includes(needed), `safe_outputs needs ${needed}`);
     const runs = (job) => (job.steps ?? []).map((step) => String(step.run ?? "")).join("\n");
-    for (const script of ["src/drift/prepare-run.mjs", "src/drift/dedupe-open-prs.mjs", "src/snapshot-watch-sources.mjs"]) {
+    for (const script of ["src/drift/prepare-run.mjs", "src/drift/dedupe-open-prs.mjs", "src/drift/previous-watch-index.mjs", "src/snapshot-watch-sources.mjs"]) {
       assert.ok(runs(jobs.agent).includes(script), `${script} runs in the agent job`);
       assert.equal(runs(jobs.safe_outputs).includes(script), false, `and not in safe_outputs`);
     }

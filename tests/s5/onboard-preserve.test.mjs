@@ -103,7 +103,7 @@ test("AC51: a changed --schedule on an existing project changes only that field"
     assert.deepEqual(git(scenario, "status", "--porcelain").trimEnd().split("\n"), [" M sdlc.yaml"], "only sdlc.yaml changed, the instructions file did not");
     assert.equal(git(scenario, "diff", "--numstat").trim(), "1\t1\tsdlc.yaml");
     const patch = git(scenario, "diff", "-U0").split("\n").filter((line) => /^[-+][^-+]/.test(line));
-    assert.deepEqual(patch, ['-      schedule: "0 6 * * 1"', '+      schedule: "0 5 * * 0"']);
+    assert.deepEqual(patch, ['-      schedule: "23 6 * * 1"', '+      schedule: "0 5 * * 0"']);
   });
 });
 

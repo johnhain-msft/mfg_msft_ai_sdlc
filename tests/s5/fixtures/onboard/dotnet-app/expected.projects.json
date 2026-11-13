@@ -7,7 +7,7 @@
     "deconflictWorkflowIds": [],
     "driftAudit": {
       "enabled": true,
-      "schedule": "0 6 * * 1",
+      "schedule": "23 6 * * 1",
       "upkeepStrategy": "dependency-and-pattern-modernization",
       "instructions": "",
       "instructionsFile": "instructions/dotnet-app.md",

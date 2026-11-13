@@ -43,9 +43,10 @@ test("AC13: the prompt tells the agent to corroborate every proposed change thro
   assert.match(sentence, /Microsoft Learn and Context7 servers or by fetching the cited page/);
 });
 
-test("AC13: the network allowlist holds the watched hostnames only, so that web-fetch reaches the pages the project names and nothing else", () => {
+test("AC13, AC43: the network allowlist holds the watched and cited hostnames only, so that web-fetch reaches the pages the project names and nothing else", () => {
   for (const key of DRIFT_KEYS) {
-    const hosts = new Set(driftPreset(key).driftAudit.knowledgeSources.watchUrls.map((entry) => new URL(entry.url).hostname));
+    const sources = driftPreset(key).driftAudit.knowledgeSources;
+    const hosts = new Set([...sources.watchUrls.map((entry) => new URL(entry.url).hostname), ...(sources.citedPages?.hosts ?? [])]);
     assert.deepEqual(new Set(driftWorkflow(key).frontmatter.network.allowed), hosts, key);
   }
 });

@@ -16,8 +16,8 @@ for (const key of DRIFT_KEYS) {
     const outputs = driftWorkflow(key).frontmatter["safe-outputs"];
     assert.deepEqual(
       Object.keys(outputs).filter((name) => !["github-app", "report-failure-as-issue", "threat-detection"].includes(name)),
-      ["create-pull-request"],
-      "the only write handler",
+      ["create-pull-request", "create-issue"],
+      "the only write handlers: the pull request, and the drift report issue, which creates no pull request (AC44)",
     );
     const flags = handler(key);
     assert.equal(flags["branch-prefix"], "sdlc/");

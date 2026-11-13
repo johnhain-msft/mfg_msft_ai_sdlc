@@ -1,21 +1,24 @@
-// AC3: contract C2 request, derived configuration. The literal hostnames of knowledgeSources.watchUrls are in network.allowed
-// (no wildcard), the prompt body carries the instruction text and the upkeepStrategy value, the frontmatter has exactly the
-// twelve keys, and pre-agent-steps holds exactly the three S2 scripts in order, followed by the install of the dependencies of the
+// AC3: contract C2 request, derived configuration. The literal hostnames of knowledgeSources.watchUrls and of citedPages.hosts are in
+// network.allowed (no wildcard), the prompt body carries the instruction text and the upkeepStrategy value, the frontmatter has exactly the
+// twelve keys, and pre-agent-steps holds exactly the five S2 steps in order (AC41), followed by the install of the dependencies of the
 // target only for a project whose agentSandbox asks for it.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { abs, customJobsOf, DRIFT_KEYS, driftPreset, driftWorkflow, readText } from "./helpers/fixtures.mjs";
 
 const TWELVE_KEYS = ["checkout", "concurrency", "engine", "jobs", "mcp-servers", "network", "on", "permissions", "post-steps", "pre-agent-steps", "safe-outputs", "tools"];
-const hostnamesOf = (project) => project.driftAudit.knowledgeSources.watchUrls.map((entry) => new URL(entry.url).hostname);
+const hostnamesOf = (project) => [
+  ...project.driftAudit.knowledgeSources.watchUrls.map((entry) => new URL(entry.url).hostname),
+  ...(project.driftAudit.knowledgeSources.citedPages?.hosts ?? []),
+];
 
 for (const key of DRIFT_KEYS) {
-  test(`AC3: drift-${key}.md allows every watched hostname and no wildcard`, () => {
+  test(`AC3: drift-${key}.md allows every watched and cited hostname and no wildcard`, () => {
     const { frontmatter } = driftWorkflow(key);
     const project = driftPreset(key);
     const allowed = frontmatter.network.allowed;
     for (const host of hostnamesOf(project)) assert.ok(allowed.includes(host), `${host} is in network.allowed`);
-    assert.deepEqual([...allowed].sort(), [...new Set(hostnamesOf(project))].sort(), "network.allowed holds exactly the watched hostnames");
+    assert.deepEqual([...allowed].sort(), [...new Set(hostnamesOf(project))].sort(), "network.allowed holds exactly the watched and cited hostnames");
     for (const entry of allowed) assert.equal(entry.includes("*"), false, `${entry} has no wildcard`);
   });
 
@@ -29,19 +32,22 @@ for (const key of DRIFT_KEYS) {
     for (const pattern of audit.knowledgeSources.packageManifests) assert.ok(body.includes(`\`${pattern}\``), `the prompt lists the pattern ${pattern}`);
   });
 
-  test(`AC3: drift-${key}.md has exactly the twelve top-level keys and the three S2 pre-agent-steps in order, and after them the dependency install only when its project asks for it`, () => {
+  test(`AC3: drift-${key}.md has exactly the twelve top-level keys and the five S2 pre-agent-steps in order, and after them the dependency install only when its project asks for it`, () => {
     const { frontmatter } = driftWorkflow(key);
     assert.deepEqual(Object.keys(frontmatter).sort(), TWELVE_KEYS);
     const steps = frontmatter["pre-agent-steps"];
     const project = driftPreset(key);
     const installs = project.driftAudit.agentSandbox?.installDependencies === true;
-    assert.equal(steps.length, installs ? 4 : 3, installs ? "the three S2 scripts and the install" : "exactly three pre-agent steps");
+    assert.equal(steps.length, installs ? 6 : 5, installs ? "the five S2 steps and the install" : "exactly five pre-agent steps");
     assert.ok(steps[0].run.startsWith('node "$GITHUB_WORKSPACE/src/drift/prepare-run.mjs"'), steps[0].run);
     assert.ok(steps[1].run.startsWith('node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs"'), steps[1].run);
-    assert.ok(steps[2].run.startsWith('node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs"'), steps[2].run);
-    assert.equal(steps.filter((step) => step.run.includes("snapshot-watch-sources.mjs")).length, 1, "one snapshot invocation covers every watchUrls and packageManifests entry");
+    assert.ok(steps[2].run.startsWith('node "$GITHUB_WORKSPACE/src/drift/previous-watch-index.mjs"'), steps[2].run);
+    assert.ok(steps[3].run.startsWith('node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs"'), steps[3].run);
+    assert.ok(steps[3].run.includes(" --previous /tmp/gh-aw/agent/previous"), "the snapshot compares with the index that the step before it fetched");
+    assert.deepEqual([steps[4].uses, steps[4].if, steps[4].with.name], ["actions/upload-artifact@v4", "inputs.dry_run != true", `sdlc-watch-index-${key}`], "the index of a run that is not a dry run is kept for the next one");
+    assert.equal(steps.filter((step) => String(step.run).includes("snapshot-watch-sources.mjs")).length, 1, "one snapshot invocation covers every watchUrls, packageManifests and citedPages entry");
     if (installs) {
-      assert.deepEqual(steps[3], { name: "Install target checkout dependencies for in-sandbox validation", "working-directory": project.repo.split("/")[1], run: "npm ci --ignore-scripts" });
+      assert.deepEqual(steps[5], { name: "Install target checkout dependencies for in-sandbox validation", "working-directory": project.repo.split("/")[1], run: "npm ci --ignore-scripts" });
     }
     assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure"], "jobs holds only escalate_failure besides the built-in guards");
   });
@@ -49,6 +55,25 @@ for (const key of DRIFT_KEYS) {
   test(`AC3: post-steps of drift-${key}.md are the project's verifyCommands in order`, () => {
     const { frontmatter } = driftWorkflow(key);
     assert.deepEqual(frontmatter["post-steps"].map((step) => step.run), driftPreset(key).driftAudit.verifyCommands);
+  });
+
+  test(`AC42, AC44: the prompt of drift-${key}.md makes changes.md the work list and asks for one drift report per run, also when nothing changed`, () => {
+    const { body } = driftWorkflow(key);
+    assert.match(body, /## What changed since the last run\n\nStart with `\/tmp\/gh-aw\/agent\/sources\/changes\.md`\./);
+    assert.match(body, /That list is your work list, and every item of it gets a decision\./);
+    assert.match(body, /A long list is no reason to skip items: decide each one\./);
+    assert.match(body, /## Drift report\n\nEnd every run with exactly one `create_issue` call: the drift report/);
+    assert.match(body, /File it also when the work list is empty and nothing needs to change/);
+    assert.ok(body.includes(`Title it \`Drift report: ${key} YYYY-MM-DD\``));
+    for (const section of ["## Summary", "## Watched-source changes", "## Recommendations", "## Limitations"]) assert.ok(body.includes(`- \`${section}\``), section);
+    assert.match(body, /content that the sources announce and this repository does not cover yet/, "recommendations include what to add, not only what to fix");
+    assert.match(body, /In a dry run call neither: put the report that you would have filed \(`title` and `body`\) under the key `report` of `\/tmp\/gh-aw\/agent\/dry-run-proposal\.json`/);
+    assert.equal(/call `noop`/.test(body), false, "the report replaces a silent no-op");
+    const order = ["## Watched sources", "## What changed since the last run", "## Drift report", "## Operating rules"].map((heading) => body.indexOf(heading));
+    assert.deepEqual([...order].sort((a, b) => a - b), order, "the sections come in this order");
+    const cited = driftPreset(key).driftAudit.knowledgeSources.citedPages;
+    assert.equal(body.includes("/tmp/gh-aw/agent/sources/cited/"), Boolean(cited), "the cited pages are described where they are snapshotted, and only there");
+    if (cited) for (const value of [...cited.include, ...cited.hosts]) assert.ok(body.includes(`\`${value}\``), value);
   });
 }
 

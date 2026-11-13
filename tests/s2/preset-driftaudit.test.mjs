@@ -56,9 +56,9 @@ test("AC40: every watched URL has a literal hostname, and both MCP servers are d
   }
 });
 
-test("AC40: the lab watches the github/gh-aw releases and its package manifests cover node/package.json and **/*.csproj", () => {
+test("AC40: the lab watches the github/gh-aw releases (their Atom feed) and its package manifests cover node/package.json and **/*.csproj", () => {
   for (const key of ["copilot-lab", "self-improving-agents"]) {
-    const releases = driftPreset(key).driftAudit.knowledgeSources.watchUrls.filter((entry) => entry.kind === "release-notes" && new URL(entry.url).pathname === "/github/gh-aw/releases");
+    const releases = driftPreset(key).driftAudit.knowledgeSources.watchUrls.filter((entry) => entry.kind === "release-notes" && /^\/github\/gh-aw\/releases(?:\.atom)?$/.test(new URL(entry.url).pathname));
     assert.equal(releases.length, 1, `${key} has one release-notes entry for the github/gh-aw releases`);
   }
   const manifests = driftPreset("copilot-lab").driftAudit.knowledgeSources.packageManifests;

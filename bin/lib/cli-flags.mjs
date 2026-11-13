@@ -139,7 +139,7 @@ export function parseOnboardArgs(argv) {
     throw usageError(`--mode ${mode} needs --downstream: a mode describes the edge to the downstream repository\n${ONBOARD_USAGE}`);
   }
   if (values.schedule !== undefined && !isValidCron(values.schedule)) {
-    throw usageError(`--schedule '${values.schedule}' is not a five-field cron expression such as "0 6 * * 1"\n${ONBOARD_USAGE}`);
+    throw usageError(`--schedule '${values.schedule}' is not a five-field cron expression such as "23 6 * * 1"\n${ONBOARD_USAGE}`);
   }
   const watchUrl = [];
   for (const value of values["watch-url"] ?? []) {

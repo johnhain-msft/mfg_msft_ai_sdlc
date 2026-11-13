@@ -1,4 +1,4 @@
-// The part of the fleet manifest that the snapshot script needs: the watched URLs and the package manifest patterns of one
+// The part of the fleet manifest that the snapshot script needs: the watched URLs, the package manifest patterns and the cited-pages block of one
 // project's driftAudit.knowledgeSources. The manifest was validated against schemas/sdlc.schema.json when it was
 // reconciled; this reader checks again what it relies on, so that a damaged file stops the run instead of changing it.
 
@@ -7,6 +7,9 @@ import { assertRelativePattern } from "./glob.mjs";
 import { loadYaml } from "./yaml-load.mjs";
 
 const KINDS = new Set(["changelog", "blog", "docs", "release-notes", "feed"]);
+const HOSTNAME = /^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
+export const DEFAULT_MAX_CITED_PAGES = 50;
+export const MAX_CITED_PAGES = 200;
 const isObject = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
 
 /** A watched URL: http(s), a literal host (no wildcard) and no credentials. */
@@ -24,7 +27,34 @@ export function assertWatchUrl(url) {
 }
 
 /**
- * @returns {Promise<{ projectKey: string, repo: string, watchUrls: { url: string, label: string, kind: string }[], packageManifests: string[] }>}
+ * The optional citedPages block: which files of the target checkout to read (`include`, relative patterns), which hosts count (`hosts`, literal
+ * hostnames) and how many of the most cited pages to snapshot (`maxPages`, 1 to 200, default 50); null when the project has none.
+ */
+function citedPagesOf(value, projectKey) {
+  if (value === undefined || value === null) return null;
+  if (!isObject(value)) throw new Error(`knowledgeSources.citedPages of '${projectKey}' is not an object`);
+  const include = value.include;
+  const hosts = value.hosts;
+  if (!Array.isArray(include) || include.length === 0) throw new Error(`knowledgeSources.citedPages.include of '${projectKey}' must be a non-empty list`);
+  if (!Array.isArray(hosts) || hosts.length === 0) throw new Error(`knowledgeSources.citedPages.hosts of '${projectKey}' must be a non-empty list`);
+  const maxPages = value.maxPages ?? DEFAULT_MAX_CITED_PAGES;
+  if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > MAX_CITED_PAGES) throw new Error(`knowledgeSources.citedPages.maxPages of '${projectKey}' must be a whole number from 1 to ${MAX_CITED_PAGES}`);
+  return {
+    include: include.map((pattern) => {
+      if (typeof pattern !== "string") throw new Error(`a citedPages.include entry of '${projectKey}' is not a string`);
+      return assertRelativePattern(pattern);
+    }),
+    hosts: hosts.map((host) => {
+      if (typeof host !== "string" || !HOSTNAME.test(host)) throw new Error(`the citedPages host '${String(host)}' of '${projectKey}' is not a literal hostname`);
+      return host.toLowerCase();
+    }),
+    maxPages,
+  };
+}
+
+/**
+ * @returns {Promise<{ projectKey: string, repo: string, watchUrls: { url: string, label: string, kind: string }[], packageManifests: string[],
+ *   citedPages: { include: string[], hosts: string[], maxPages: number } | null }>}
  */
 export async function readProjectSources({ manifestPath, projectKey, fs = nodeFs, parser = "auto" }) {
   let text;
@@ -63,5 +93,5 @@ export async function readProjectSources({ manifestPath, projectKey, fs = nodeFs
     if (typeof pattern !== "string") throw new Error(`a packageManifests entry of '${projectKey}' is not a string`);
     return assertRelativePattern(pattern);
   });
-  return { projectKey, repo: typeof project.repo === "string" ? project.repo : "", watchUrls, packageManifests };
+  return { projectKey, repo: typeof project.repo === "string" ? project.repo : "", watchUrls, packageManifests, citedPages: citedPagesOf(sources.citedPages, projectKey) };
 }

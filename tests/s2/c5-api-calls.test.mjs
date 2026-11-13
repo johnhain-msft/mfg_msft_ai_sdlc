@@ -15,6 +15,7 @@ import { run as checkResponse } from "../../src/drift/check-pr-response.mjs";
 import { run as dedupe } from "../../src/drift/dedupe-open-prs.mjs";
 import { run as escalate } from "../../src/drift/escalate-gate-failure.mjs";
 import { run as prepare } from "../../src/drift/prepare-run.mjs";
+import { run as previousIndex } from "../../src/drift/previous-watch-index.mjs";
 import { run as snapshot } from "../../src/snapshot-watch-sources.mjs";
 import { run as validate } from "../../src/validate-copilot-lab-audit.mjs";
 import { abs, DRIFT_KEYS, driftPreset, fixture, listTree, readText, script, tempDir, WORKFLOWS } from "./helpers/fixtures.mjs";
@@ -47,6 +48,7 @@ function githubAndPages() {
         return json(201, issue);
       }
       if (entry.method === "PATCH" && entry.path === `/repos/${CENTRAL}/issues/1`) return json(200, Object.assign(issues[0], JSON.parse(entry.body)));
+      if (entry.method === "GET" && entry.path === `/repos/${CENTRAL}/actions/workflows/drift-example.lock.yml/runs`) return json(200, { total_count: 0, workflow_runs: [] });
       return json(404, { message: "Not Found" });
     }
     return { status: 200, headers: { "content-type": "text/html" }, body: `<html>${entry.url}</html>` };
@@ -73,9 +75,14 @@ async function runEveryScript() {
     await record("prepare-run", () => invoke(prepare, ["--out", workspace.out, "--target-repo", TARGET, "--dry-run", "true", "--checkout", "checkout"], { ...common, env: cleanEnv(workspaceEnv) }));
     await record("dedupe (installation token)", () => invoke(dedupe, ["--out", path.join(workspace.out, "a"), "--target-repo", TARGET], { ...common, env: cleanEnv({ CONFIGURED_TARGET_REPO: TARGET, GH_APP_INSTALLATION_TOKEN: "ghs_token" }) }));
     await record("dedupe (App credential)", () => invoke(dedupe, ["--out", path.join(workspace.out, "b"), "--target-repo", TARGET], { ...common, env: cleanEnv({ CONFIGURED_TARGET_REPO: TARGET, APP_CLIENT_ID: "Iv1.fixture", APP_PRIVATE_KEY: privateKey }) }));
+    await record("previous-watch-index", () => invoke(previousIndex, ["--out", path.join(workspace.out, "p"), "--workflow", "drift-example.lock.yml", "--artifact", "sdlc-watch-index-example"], { ...common, env: cleanEnv({ GH_TOKEN: "ghs_jobtoken", GITHUB_REPOSITORY: CENTRAL, GITHUB_RUN_ID: "9" }) }));
     await record("snapshot (fixture manifest)", () => invoke(snapshot, ["--out", path.join(workspace.out, "c"), "--project", "snapshot-fixture", "--manifest", workspace.manifest, "--checkout", workspace.checkout, "--timeout-ms", "150"], { ...common, env: cleanEnv() }));
     for (const key of DRIFT_KEYS) {
-      await record(`snapshot (preset ${key})`, () => invoke(snapshot, ["--out", path.join(workspace.out, `preset-${key}`), "--project", key, "--manifest", abs("sdlc.yaml"), "--checkout", lab.dir, "--timeout-ms", "150"], { ...common, env: cleanEnv() }));
+      await record(`snapshot (preset ${key})`, async () => {
+        const out = path.join(workspace.out, `preset-${key}`);
+        const result = await invoke(snapshot, ["--out", out, "--project", key, "--manifest", abs("sdlc.yaml"), "--checkout", lab.dir, "--timeout-ms", "150"], { ...common, env: cleanEnv() });
+        return { ...result, manifest: JSON.parse(fs.readFileSync(path.join(out, "sources", "manifest.json"), "utf8")) };
+      });
     }
     const escalateEnv = cleanEnv({ GH_TOKEN: "ghs_jobtoken", GITHUB_REPOSITORY: CENTRAL });
     const escalateArgs = (suffix) => ["--workflow-id", "drift-example", "--target-repo", TARGET, "--correlation-id", `corr-${suffix}`, "--run-url", `https://github.com/${CENTRAL}/actions/runs/9`, "--failing-command", "npm test"];
@@ -93,7 +100,7 @@ async function runEveryScript() {
 
 test("AC26: every script of src/drift/ is covered by this suite: the list below is the directory", () => {
   const scripts = fs.readdirSync(abs("src", "drift")).filter((entry) => entry.endsWith(".mjs")).sort();
-  assert.deepEqual(scripts, ["check-pr-response.mjs", "dedupe-open-prs.mjs", "escalate-gate-failure.mjs", "prepare-run.mjs"], "a new script needs a case in runEveryScript");
+  assert.deepEqual(scripts, ["check-pr-response.mjs", "dedupe-open-prs.mjs", "escalate-gate-failure.mjs", "prepare-run.mjs", "previous-watch-index.mjs"], "a new script needs a case in runEveryScript");
 });
 
 let everyScript;
@@ -136,8 +143,10 @@ test("AC26: the scripts that do not read from GitHub send no request at all", as
   const { calls } = await recorded();
   for (const name of ["prepare-run", "check-pr-response", "validate-copilot-lab-audit"]) assert.deepEqual(calls[name].requests, [], `${name} sends no request`);
   for (const key of DRIFT_KEYS) {
-    const urls = calls[`snapshot (preset ${key})`].requests.map((request) => request.url);
-    assert.deepEqual([...urls].sort(), driftPreset(key).driftAudit.knowledgeSources.watchUrls.map((entry) => entry.url).sort(), `${key}: the snapshot fetches exactly the configured watchUrls`);
+    const { requests, result } = calls[`snapshot (preset ${key})`];
+    const urls = requests.map((request) => request.url);
+    const cited = (result.manifest.citedPages?.pages ?? []).map((page) => page.url);
+    assert.deepEqual([...urls].sort(), [...driftPreset(key).driftAudit.knowledgeSources.watchUrls.map((entry) => entry.url), ...cited].sort(), `${key}: the snapshot fetches exactly the configured watchUrls and the cited pages that it records`);
   }
 });
 

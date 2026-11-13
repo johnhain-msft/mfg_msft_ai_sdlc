@@ -5,7 +5,11 @@
 import { POLL_STATE_VAR_PREFIX } from "./actions-variables.mjs";
 import { deriveProjectKey, slugOf } from "./validators.mjs";
 
-export const DEFAULT_SCHEDULE = "0 6 * * 1";
+/**
+ * The upkeep schedule of a project onboarded without --schedule: Mondays at 06:23 UTC. Not on the hour, because GitHub delays scheduled runs when load
+ * is high, and most at the start of every hour, and may drop them; GitHub's documentation advises another minute of the hour.
+ */
+export const DEFAULT_SCHEDULE = "23 6 * * 1";
 export const CONTEXT7_SERVER = Object.freeze({ command: "npx", args: Object.freeze(["-y", "@upstash/context7-mcp@latest"]) });
 export const MODERNIZATION = "dependency-and-pattern-modernization";
 
