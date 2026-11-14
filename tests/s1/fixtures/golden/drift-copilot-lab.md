@@ -253,7 +253,7 @@ Start with `/tmp/gh-aw/agent/sources/changes.md`. It compares this run's snapsho
 
 When a source's first page lists none of the entries that the baseline knew, the snapshot step has read its older pages until one does, up to a limit; a source that still does not reach the baseline is listed under `## Possible gaps` with the period that neither run saw. Open the older pages of that source for that period yourself, decide those entries as well, and name the gap under `## Limitations` when you cannot.
 
-That list is your work list, and every item of it gets a decision. Triage each item first from its title and excerpt: search this repository for the feature, setting or product that it names. Open, read and corroborate the items that touch something this repository covers or should cover, and fetch an entry or a page whenever its excerpt is not enough to decide; an item that does not concern this repository needs one line that says why. A long list is no reason to skip items: decide each one.
+That list is your work list, and every item of it gets a decision. Triage each item first from its title and excerpt: search this repository for the feature, setting or product that it names. Open, read and corroborate the items that touch something this repository covers or should cover, and fetch an entry or a page with the `web_fetch` tool whenever its excerpt is not enough to decide (the shell has no `curl`, `wget` or `gh`, and refuses a redirection or a heredoc; the hosts of the watched URLs and of the cited pages are reachable); an item that does not concern this repository needs one line that says why. A long list is no reason to skip items: decide each one.
 
 ## Drift report
 

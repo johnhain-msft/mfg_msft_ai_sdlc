@@ -68,6 +68,11 @@ for (const key of DRIFT_KEYS) {
     );
     assert.match(body, /- `## Limitations`: the sources that could not be fetched, the possible gaps that you could not close and the checks that could not run\./);
     assert.match(body, /A long list is no reason to skip items: decide each one\./);
+    assert.match(
+      body,
+      /fetch an entry or a page with the `web_fetch` tool whenever its excerpt is not enough to decide \(the shell has no `curl`, `wget` or `gh`, and refuses a redirection or a heredoc; the hosts of the watched URLs and of the cited pages are reachable\)/,
+      "live run 43558253314 tried curl, was refused, and concluded that it could not fetch: name the tool that can",
+    );
     assert.match(body, /## Drift report\n\nEnd every run with exactly one `create_issue` call: the drift report/);
     assert.match(body, /File it also when the work list is empty and nothing needs to change/);
     assert.ok(body.includes(`Title it \`Drift report: ${key} YYYY-MM-DD\``));
