@@ -289,6 +289,8 @@ test("sources that list the same entries are one stream, and a stream is a possi
       known: 1,
       since: "2026-11-02T13:23:00Z",
       oldestListed: "2026-11-11",
+      stoppedShort: [],
+      cause: "none-reached",
     },
   ]);
   assert.equal(gap.summary.possibleGaps, 1);
@@ -357,4 +359,49 @@ test("a possible gap is listed in changes.md with its sources, the pages read an
     markdown,
     /## Possible gaps \(1\)\n\n- \[Changelog\]\(https:\/\/github\.blog\/changelog\/\) \(3 pages read\) and \[Changelog feed\]\(https:\/\/github\.blog\/changelog\/feed\/\): none of the 2 entries listed now is one of the 1 that the baseline listed, so entries published between 2026-11-02T13:23:00Z \(the baseline run\) and 2026-11-11 \(the oldest entry listed now\) may be missing above\. Open the older pages of this source for that period, decide those entries too, and name the gap under Limitations if you cannot\.\n/,
   );
+});
+
+test("a source that stopped at the page limit or on an older page that failed, short of the baseline, is a possible gap even when a narrower view of its stream still reaches the baseline; one whose older page added nothing is not", () => {
+  const LABEL = { url: "https://github.blog/changelog/?label=enterprise", label: "Enterprise label", kind: "changelog" };
+  const baseline = { found: true, runId: 5, runUrl: "https://github.com/o/r/actions/runs/5", createdAt: "2026-10-30T13:23:00Z" };
+  const before = { project: "p", sources: [{ ...INDEX_PAGE, state: "ok", textSha256: "i", entries: [entry("old")] }, { ...LABEL, state: "ok", textSha256: "l", entries: [entry("old-enterprise")] }], citedPages: [] };
+  const now = (stop) => ({
+    project: "p",
+    sources: [
+      { ...INDEX_PAGE, state: "ok", textSha256: "i2", pagesRead: 2, stoppedShort: stop, entries: [entry("n2", { date: "2026-11-13" }), entry("n1-enterprise", { date: "2026-11-03" })] },
+      { ...LABEL, state: "ok", textSha256: "l2", entries: [entry("n1-enterprise", { date: "2026-11-03" }), entry("old-enterprise", { date: "2026-10-20" })] },
+    ],
+    citedPages: [],
+  });
+  const failed = compareWithPrevious({ current: now("failed"), previous: buildIndex(before), baseline });
+  assert.deepEqual(failed.possibleGaps, [
+    {
+      sources: [
+        { url: INDEX_PAGE.url, label: "Changelog", pagesRead: 2 },
+        { url: LABEL.url, label: "Enterprise label", pagesRead: 1 },
+      ],
+      listed: 3,
+      known: 2,
+      since: "2026-10-30T13:23:00Z",
+      oldestListed: "2026-11-03",
+      stoppedShort: [{ url: INDEX_PAGE.url, label: "Changelog", stop: "failed" }],
+      cause: "stopped-short",
+    },
+  ], "the label view reaches the baseline, but it lists only part of the changelog");
+  assert.deepEqual(compareWithPrevious({ current: now("limit"), previous: buildIndex(before), baseline }).possibleGaps[0].stoppedShort, [{ url: INDEX_PAGE.url, label: "Changelog", stop: "limit" }]);
+  assert.deepEqual(compareWithPrevious({ current: now(null), previous: buildIndex(before), baseline }).possibleGaps, [], "an index whose older page added nothing (github.blog's) has no more to give: another source of the stream has to reach back");
+  const markdown = renderChangesMarkdown(failed);
+  assert.match(
+    markdown,
+    /- \[Changelog\]\(https:\/\/github\.blog\/changelog\/\) \(2 pages read\) and \[Enterprise label\]\(https:\/\/github\.blog\/changelog\/\?label=enterprise\): Changelog stopped at an older page that could not be fetched before it reached an entry that the baseline listed, and the sources of this stream that reach it may list only part of its entries, so entries published between 2026-10-30T13:23:00Z \(the baseline run\) and 2026-11-03 \(the oldest entry listed now\) may be missing above\./,
+  );
+});
+
+test("an older page that could not be fetched is listed under Could not fetch with the source that named it", () => {
+  const now = current({ index: [entry("a")] });
+  now.sources[1].olderPageFailures = [{ url: "https://github.blog/changelog/page/2/", error: "HTTP 503" }];
+  const changes = compareWithPrevious({ current: now, previous: null, baseline: { found: false, reason: "none" } });
+  assert.deepEqual(changes.failed, [{ url: "https://github.blog/changelog/page/2/", label: "Changelog (older page)", error: "HTTP 503" }]);
+  assert.equal(changes.summary.failed, 1);
+  assert.match(renderChangesMarkdown(changes), /## Could not fetch \(1\)\n\n- https:\/\/github\.blog\/changelog\/page\/2\/ \(Changelog \(older page\)\): HTTP 503/);
 });

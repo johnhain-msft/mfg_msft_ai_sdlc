@@ -272,7 +272,7 @@ test("AC42: older pages stop at --max-older-pages, and a source that still does 
     assert.deepEqual(fetch.requests.map((request) => request.url), [NEWS, `${NEWS}page/2/`, `${NEWS}page/3/`]);
     assert.match(result.stdout, /, 1 possible gap\(s\);/);
     const changes = readJson(path.join(out, "sources", "changes.json"));
-    assert.deepEqual(changes.possibleGaps, [{ sources: [{ url: NEWS, label: "News", pagesRead: 3 }], listed: 3, known: 1, since: "2026-11-02T13:23:00Z", oldestListed: "2026-11-17" }]);
+    assert.deepEqual(changes.possibleGaps, [{ sources: [{ url: NEWS, label: "News", pagesRead: 3 }], cause: "none-reached", listed: 3, known: 1, since: "2026-11-02T13:23:00Z", oldestListed: "2026-11-17", stoppedShort: [{ url: NEWS, label: "News", stop: "limit" }] }]);
     assert.match(fs.readFileSync(path.join(out, "sources", "changes.md"), "utf8"), /## Possible gaps \(1\)\n\n- \[News\]\(https:\/\/news\.example\.test\/changelog\/\) \(3 pages read\): none of the 3 entries listed now/);
     assert.equal((await invoke(run, pagedArgs(workspace, workspace.out("bad"), ["--max-older-pages", "-1"]), { fetch: site(pagesByUrl) })).code, 2, "the limit is a whole number");
   } finally {
@@ -307,6 +307,8 @@ test("AC42: an older page is followed only on the watched URL's origin and only 
     assert.ok(manifest.limitations.includes("https://news.example.test/failing/page/2/ (older page of https://news.example.test/failing/): HTTP 404"), manifest.limitations.join("\n"));
     const gaps = readJson(path.join(out, "sources", "changes.json")).possibleGaps;
     assert.deepEqual(gaps.map((gap) => gap.sources.map((source) => source.label)), [["Label a"], ["Failing"], ["Other"]], "Label b reached its baseline on its older page");
+    assert.deepEqual(gaps[1].stoppedShort, [{ url: failing, label: "Failing", stop: "failed" }]);
+    assert.match(fs.readFileSync(path.join(out, "sources", "changes.md"), "utf8"), /## Could not fetch \(1\)\n\n- https:\/\/news\.example\.test\/failing\/page\/2\/ \(Failing \(older page\)\): HTTP 404/, "an older page that failed is in the work list, not only in manifest.json");
   } finally {
     workspace.cleanup();
   }

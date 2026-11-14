@@ -349,7 +349,9 @@ export function usableIndex(value) {
  * The possible gaps of a comparison. Sources that list the same entries are one stream (the changelog index and its feed); a stream whose sources
  * listed entries in the baseline and list none of them now no longer reaches the baseline, so entries published after the baseline run and before
  * the oldest entry listed now may have been seen by neither run. A stream with no entry known to the baseline (first seen, or failed then) has
- * nothing to reach back to.
+ * nothing to reach back to. A stream that does reach the baseline is still a possible gap when one of its sources stopped reading older pages at
+ * the limit or on a page that failed (`stoppedShort`) before it reached the baseline: the source that reaches it may be a narrower view of the
+ * same list (github.blog's ?label= view lists part of the changelog), and only a source whose older page added nothing has nothing more to give.
  */
 function possibleGapsOf(sources, priorSource, baseline) {
   const listing = sources.filter((source) => source.state === "ok" && ENTRY_KINDS.has(source.kind));
@@ -376,14 +378,18 @@ function possibleGapsOf(sources, priorSource, baseline) {
     }
     if (known.size === 0) continue;
     const listed = new Set(members.flatMap((source) => source.entries.map((item) => item.url)));
-    if ([...listed].some((url) => known.has(url))) continue;
-    const dates = members.flatMap((source) => source.entries.map((item) => item.date)).filter((date) => typeof date === "string" && date !== "").sort(compare);
+    const reached = [...listed].some((url) => known.has(url));
+    const short = members.filter((source) => source.stoppedShort === "limit" || source.stoppedShort === "failed");
+    if (reached && short.length === 0) continue;
+    const dates = (reached ? short : members).flatMap((source) => source.entries.map((item) => item.date)).filter((date) => typeof date === "string" && date !== "").sort(compare);
     gaps.push({
       sources: members.map((source) => ({ url: source.url, label: source.label, pagesRead: source.pagesRead ?? 1 })),
+      cause: reached ? "stopped-short" : "none-reached",
       listed: listed.size,
       known: known.size,
       since: baseline?.found && baseline.createdAt ? baseline.createdAt : null,
       oldestListed: dates[0] ?? null,
+      stoppedShort: short.map((source) => ({ url: source.url, label: source.label, stop: source.stoppedShort })),
     });
   }
   return gaps;
@@ -440,6 +446,7 @@ export function compareWithPrevious({ current, previous, baseline }) {
       }
     }
     outSources.push({ ...base, status, textChanged, newEntryCount: entryKind ? fresh.length : 0, newLinks: entryKind || status !== "changed" ? [] : fresh.map((entry) => ({ url: entry.url, title: entry.title })) });
+    for (const page of source.olderPageFailures ?? []) failed.push({ url: page.url, label: `${source.label} (older page)`, error: page.error });
   }
   const citedPages = [...(current.citedPages ?? [])]
     .sort((a, b) => compare(a.url, b.url))
@@ -501,15 +508,20 @@ export function renderChangesMarkdown(changes) {
     if (entry.excerpt) lines.push(`   > ${entry.excerpt}`);
   });
   const gaps = changes.possibleGaps ?? [];
+  const STOP_TEXT = { limit: "at the limit of older pages", failed: "at an older page that could not be fetched" };
+  const joined = (items) => (items.length < 3 ? items.join(" and ") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`);
   lines.push("", `## Possible gaps (${gaps.length})`, "");
   if (gaps.length === 0) lines.push("None.");
   for (const gap of gaps) {
     const names = gap.sources.map((source) => `[${linkText(source.label)}](${source.url})${source.pagesRead > 1 ? ` (${source.pagesRead} pages read)` : ""}`);
+    const stopped = (gap.stoppedShort ?? []).map((source) => `${source.label} stopped ${STOP_TEXT[source.stop] ?? source.stop}`);
     const from = `${gap.since ?? "the baseline run"} (the baseline run)`;
     const period = gap.oldestListed ? `between ${from} and ${gap.oldestListed} (the oldest entry listed now)` : `since ${from}`;
-    lines.push(
-      `- ${names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`}: none of the ${plural(gap.listed, "entry", "entries")} listed now is one of the ${gap.known} that the baseline listed, so entries published ${period} may be missing above. Open the older pages of this source for that period, decide those entries too, and name the gap under Limitations if you cannot.`,
-    );
+    const why =
+      gap.cause === "stopped-short"
+        ? `${joined(stopped)} before ${stopped.length === 1 ? "it" : "they"} reached an entry that the baseline listed, and the sources of this stream that reach it may list only part of ${stopped.length === 1 ? "its" : "their"} entries`
+        : `none of the ${plural(gap.listed, "entry", "entries")} listed now is one of the ${gap.known} that the baseline listed${stopped.length > 0 ? ` (${stopped.join("; ")})` : ""}`;
+    lines.push(`- ${joined(names)}: ${why}, so entries published ${period} may be missing above. Open the older pages of this source for that period, decide those entries too, and name the gap under Limitations if you cannot.`);
   }
   const changedPages = changes.sources.filter((source) => !ENTRY_KINDS.has(source.kind) && source.status === "changed");
   lines.push("", `## Changed pages (${changedPages.length})`, "");

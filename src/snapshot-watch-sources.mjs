@@ -245,16 +245,26 @@ async function readOlderPages(entry, first, known, { fetch, timeoutMs, maxBytes,
   const limitations = [];
   const watched = new URL(entry.url);
   const visited = new Set([watched.href]);
-  let reached = entries.some((item) => known.has(item.url));
+  // why the read ended: "reached" a known entry, the "limit" of pages, a page that "failed", or "ended" (no older page that may be read, or
+  // a page that adds nothing); only "limit" and "failed" leave the source short of what it could have listed
+  let stop = entries.some((item) => known.has(item.url)) ? "reached" : null;
   let next = first.nextPage;
-  while (!reached && pages.length < maxPages) {
+  while (stop === null) {
     const url = followable(next, watched);
-    if (url === null || visited.has(url)) break;
+    if (url === null || visited.has(url)) {
+      stop = "ended";
+      break;
+    }
+    if (pages.length >= maxPages) {
+      stop = "limit";
+      break;
+    }
     visited.add(url);
     const { record, file } = await snapshotUrl({ url, label: entry.label, kind: entry.kind }, { fetch, timeoutMs, maxBytes });
     if (!file) {
       pages.push({ url, state: "failed", status: record.status, snapshot: null, entries: 0, error: record.error });
       limitations.push(`${url} (older page of ${entry.url}): ${record.error}`);
+      stop = "failed";
       break;
     }
     files.push(file);
@@ -267,12 +277,12 @@ async function readOlderPages(entry, first, known, { fetch, timeoutMs, maxBytes,
       entries.push(item);
       added += 1;
     }
-    reached = digest.entries.some((item) => known.has(item.url));
+    if (digest.entries.some((item) => known.has(item.url))) stop = "reached";
     // a page that lists nothing new is the end: github.blog serves its first changelog page at every /changelog/page/N/
-    if (added === 0) break;
-    next = digest.nextPage;
+    else if (added === 0) stop = "ended";
+    else next = digest.nextPage;
   }
-  return { entries, pages, files, limitations };
+  return { entries, pages, files, limitations, stop };
 }
 
 /** What --previous holds: the baseline that drift/previous-watch-index.mjs found (or why there is none) and, when found, its watch index. */
@@ -345,16 +355,20 @@ export async function run(argv, ioInput = {}) {
         const digest = digestSnapshot({ url: entry.url, kind: entry.kind, contentType: record.contentType, bytes: file.data });
         let entries = digest.entries;
         let pagesRead = 1;
+        let stoppedShort = null;
+        let olderPageFailures = [];
         const known = knownEntries.get(entry.url);
         if (ENTRY_KINDS.has(entry.kind) && known !== undefined && known.size > 0) {
           const older = await readOlderPages(entry, digest, known, { fetch: io.fetch, timeoutMs, maxBytes, maxPages: maxOlderPages });
           entries = older.entries;
           pagesRead += older.pages.filter((page) => page.state === "ok").length;
+          stoppedShort = older.stop === "limit" || older.stop === "failed" ? older.stop : null;
+          olderPageFailures = older.pages.filter((page) => page.state === "failed").map((page) => ({ url: page.url, error: page.error }));
           for (const page of older.files) writes.set(page.relative, page.data);
           limitations.push(...older.limitations);
           if (older.pages.length > 0) record.olderPages = older.pages;
         }
-        sources.push({ url: entry.url, label: entry.label, kind: entry.kind, state: "ok", textSha256: digest.textSha256, entries, pagesRead });
+        sources.push({ url: entry.url, label: entry.label, kind: entry.kind, state: "ok", textSha256: digest.textSha256, entries, pagesRead, stoppedShort, olderPageFailures });
       } else {
         limitations.push(`${entry.url}: ${record.error}`);
         sources.push({ url: entry.url, label: entry.label, kind: entry.kind, state: "failed", error: record.error });
