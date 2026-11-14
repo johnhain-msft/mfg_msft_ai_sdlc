@@ -319,9 +319,12 @@ test("AC42: an older page that adds no new entry ends the read (github.blog serv
   fs.writeFileSync(workspace.manifest, manifestText);
   try {
     const wordpressFeed = (items) => feedOf(items).replace("<title>News</title>", "<title>News</title><generator>https://wordpress.org/?v=7.1.4</generator>");
-    const index = indexPage([["n3", "13"], ["n2", "12"]], `${NEWS}page/2/`);
+    // like github.blog: every /page/N/ serves the first page's entries and names /page/N+1/ as the older page
+    const index = (next) => indexPage([["n3", "13"], ["n2", "12"]], next);
     const fetch = createFakeFetch((entry) => {
-      if (entry.url === NEWS || entry.url.startsWith(`${NEWS}page/`)) return { status: 200, headers: { "content-type": "text/html" }, body: index };
+      const page = /\/changelog\/page\/(\d+)\/$/.exec(entry.url);
+      if (entry.url === NEWS) return { status: 200, headers: { "content-type": "text/html" }, body: index(`${NEWS}page/2/`) };
+      if (page) return { status: 200, headers: { "content-type": "text/html" }, body: index(`${NEWS}page/${Number(page[1]) + 1}/`) };
       if (entry.url === feedUrl) return { status: 200, headers: { "content-type": "application/rss+xml" }, body: wordpressFeed([item("changelog/n3", "n3", 13), item("changelog/n2", "n2", 12)]) };
       if (entry.url === `${feedUrl}?paged=2`) return { status: 200, headers: { "content-type": "application/rss+xml" }, body: wordpressFeed([item("changelog/n1", "n1", 11), item("changelog/old", "old", 1)]) };
       return { status: 404, body: "missing" };
