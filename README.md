@@ -171,7 +171,9 @@ Each `drift-<projectKey>` workflow, on its schedule or dispatched by hand:
   and the firewall refuses every other host. (`gh-aw` v1.0.1 runs Copilot offline behind its API proxy, where the
   native `web_fetch` tool does not exist.)
 * opens a pull request only for the changes that a source corroborates. An earlier drift pull request stays open: the
-  next run no longer lists its items, so closing it would drop them.
+  next run no longer lists its items, so closing it would drop them. A second run on the same day does not replace the
+  first run's branch; its changes are filed as an issue instead. A run whose pull request has nothing committed fails,
+  so it is not a baseline and its items come back in the next run.
 * files one issue in the target repository, `[sdlc-drift] Drift report: <projectKey> <date>`, when at least one item of
   the work list is recommended or could not be confirmed, or when a source could not be fetched or a possible gap could
   not be closed; otherwise it files none (the agent calls `noop` and says how many items it triaged). The report lists

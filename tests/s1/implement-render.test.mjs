@@ -110,8 +110,10 @@ function assertImplementContract(key) {
     "title-prefix": "chore(sdlc-implement): ",
     labels: ["automated", "sdlc-implement", "needs-review"],
     draft: false,
+    "recreate-ref": true,
     "close-older-pull-requests": false,
   });
+  assert.equal(outputs["create-pull-request"]["if-no-changes"], "error", "a call with nothing committed fails the run, which leaves the report open");
   assert.equal(outputs["create-pull-request"]["target-repo"], project.repo);
   assert.deepEqual(outputs["add-comment"], { "target-repo": project.repo, target: "${{ inputs.report_issue }}", max: 1 }, "a comment goes to the report and to no other issue or pull request");
   assert.equal(frontmatter.checkout[0].path, checkoutPath);
@@ -159,6 +161,8 @@ test("SPEC-02 AC45: the prompt starts from the report, treats it as data, implem
       "there is no `web_fetch` tool",
       "it is opened ready for review, not as a draft",
       "A comment goes to the report and nowhere else.",
+      "Decide an item only after you have read its source: an item whose page you did not open is not done for that reason, and you say so.",
+      "or not done, with the reason: what the source says, why the instructions do not ask for the change, or the error that stopped the fetch;",
       "commit your changes to the branch `implement-report-<number>`",
       "the last line `Closes #<number>`",
       "When no item survives the research, open no pull request: call `add_comment`",
@@ -205,6 +209,8 @@ test("AC72 and SPEC-02 AC13: a Copilot URL permission beyond network.allowed, or
   assert.ok(outside.errors.some((error) => /^engine-url-permission-outside-network: .*'api\.github\.com'/.test(error)), JSON.stringify(outside.errors));
   const joined = withArgs(["--allow-url=example.org"]);
   assert.ok(joined.errors.some((error) => /^engine-url-permission-outside-network: .*'example\.org'/.test(error)), JSON.stringify(joined.errors));
+  const trailing = withArgs([...frontmatter.engine.args, "--allow-url"]);
+  assert.ok(trailing.errors.some((error) => /^engine-url-permission-outside-network: .*''/.test(error)), `a --allow-url without a host is refused too: ${JSON.stringify(trailing.errors)}`);
   const all = withArgs(["--allow-all-urls"]);
   assert.ok(all.errors.some((error) => /^engine-url-permission-unbounded: /.test(error)), JSON.stringify(all.errors));
 });

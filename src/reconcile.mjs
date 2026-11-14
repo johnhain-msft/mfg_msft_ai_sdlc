@@ -1288,11 +1288,16 @@ function renderDrift(ctx, project) {
         draft: audit.draft,
         "branch-prefix": "sdlc/",
         "preserve-branch-name": true,
-        "recreate-ref": true,
         // an earlier pull request of this workflow stays open: its items are in this run's baseline, so the next run never lists them again and
-        // closing it would drop them (SPEC-02 AC25); the key still marks the body, which is how the deduplication tells this workflow's own apart
+        // closing it would drop them (SPEC-02 AC25). Neither does a second run of the same day force-push the branch of the same name, which would
+        // close it: the push fails, and fallback-as-issue files the changes as an issue instead. The key still marks the body of each pull request,
+        // which is how the deduplication tells this workflow's own apart.
+        "recreate-ref": false,
         "close-older-pull-requests": false,
         "close-older-key": driftCloseOlderKey(key),
+        // a call with nothing committed fails the run, which then is no baseline, instead of dropping the items that the report leaves to the
+        // pull request (SPEC-02 AC44)
+        "if-no-changes": "error",
         "exclude-lock-yml": true,
         "protected-files": { policy: "blocked", exclude: [...ctx.manifest.protectedFilesExclude] },
         "auto-merge": false,
@@ -1383,11 +1388,11 @@ function implementBody(ctx, project) {
   lines.push("For each item:");
   lines.push("");
   lines.push(
-    "1. Research it again: read its source with `curl --fail --silent --show-error --location <url>`, piped into `grep` or `head` when the page is long, follow the links of that page to the documentation that it names, and corroborate it through the Microsoft Learn and Context7 servers. `curl` reaches the hosts of the watched URLs and of the cited pages and no other, there is no `web_fetch` tool, and the shell has no `wget` or `gh` and refuses a redirection or a heredoc.",
+    "1. Research it again: read its source with `curl --fail --silent --show-error --location <url>`, piped into `grep` or `head` when the page is long, follow the links of that page to the documentation that it names, and corroborate it through the Microsoft Learn and Context7 servers. `curl` reaches the hosts of the watched URLs and of the cited pages and no other, there is no `web_fetch` tool, and the shell has no `wget` or `gh` and refuses a redirection or a heredoc. Decide an item only after you have read its source: an item whose page you did not open is not done for that reason, and you say so.",
   );
   lines.push("2. Find every place in this repository that it concerns: search the checkout, not only the files that the report names.");
   lines.push(
-    "3. Change what the sources support, within the limits of the registration instructions. When they do not support the change, or the right change is a judgement call, leave the text as it is and say why in the pull request.",
+    "3. Change what the sources support, within the limits of the registration instructions. When the source does not support the change, when the instructions do not ask for it (an addition where they update only what a source contradicts, for example) or when the right change is a judgement call, leave the text as it is and say which of these it is in the pull request.",
   );
   lines.push("");
   lines.push(
@@ -1405,7 +1410,7 @@ function implementBody(ctx, project) {
   );
   lines.push("");
   lines.push("- the title `drift report #<number>: <what it changes>`;");
-  lines.push("- a body with one entry for each item of the report: done, with what changed, the files and the source; or not done, with the reason;");
+  lines.push("- a body with one entry for each item of the report: done, with what changed, the files and the source; or not done, with the reason: what the source says, why the instructions do not ask for the change, or the error that stopped the fetch;");
   lines.push(
     "- the last line `Closes #<number>`, so that merging the pull request closes the report. Write `fixes`, `closes` or `resolves` before an issue number nowhere else.",
   );
@@ -1471,6 +1476,9 @@ function renderImplement(ctx, project, drift) {
         "title-prefix": "chore(sdlc-implement): ",
         labels: ["automated", "sdlc-implement", "needs-review"],
         draft: false,
+        // read-report.mjs has refused an open pull request on this branch before the agent started, so what a force-push replaces is the branch of
+        // a closed one: implementing a report again after its pull request was closed
+        "recreate-ref": true,
         "close-older-pull-requests": false,
       },
       // the answer on the report when nothing can be implemented, or when a pull request of the target's own schedule is open: the target is the
@@ -2500,7 +2508,7 @@ export function checkRendered(files, request, manifest) {
     const allowedHosts = new Set(isObj(fm.network) && Array.isArray(fm.network.allowed) ? fm.network.allowed.map(String) : []);
     engineArgs.forEach((arg, index) => {
       if (/^--allow-all-urls\b/.test(arg)) add(file, "engine-url-permission-unbounded", `${file} engine.args grants every URL (${arg})`);
-      const value = arg === "--allow-url" ? engineArgs[index + 1] : arg.startsWith("--allow-url=") ? arg.slice("--allow-url=".length) : undefined;
+      const value = arg === "--allow-url" ? String(engineArgs[index + 1] ?? "") : arg.startsWith("--allow-url=") ? arg.slice("--allow-url=".length) : undefined;
       if (value !== undefined && !allowedHosts.has(value)) add(file, "engine-url-permission-outside-network", `${file} engine.args allows the URL '${value}', which network.allowed does not list`);
     });
     for (const hit of deepFindKeys(fm, ["auto-merge"])) {

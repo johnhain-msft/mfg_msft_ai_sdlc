@@ -125,7 +125,7 @@ function assertContract(frontmatter, project) {
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
   const handler = outputs["create-pull-request"];
   assert.deepEqual(Object.keys(handler).sort(), [
-    "auto-merge", "branch-prefix", "close-older-key", "close-older-pull-requests", "draft", "exclude-lock-yml", "fallback-as-issue", "labels", "max",
+    "auto-merge", "branch-prefix", "close-older-key", "close-older-pull-requests", "draft", "exclude-lock-yml", "fallback-as-issue", "if-no-changes", "labels", "max",
     "max-patch-size", "preserve-branch-name", "protected-files", "recreate-ref", "reviewers", "target-repo", "title-prefix",
   ]);
   assert.equal(handler["target-repo"], project.repo);
@@ -136,7 +136,8 @@ function assertContract(frontmatter, project) {
   assert.equal(handler.draft, audit.draft);
   assert.equal(handler["branch-prefix"], "sdlc/");
   assert.equal(handler["preserve-branch-name"], true);
-  assert.equal(handler["recreate-ref"], true);
+  assert.equal(handler["recreate-ref"], false, "a second run of the same day does not force-push the branch of an open pull request, which would close it (SPEC-02 AC25)");
+  assert.equal(handler["if-no-changes"], "error", "a call with nothing committed fails the run, so the items that only the pull request lists are not dropped (SPEC-02 AC44)");
   assert.equal(handler["close-older-pull-requests"], false, "an earlier pull request stays open: its items are in the next run's baseline (SPEC-02 AC25)");
   assert.equal(handler["close-older-key"], `sdlc-drift-${project.projectKey}`);
   assert.equal(handler["exclude-lock-yml"], true);

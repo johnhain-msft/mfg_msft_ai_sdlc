@@ -126,9 +126,10 @@ safe-outputs:
     draft: false
     branch-prefix: sdlc/
     preserve-branch-name: true
-    recreate-ref: true
+    recreate-ref: false
     close-older-pull-requests: false
     close-older-key: sdlc-drift-gh-admin-msft
+    if-no-changes: error
     exclude-lock-yml: true
     protected-files:
       policy: blocked

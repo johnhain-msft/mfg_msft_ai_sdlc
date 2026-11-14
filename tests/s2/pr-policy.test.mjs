@@ -1,6 +1,6 @@
 // AC25, AC31 and AC34: contract C5 request, pull request creation (gated by OQ36), blocked pull request creation, and the draft and reviewer
 // policy. Once every gate has passed, the pull request is created or updated only through safe-outputs.create-pull-request on branch
-// sdlc/<workflowKey>-YYYY-MM-DD with preserve-branch-name: true, recreate-ref: true, close-older-pull-requests: false (an earlier pull request
+// sdlc/<workflowKey>-YYYY-MM-DD with preserve-branch-name: true, recreate-ref: false, close-older-pull-requests: false (an earlier pull request
 // stays open: its items are in the next run's baseline) with a distinct close-older-key per drift workflow, which marks its pull requests and auto-merge: false; if the organization blocks pull request creation, fallback-as-issue: true opens an
 // issue, and max stays 1. This test asserts the rendered flags only: what a remote-branch collision does is OQ36 and nothing here assumes it.
 import assert from "node:assert/strict";
@@ -22,7 +22,8 @@ for (const key of DRIFT_KEYS) {
     const flags = handler(key);
     assert.equal(flags["branch-prefix"], "sdlc/");
     assert.equal(flags["preserve-branch-name"], true, "no random suffix");
-    assert.equal(flags["recreate-ref"], true);
+    assert.equal(flags["recreate-ref"], false, "an earlier pull request's branch is never force-pushed");
+    assert.equal(flags["if-no-changes"], "error");
     assert.equal(flags["close-older-pull-requests"], false);
     assert.equal(typeof flags["close-older-key"], "string");
     assert.ok(flags["close-older-key"].length > 0);

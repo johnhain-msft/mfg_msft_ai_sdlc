@@ -1,6 +1,6 @@
 // AC2: contract C2 request, rendered frontmatter. Each drift workflow carries typed gh-aw frontmatter with the structure and the
 // literals of the contract, plus only the three extra keys that AC3 names. The test asserts the rendered configuration, not
-// the runtime semantics of continue-on-error: false, preserve-branch-name: true or recreate-ref: true (OQ35, OQ36).
+// the runtime semantics of continue-on-error: false, preserve-branch-name: true, recreate-ref: false or if-no-changes: error (OQ35, OQ36).
 //
 // The compiler check at the end is opt-in, like tests/s1/compile.test.mjs, because the rest of the suite is offline:
 //   SDLC_REAL_GH_AW=1 node --test tests/s2/c2-frontmatter.test.mjs
@@ -78,6 +78,7 @@ function assertContract(frontmatter, project) {
     "draft",
     "exclude-lock-yml",
     "fallback-as-issue",
+    "if-no-changes",
     "labels",
     "max",
     "max-patch-size",
@@ -95,7 +96,8 @@ function assertContract(frontmatter, project) {
   assert.equal(typeof handler.draft, "boolean");
   assert.equal(handler["branch-prefix"], "sdlc/");
   assert.equal(handler["preserve-branch-name"], true);
-  assert.equal(handler["recreate-ref"], true);
+  assert.equal(handler["recreate-ref"], false);
+  assert.equal(handler["if-no-changes"], "error");
   assert.equal(handler["close-older-pull-requests"], false, "an earlier pull request of the workflow stays open (AC25)");
   assert.equal(typeof handler["close-older-key"], "string");
   assert.equal(handler["exclude-lock-yml"], true);
