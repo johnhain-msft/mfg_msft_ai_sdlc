@@ -7,6 +7,7 @@ import path from "node:path";
 import test from "node:test";
 import { run as dedupe } from "../../src/drift/dedupe-open-prs.mjs";
 import { run as escalate } from "../../src/drift/escalate-gate-failure.mjs";
+import { run as readReport } from "../../src/drift/read-report.mjs";
 import { DRIFT_KEYS, driftLock, driftPreset, driftWorkflow, driftWorkflowText, presetManifest, tempDir } from "./helpers/fixtures.mjs";
 import { invoke } from "./helpers/run-script.mjs";
 import { cleanEnv, createFakeFetch, json } from "./helpers/stub-server.mjs";
@@ -85,7 +86,10 @@ test("AC9: the target repositories need no workflow: the fleet's workflows all l
   for (const key of DRIFT_KEYS) assert.equal(driftWorkflow(key).frontmatter.checkout.length, 1);
 });
 
-test("AC9: the scripts accept an App installation token and nothing else for the deduplication read and for the escalation: every other kind is refused before any request", async () => {
+const REPORT_ARGS = (out) => ["--out", out, "--target-repo", "example-owner/example-target", "--report-issue", "5", "--project-key", "x", "--author", "a[bot]"];
+const reportIssue = { number: 5, html_url: "https://github.com/example-owner/example-target/issues/5", title: "[sdlc-drift] Drift report: x 2026-11-14", state: "open", user: { login: "a[bot]" }, labels: [{ name: "drift-report" }], created_at: "2026-11-14T00:00:00Z", body: "## Summary\n" };
+
+test("AC9: the scripts accept an App installation token and nothing else for the deduplication read, the escalation and the report: every other kind is refused before any request", async () => {
   // a personal access token (classic and fine-grained), an OAuth token, a user access token of an App (it acts as a user), a refresh token,
   // a token of the format that had no prefix, and a string that is no token
   const refused = ["ghp_pat", "github_pat_fixture", "gho_oauth", "ghu_appusertoken", "ghr_refreshtoken", "0123456789abcdef0123456789abcdef01234567", "not-a-github-token"];
@@ -95,8 +99,10 @@ test("AC9: the scripts accept an App installation token and nothing else for the
     assert.equal(read.code, 1, `dedupe ${token}`);
     const escalation = await invoke(escalate, ["--workflow-id", "drift-x", "--target-repo", "example-owner/example-target"], { env: cleanEnv({ GITHUB_REPOSITORY: "example-owner/example-central", GH_TOKEN: token }), fetch: fake });
     assert.equal(escalation.code, 1, `escalate ${token}`);
+    const report = await invoke(readReport, REPORT_ARGS("unused"), { env: cleanEnv({ GH_APP_INSTALLATION_TOKEN: token }), fetch: fake });
+    assert.equal(report.code, 1, `read-report ${token}`);
     assert.equal(fake.requests.length, 0, `${token}: no request carries it`);
-    assert.equal(`${read.stderr}${escalation.stderr}`.includes(token), false, `${token} is not echoed`);
+    assert.equal(`${read.stderr}${escalation.stderr}${report.stderr}`.includes(token), false, `${token} is not echoed`);
   }
   // the control: with an installation token (also in the stateless format `ghs_<app id>_<JWT>`, which is no 40-character token) the same two calls send their
   // requests, so that the loop above is a refusal of the kind of the token and not of every call
@@ -109,5 +115,9 @@ test("AC9: the scripts accept an App installation token and nothing else for the
     assert.equal((await invoke(escalate, ["--workflow-id", "drift-x", "--target-repo", "example-owner/example-target"], { env: cleanEnv({ GITHUB_REPOSITORY: "example-owner/example-central", GH_TOKEN: token }), fetch: issues })).code, 0, `escalate ${token}`);
     assert.deepEqual(issues.requests.map((request) => request.method), ["GET", "POST"]);
     assert.ok(issues.requests.every((request) => request.headers.authorization === `Bearer ${token}`));
+    const target = createFakeFetch((entry) => (entry.path.endsWith("/issues/5") ? json(200, reportIssue) : json(200, [])));
+    const reportDirectory = path.join(tempDir("sdlc-s2-installation-token-report-"), "agent");
+    assert.equal((await invoke(readReport, REPORT_ARGS(reportDirectory), { env: cleanEnv({ GH_APP_INSTALLATION_TOKEN: token }), fetch: target })).code, 0, `read-report ${token}`);
+    assert.deepEqual(target.requests.map((request) => request.headers.authorization), [`Bearer ${token}`, `Bearer ${token}`]);
   }
 });

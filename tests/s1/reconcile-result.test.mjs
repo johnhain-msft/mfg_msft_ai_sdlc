@@ -18,6 +18,9 @@ const PRESET_PAIRS = [
   "drift-copilot-lab",
   "drift-gh-admin-msft",
   "drift-self-improving-agents",
+  "implement-copilot-lab",
+  "implement-gh-admin-msft",
+  "implement-self-improving-agents",
   "sdlc-onboard",
 ].map((id) => ({ sourceMd: `.github/workflows/${id}.md`, lockYml: `.github/workflows/${id}.lock.yml` }));
 
@@ -65,7 +68,7 @@ test("AC12: an error result has the same four keys", async () => {
   });
 });
 
-test("AC13: generatedWorkflows holds the nine pairs sorted by path and not the router; repoConfigPath is aw.json", async () => {
+test("AC13: generatedWorkflows holds the thirteen pairs sorted by path and not the router; repoConfigPath is aw.json", async () => {
   await withWorkspace({}, async (workspace) => {
     const result = await workspace.reconcile(referenceRequest());
     assert.deepEqual(result.generatedWorkflows, PRESET_PAIRS);
@@ -208,7 +211,7 @@ test("AC12: `node src/reconcile.mjs --request <file>` prints the result as JSON 
     assert.equal(outcome.code, 0, outcome.stderr);
     assert.equal(outcome.json?.status, "ok");
     assertResultShape(outcome.json);
-    assert.equal(outcome.json.generatedWorkflows.length, 10);
+    assert.equal(outcome.json.generatedWorkflows.length, 13);
     assert.equal(outcome.stdout.trim().startsWith("{"), true, "stdout holds only the JSON object");
   });
 });

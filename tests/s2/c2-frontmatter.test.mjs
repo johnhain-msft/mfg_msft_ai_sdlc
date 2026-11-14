@@ -63,10 +63,9 @@ function assertContract(frontmatter, project) {
     "target-repo": project.repo,
     "title-prefix": "[sdlc-drift] ",
     labels: ["automated", "sdlc-drift", "drift-report"],
-    "close-older-issues": true,
-    "close-older-key": `sdlc-drift-report-${project.projectKey}`,
+    "close-older-issues": false,
     max: 1,
-  });
+  }, "no report closes an earlier one: its items are in the next run's baseline, so only the pull request that implements it, or a human, may (AC44)");
   assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", checkout.path] }, "the token of the safe outputs reaches the central repository and the target repository");
   assert.equal(outputs["report-failure-as-issue"], false);
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
@@ -123,8 +122,7 @@ test("AC2: the three workflows differ only in the values that come from their pr
   assert.equal(new Set(groups).size, 3, "three distinct concurrency groups");
   const closeKeys = DRIFT_KEYS.map((key) => driftWorkflow(key).frontmatter["safe-outputs"]["create-pull-request"]["close-older-key"]);
   assert.equal(new Set(closeKeys).size, 3, "three distinct close-older-key values");
-  const reportKeys = DRIFT_KEYS.map((key) => driftWorkflow(key).frontmatter["safe-outputs"]["create-issue"]["close-older-key"]);
-  assert.equal(new Set([...closeKeys, ...reportKeys]).size, 6, "three distinct report keys, none of them a pull request's: two workflows of one lab never close each other's report");
+  for (const key of DRIFT_KEYS) assert.equal("close-older-key" in driftWorkflow(key).frontmatter["safe-outputs"]["create-issue"], false, `${key}: a report closes no other report`);
 });
 
 const requested = process.env.SDLC_REAL_GH_AW === "1";

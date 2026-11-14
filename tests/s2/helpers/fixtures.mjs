@@ -41,12 +41,18 @@ export const driftWorkflow = (projectKey) => readWorkflow(`drift-${projectKey}.m
 export const driftWorkflowText = (projectKey) => fs.readFileSync(abs(WORKFLOWS, `drift-${projectKey}.md`), "utf8");
 export const driftPreset = (projectKey) => projectOf(presetManifest(), projectKey);
 
-/** The compiled lock file of a project, parsed; `header` is its gh-aw-manifest comment as an object. */
-export function driftLock(projectKey) {
-  const text = fs.readFileSync(abs(WORKFLOWS, `drift-${projectKey}.lock.yml`), "utf8");
+/** The committed implementation workflow of a project (SPEC-02 AC45): frontmatter, text of the frontmatter and Markdown body. */
+export const implementWorkflow = (projectKey) => readWorkflow(`implement-${projectKey}.md`);
+
+/** The compiled lock file of a project's drift workflow (or of another of its workflows), parsed; `header` is its gh-aw-manifest comment as an object. */
+export function driftLock(projectKey, prefix = "drift") {
+  const text = fs.readFileSync(abs(WORKFLOWS, `${prefix}-${projectKey}.lock.yml`), "utf8");
   const manifest = /^# gh-aw-manifest: (.+)$/m.exec(text);
   return { text, workflow: YAML.parse(text), header: manifest ? JSON.parse(manifest[1]) : null };
 }
+
+/** The compiled lock file of a project's implementation workflow, parsed. */
+export const implementLock = (projectKey) => driftLock(projectKey, "implement");
 
 /** All files below a directory as POSIX paths relative to it, sorted. */
 export function listTree(root, start = "") {

@@ -81,7 +81,12 @@ test("AC14: the reconciler writes only the workflow tree and the compiler's two 
 });
 
 test("AC14: the engine source contains no GitHub-side write: no variable, secret or workflow command and no non-GET API call", () => {
-  const source = readText(abs("src", "reconcile.mjs"));
+  const text = readText(abs("src", "reconcile.mjs"));
+  // the one workflow command in the source is the step with which a drift run starts the implementation of its report (SPEC-02 AC46): the
+  // reconciler writes it into the workflow file and never runs it
+  const rendered = `run: 'gh workflow run "$WORKFLOW_FILE" --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f report_issue="$REPORT_ISSUE" -f correlation_id="$CORRELATION_ID"',`;
+  assert.equal(text.split(rendered).length - 1, 1, "the rendered dispatch step is in the source once");
+  const source = text.replace(rendered, "");
   assert.equal(/gh\s+(variable|secret|workflow)\b/.test(source), false);
   assert.equal(/-X\s+(PATCH|POST|PUT|DELETE)|--method/.test(source), false);
   assert.equal(/app-manifests/.test(source), false);

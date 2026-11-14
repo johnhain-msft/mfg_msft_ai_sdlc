@@ -15,6 +15,9 @@
 //  - belongsTo "current-workflow": the body carries the marker `<!-- gh-aw-close-key: <key> -->` that gh-aw embeds for this workflow's
 //    --close-older-key. It is an earlier pull request of this workflow, which the new one replaces (`close-older-pull-requests: true`).
 //    decision "supersede": no reason to skip.
+//  - belongsTo "implementation": the workflow is known (--close-older-key is given) and the head branch is sdlc/implement-report-<number>, the pull
+//    request that implements an earlier drift report (SPEC-02 AC45). The items of that report are in this run's baseline, so this run does not list
+//    them again and its own pull request cannot duplicate it. decision "ignore".
 //  - belongsTo "another-workflow-or-schedule": any other match, which is a pull request of another workflow of the orchestrator or of the
 //    target's own scheduled workflows. Its `upkeep` is "weekly-audit" or "self-improve" when its head branch (after automation/ or sdlc/) or its
 //    label says so, else null. decision "ignore" when both it and this workflow have an upkeep and the two differ (a self-improvement pull
@@ -61,6 +64,8 @@ const UPKEEP_OF_STEM = [
 ];
 /** The upkeep of a workflow, from its upkeepStrategy; any other strategy has no upkeep of the target's own schedules to tell apart. */
 export const UPKEEP_OF_STRATEGY = { "content-and-docs-sync": "weekly-audit", "code-quality-and-improvement-scan": "self-improve" };
+/** The head branch of the pull request that implements drift report <number> (SPEC-02 AC45). */
+export const IMPLEMENTATION_HEAD = /^sdlc\/implement-report-[1-9][0-9]*$/;
 
 /** Why a pull request counts as a possible duplicate: [] when it does not. */
 export function matchReasons(pull) {
@@ -103,13 +108,15 @@ export function upkeepOf(pull) {
 
 /**
  * What the workflow does about a match: "supersede" (its own earlier pull request, replaced through close-older-pull-requests), "ignore" (the pull
- * request of another upkeep) or "skip" (a possible duplicate: the agent does not call create_pull_request).
+ * request of another upkeep, or the implementation of an earlier drift report) or "skip" (a possible duplicate: the agent does not call
+ * create_pull_request).
  * @param {object} pull a pull request of the list
  * @param {{ closeOlderKey: string | null, upkeep: string | null }} workflow
  */
 export function decide(pull, workflow) {
   if (workflow.closeOlderKey !== null && belongsToWorkflow(pull, workflow.closeOlderKey)) return { belongsTo: "current-workflow", upkeep: upkeepOf(pull), decision: "supersede" };
   const upkeep = upkeepOf(pull);
+  if (workflow.closeOlderKey !== null && IMPLEMENTATION_HEAD.test(String(pull?.head?.ref ?? ""))) return { belongsTo: "implementation", upkeep, decision: "ignore" };
   const other = workflow.upkeep !== null && upkeep !== null && upkeep !== workflow.upkeep;
   return { belongsTo: "another-workflow-or-schedule", upkeep, decision: other ? "ignore" : "skip" };
 }
@@ -199,7 +206,7 @@ export async function run(argv, ioInput = {}) {
       ],
       { fs: io.fs },
     );
-    io.stdout(`dedupe-open-prs: ${items.length} open pull request(s) of ${target} inspected${truncated ? " (more exist than were read)" : ""}, ${matches.length} possible duplicate(s) recorded in ${path.join(out, "open-pr-dedup.json")} (${count("skip")} to skip for, ${count("supersede")} of this workflow to supersede, ${count("ignore")} of another upkeep)\n`);
+    io.stdout(`dedupe-open-prs: ${items.length} open pull request(s) of ${target} inspected${truncated ? " (more exist than were read)" : ""}, ${matches.length} possible duplicate(s) recorded in ${path.join(out, "open-pr-dedup.json")} (${count("skip")} to skip for, ${count("supersede")} of this workflow to supersede, ${count("ignore")} of another upkeep or the implementation of an earlier report)\n`);
     return 0;
   } catch (error) {
     io.stderr(`dedupe-open-prs: ${error.message}\n`);

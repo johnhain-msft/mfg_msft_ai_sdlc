@@ -49,7 +49,13 @@ for (const key of DRIFT_KEYS) {
     if (installs) {
       assert.deepEqual(steps[5], { name: "Install target checkout dependencies for in-sandbox validation", "working-directory": project.repo.split("/")[1], run: "npm ci --ignore-scripts" });
     }
-    assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure"], "jobs holds only escalate_failure besides the built-in guards");
+    assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure", "implement_report"], "jobs holds only escalate_failure and implement_report besides the built-in guards");
+    const start = frontmatter.jobs.implement_report;
+    assert.deepEqual([start.needs, start.if, start.permissions], [["safe_outputs"], "needs.safe_outputs.result == 'success' && needs.safe_outputs.outputs.created_issue_number != '' && inputs.dry_run != true", { actions: "write" }], "AC46: it starts after a report was filed, with the right to dispatch and no other");
+    assert.equal(start.steps.length, 1);
+    assert.equal(start.steps[0].env.WORKFLOW_FILE, `implement-${key}.lock.yml`, "AC46: it starts the implementation workflow of the same project");
+    assert.equal(start.steps[0].env.REPORT_ISSUE, "${{ needs.safe_outputs.outputs.created_issue_number }}", "AC46: with the number of the report that this run filed");
+    assert.match(start.steps[0].run, /^gh workflow run "\$WORKFLOW_FILE" --repo "\$GITHUB_REPOSITORY" --ref "\$GITHUB_REF_NAME" -f report_issue="\$REPORT_ISSUE" -f correlation_id="\$CORRELATION_ID"$/);
   });
 
   test(`AC3: post-steps of drift-${key}.md are the project's verifyCommands in order`, () => {
@@ -57,7 +63,7 @@ for (const key of DRIFT_KEYS) {
     assert.deepEqual(frontmatter["post-steps"].map((step) => step.run), driftPreset(key).driftAudit.verifyCommands);
   });
 
-  test(`AC42, AC44: the prompt of drift-${key}.md makes changes.md the work list and asks for one drift report per run, also when nothing changed`, () => {
+  test(`AC42, AC44: the prompt of drift-${key}.md makes changes.md the work list and asks for a drift report of what someone has to act on, and for none when nothing is`, () => {
     const { body } = driftWorkflow(key);
     assert.match(body, /## What changed since the last run\n\nStart with `\/tmp\/gh-aw\/agent\/sources\/changes\.md`\./);
     assert.match(body, /That list is your work list, and every item of it gets a decision\./);
@@ -68,24 +74,34 @@ for (const key of DRIFT_KEYS) {
     );
     assert.match(body, /- `## Limitations`: the sources that could not be fetched, the possible gaps that you could not close and the checks that could not run\./);
     assert.match(body, /A long list is no reason to skip items: decide each one\./);
+    assert.match(body, /An item that does not concern this repository is not relevant: count it, but do not list it in the report\./, "the report lists no item that is not relevant");
+    assert.equal(/needs one line that says why/.test(body), false, "and no longer asks for a line for each of them");
     assert.match(
       body,
       /fetch an entry or a page with the `web_fetch` tool whenever its excerpt is not enough to decide \(the shell has no `curl`, `wget` or `gh`, and refuses a redirection or a heredoc; the hosts of the watched URLs and of the cited pages are reachable\)/,
       "live run 43558253314 tried curl, was refused, and concluded that it could not fetch: name the tool that can",
     );
-    assert.match(body, /## Drift report\n\nEnd every run with exactly one `create_issue` call: the drift report/);
-    assert.match(body, /File it also when the work list is empty and nothing needs to change/);
+    assert.match(body, /## Drift report\n\nFile a drift report when at least one item of the work list is applied, recommended or could not be confirmed: exactly one `create_issue` call,/);
+    assert.ok(body.includes(`a run of the workflow \`implement-${key}\` researches every item under \`## Recommended\` and \`## Could not confirm\` again and opens one pull request that closes the report`), "the agent knows that the report starts its implementation (AC46)");
+    assert.match(body, /When every item is not relevant, or the work list is empty, file no report: call `noop` with one line that says how many items you triaged and which baseline you compared with\./);
     assert.ok(body.includes(`Title it \`Drift report: ${key} YYYY-MM-DD\``));
-    for (const section of ["## Summary", "## Watched-source changes", "## Recommendations", "## Limitations"]) assert.ok(body.includes(`- \`${section}\``), section);
+    const sections = ["## Summary", "## Applied", "## Recommended", "## Could not confirm", "## Limitations"].map((section) => body.indexOf(`- \`${section}\``));
+    assert.ok(sections.every((at) => at > 0), "every section is described");
+    assert.deepEqual([...sections].sort((a, b) => a - b), sections, "in this order");
+    assert.match(body, /one line that counts the items that you triaged as not relevant \(never list them\)/);
+    assert.match(body, /- `## Recommended`: a task list \(`- \[ \] `\)/);
+    assert.match(body, /- `## Could not confirm`: a task list \(`- \[ \] `\)/);
+    assert.match(body, /Each item says what to change, names the files that it concerns and links its source\./, "an item stands on its own, because the implementation run starts from the report alone");
+    for (const gone of ["## Watched-source changes", "## Recommendations"]) assert.equal(body.includes(`- \`${gone}\``), false, `${gone} is gone`);
     assert.match(body, /content that the sources announce and this repository does not cover yet/, "recommendations include what to add, not only what to fix");
     assert.match(body, /In a dry run call neither: `\/tmp\/gh-aw\/agent\/dry-run-proposal\.json` exists already with `null` under `proposal` and `report`; replace the `null` of `report` with the report that you would have filed/);
-    assert.match(body, /`report` with the report that you would have filed, `\{ "title": \.\.\., "body": \.\.\. \}`, using the edit tool: the shell of this workflow refuses a redirection or a heredoc\./, "the dry run names the tool that can write the file");
+    assert.match(body, /`report` with the report that you would have filed, `\{ "title": \.\.\., "body": \.\.\. \}`, using the edit tool: the shell of this workflow refuses a redirection or a heredoc\. Leave it `null` when you would have filed none\./, "the dry run names the tool that can write the file");
     assert.match(
       body,
       /When the registration instructions above define a report of their own \(such as `docs\/_meta\/audit-report\.md` or `self-improvement-report\.md`\), write that report as they say on every run, a dry run and a run that changes nothing included, because the checks that run after you look for it;/,
       "a project's own report is written on every run, so that its validator finds it",
     );
-    assert.equal(/call `noop`/.test(body), false, "the report replaces a silent no-op");
+    assert.match(body, /the body of the issue is that report followed by the sections below other than `## Summary`\./);
     const order = ["## Watched sources", "## What changed since the last run", "## Drift report", "## Operating rules"].map((heading) => body.indexOf(heading));
     assert.deepEqual([...order].sort((a, b) => a - b), order, "the sections come in this order");
     const cited = driftPreset(key).driftAudit.knowledgeSources.citedPages;

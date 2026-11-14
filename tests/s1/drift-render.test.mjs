@@ -70,6 +70,25 @@ test("AC20: git ls-files lists exactly the six preset drift paths", () => {
   assert.deepEqual(trackedFiles(`${W}/drift-*`), expected);
 });
 
+/** The job that starts the implementation of the report that a run filed (SPEC-02 AC46). */
+const implementReportJob = (key) => ({
+  needs: ["safe_outputs"],
+  if: "needs.safe_outputs.result == 'success' && needs.safe_outputs.outputs.created_issue_number != '' && inputs.dry_run != true",
+  permissions: { actions: "write" },
+  steps: [
+    {
+      name: "Start the implementation of the drift report",
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        WORKFLOW_FILE: `implement-${key}.lock.yml`,
+        REPORT_ISSUE: "${{ needs.safe_outputs.outputs.created_issue_number }}",
+        CORRELATION_ID: "${{ inputs.correlation_id || format('run-{0}-{1}', github.run_id, github.run_attempt) }}",
+      },
+      run: 'gh workflow run "$WORKFLOW_FILE" --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f report_issue="$REPORT_ISSUE" -f correlation_id="$CORRELATION_ID"',
+    },
+  ],
+});
+
 function assertContract(frontmatter, project) {
   const audit = project.driftAudit;
   const repoName = project.repo.split("/")[1];
@@ -97,10 +116,9 @@ function assertContract(frontmatter, project) {
     "target-repo": project.repo,
     "title-prefix": "[sdlc-drift] ",
     labels: ["automated", "sdlc-drift", "drift-report"],
-    "close-older-issues": true,
-    "close-older-key": `sdlc-drift-report-${project.projectKey}`,
+    "close-older-issues": false,
     max: 1,
-  }, "one drift report per run, in the target repository, superseding only this workflow's earlier report (SPEC-02 AC44)");
+  }, "at most one drift report per run, in the target repository, and no report closes an earlier one (SPEC-02 AC44)");
   assert.equal("noop" in outputs, false, "no explicit noop: an opt-in would make the compiler expect a maintenance workflow that the fleet does not keep");
   assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", repoName] });
   assert.equal(outputs["report-failure-as-issue"], false);
@@ -132,7 +150,8 @@ function assertContract(frontmatter, project) {
   assert.ok(frontmatter.tools.bash.includes("git"));
   assert.ok(frontmatter.tools.bash.includes("node"), "the lab's own S2 scripts and the preset's build commands run on node");
   for (const command of audit.buildCommands) assert.ok(frontmatter.tools.bash.includes(command.trim().split(/\s+/)[0]), `bash allows the first word of '${command}'`);
-  assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure"]);
+  assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure", "implement_report"]);
+  assert.deepEqual(frontmatter.jobs.implement_report, implementReportJob(project.projectKey));
   const job = frontmatter.jobs.escalate_failure;
   assert.deepEqual(job.permissions, { actions: "read", contents: "read", issues: "write" });
   assert.deepEqual(job.needs, ["agent", "detection", "safe_outputs"]);

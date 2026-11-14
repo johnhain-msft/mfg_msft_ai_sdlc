@@ -13,6 +13,7 @@ const W = ".github/workflows";
 const request = referenceRequest();
 const ids = [
   "drift-gh-admin-msft", "drift-copilot-lab", "drift-self-improving-agents",
+  "implement-gh-admin-msft", "implement-copilot-lab", "implement-self-improving-agents",
   "cascade-mechanical-ghec-admin", "cascade-mechanical-ai-sdlc", "cascade-mechanical-copilot-config",
   "cascade-ai-copilot-lab", "cascade-ai-pipeline-showcase", "cascade-ai-github-intermediate", "sdlc-onboard",
 ];
@@ -24,7 +25,7 @@ function simulateGates(id, lock, { agent = "success", detection = "success", saf
   return simulateJobs(lock.jobs, {
     results: { agent, detection, safe_outputs: safeOutputs },
     outputs: { detection: { detection_success: detection === "success" ? "true" : "false" } },
-    inputs: { dry_run: id.startsWith("drift-") ? dryRun : String(dryRun) },
+    inputs: { dry_run: isDrift(id) ? dryRun : String(dryRun) },
   });
 }
 
@@ -122,7 +123,8 @@ test("AC29: the condition evaluator follows the Actions expression semantics tha
 
 const DRIFT_SAFE_OUTPUTS_GUARD = `${AGENT_SUCCESS_GUARD} && inputs.dry_run != true`;
 const DRIFT_CONCLUSION_GUARD = "inputs.dry_run != true";
-const isDrift = (name) => name.split("/").pop().startsWith("drift-");
+/** A workflow of the drift automation: a drift workflow or the implementation workflow of its reports (SPEC-02 AC45), both with a boolean dry_run. */
+const isDrift = (name) => /^(?:drift|implement)-/.test(name.split("/").pop());
 const expectedSafeOutputsGuard = (name) => (isDrift(name) ? DRIFT_SAFE_OUTPUTS_GUARD : AGENT_SUCCESS_GUARD);
 
 test("AC29: detection and safe_outputs are rendered as the agent-success guard alone (with dry_run on drift safe_outputs): nothing widens when they run", () => {
@@ -169,6 +171,28 @@ test("AC8: a dry run of a drift workflow reaches neither safe_outputs, conclusio
   }
 });
 
+test("SPEC-02 AC46: in every committed drift lock implement_report runs only after safe_outputs succeeded and filed a report: never without one, in a dry run or after a failure", () => {
+  for (const id of ids.filter((name) => name.startsWith("drift-"))) {
+    const lock = lockOf(id);
+    assert.ok("implement_report" in lock.jobs, `${id} has the job`);
+    assert.deepEqual([].concat(lock.jobs.implement_report.needs).sort(), ["detection", "safe_outputs"], `${id}: the compiler adds the detection gate to its needs`);
+    const run = ({ agent = "success", detection = "success", safeOutputs = "success", dryRun = false } = {}, issue) =>
+      simulateJobs(lock.jobs, {
+        results: { agent, detection, safe_outputs: safeOutputs },
+        outputs: { detection: { detection_success: detection === "success" ? "true" : "false" }, safe_outputs: issue === undefined ? {} : { created_issue_number: issue } },
+        inputs: { dry_run: dryRun },
+      }).ran.includes("implement_report");
+    assert.equal(run({}, "41"), true, `${id}: a filed report starts its implementation`);
+    assert.equal(run({}, ""), false, `${id}: a run that filed no report starts nothing`);
+    assert.equal(run({}, undefined), false, `${id}: nor one whose safe_outputs reported no issue`);
+    assert.equal(run({ dryRun: true }, "41"), false, `${id}: a dry run`);
+    assert.equal(run({ safeOutputs: "failure" }, "41"), false, `${id}: a failed publication`);
+    assert.equal(run({ agent: "failure" }, "41"), false, `${id}: a failed agent`);
+    assert.equal(run({ detection: "failure" }, "41"), false, `${id}: a flagged detection`);
+  }
+  for (const id of ids.filter((name) => !name.startsWith("drift-"))) assert.equal("implement_report" in lockOf(id).jobs, false, `${id} starts no implementation`);
+});
+
 test("AC8: the conclusion condition that the compiler writes on its own ran in a dry run after a failed agent job (the defect)", () => {
   for (const id of ids.filter(isDrift)) {
     const lock = structuredClone(lockOf(id));
@@ -187,7 +211,7 @@ test("AC29: the guard is rendered for any manifest, not only for the preset: eve
     const result = renderFleet(request, { cwd: workspace.dir });
     assert.ok(result.ok, JSON.stringify(result.result));
     const sources = [...result.files].filter(([name]) => name.endsWith(".md"));
-    assert.deepEqual(sources.map(([name]) => name.split("/").pop()), ["cascade-mechanical-alpha-to-beta.md", "drift-alpha-service.md", "sdlc-onboard.md"]);
+    assert.deepEqual(sources.map(([name]) => name.split("/").pop()), ["cascade-mechanical-alpha-to-beta.md", "drift-alpha-service.md", "implement-alpha-service.md", "sdlc-onboard.md"]);
     for (const [name, text] of sources) {
       const { jobs } = parseWorkflow(text).frontmatter;
       assert.deepEqual(jobs.detection, { if: AGENT_SUCCESS_GUARD }, `${name}.detection`);
@@ -257,7 +281,7 @@ test("AC29: failure escalation stays in the repository that runs the workflow: e
     const { escalate_failure: job } = lockOf(id).jobs;
     assert.ok(job, `${id} has escalate_failure`);
     assert.deepEqual(job.needs, ["agent", "detection", "safe_outputs"], id);
-    const expected = id.startsWith("drift-") ? "failure() && inputs.dry_run != true" : "failure() && inputs.dry_run != 'true'";
+    const expected = isDrift(id) ? "failure() && inputs.dry_run != true" : "failure() && inputs.dry_run != 'true'";
     assert.equal(job.if, expected, `${id}: the compiler left the guard unwrapped, so it still fires after a failed agent`);
   }
 });

@@ -56,7 +56,7 @@ for (const [index, value] of TRICKY.entries()) {
     assert.ok(result.ok, JSON.stringify(result.result));
     const drift = parseWorkflow(files.get(`${W}/drift-alpha-service.md`)).frontmatter;
     assert.deepEqual(Object.keys(drift).sort(), DRIFT_KEYS);
-    assert.deepEqual(Object.keys(drift.jobs).sort(), ["conclusion", "detection", "escalate_failure", "safe_outputs"], "no job is added to the three guard sections and the one custom job");
+    assert.deepEqual(Object.keys(drift.jobs).sort(), ["conclusion", "detection", "escalate_failure", "implement_report", "safe_outputs"], "no job is added to the three guard sections and the two custom jobs");
     assert.equal(drift["pre-agent-steps"].length, 5, "the five S2 steps of SPEC-01 AC25 and no install, which the minimal manifest does not ask for");
     assert.equal(drift["post-steps"].length, 2, "one step per verify command, however many lines it has");
     assert.deepEqual(drift["safe-outputs"]["create-pull-request"].reviewers, [value], "the reviewer is a scalar");
@@ -167,7 +167,8 @@ test("AC62: a hostile MCP server key is serialised as a quoted key, not as struc
 
 test("AC62: renderer-built expressions are the only ones in a generated file", async () => {
   const { files } = await renderHostile(hostileManifest(TRICKY[1]));
-  const allowed = /^(?:vars\.APP_CLIENT_ID|secrets\.APP_PRIVATE_KEY|secrets\.COPILOT_GITHUB_TOKEN|secrets\.GITHUB_TOKEN|github\.[a-z_.]+|inputs\.[a-z_]+|steps\.app_token\.outputs\.token|matrix\.[A-Za-z]+|toJSON\([^)]*\))$/;
+  // needs.safe_outputs... and the correlation fallback are the two expressions of the implement_report job (SPEC-02 AC46)
+  const allowed = /^(?:vars\.APP_CLIENT_ID|secrets\.APP_PRIVATE_KEY|secrets\.COPILOT_GITHUB_TOKEN|secrets\.GITHUB_TOKEN|github\.[a-z_.]+|inputs\.[a-z_]+|steps\.app_token\.outputs\.token|matrix\.[A-Za-z]+|toJSON\([^)]*\)|needs\.safe_outputs\.outputs\.created_issue_number|inputs\.correlation_id \|\| format\('run-\{0\}-\{1\}', github\.run_id, github\.run_attempt\))$/;
   for (const [name, text] of files) {
     for (const match of text.matchAll(/\$\{\{\s*([^}]*?)\s*\}\}/g)) assert.match(match[1], allowed, `${name}: \${{ ${match[1]} }}`);
   }

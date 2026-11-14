@@ -282,7 +282,7 @@ for (const key of DRIFT_KEYS) {
   test(`AC10: the prompt of drift-${key} tells the agent to read open-pr-dedup.json before it calls create_pull_request`, () => {
     const { body } = driftWorkflow(key);
     assert.match(body, /Read `\/tmp\/gh-aw\/agent\/open-pr-dedup\.json` before (?:you )?call(?:ing)? `create_pull_request`/);
-    assert.match(body, /skip(?: the upkeep)? when it lists a matching open pull request/);
+    assert.match(body, /skip the pull request when it lists a matching open pull request/);
     assert.ok(body.indexOf("open-pr-dedup.json") < body.indexOf("## Operating rules") || body.includes("## Operating rules"), "the rule is in the rendered prompt");
   });
 }
@@ -375,6 +375,27 @@ test("AC10: whose a pull request is follows from the marker that gh-aw writes fo
   assert.equal(normalizeCloseOlderKey("!!!"), "");
 });
 
+test("AC10 and AC45: the implementation pull request of an earlier drift report is no duplicate for a known drift workflow, whatever its upkeep, and without the workflow's key it is skipped for like any other", async () => {
+  const implementation = pull(27, "sdlc/implement-report-41", ["automated", "sdlc-implement", "needs-review"]);
+  for (const workflow of [WEEKLY, IMPROVE, { ...WEEKLY, strategy: "custom" }]) {
+    const directory = out();
+    const result = await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`, ...flags(workflow)], { env: env(), fetch: listing([implementation, FLEET[2]]) });
+    assert.equal(result.code, 0, result.stderr);
+    const matches = Object.fromEntries(report(directory).matches.map((match) => [match.number, [match.belongsTo, match.decision]]));
+    assert.deepEqual(matches[27], ["implementation", "ignore"], workflow.strategy);
+    assert.equal(report(directory).matches.find((match) => match.number === 27).upkeep, null);
+    const alone = out();
+    await invoke(run, ["--out", alone, "--target-repo", `${OWNER}/${REPO}`, ...flags(workflow)], { env: env(), fetch: listing([implementation]) });
+    assert.equal(report(alone).duplicate, false, `${workflow.strategy}: an open implementation pull request alone stops nothing`);
+  }
+  const unknown = out();
+  await invoke(run, ["--out", unknown, "--target-repo", `${OWNER}/${REPO}`], { env: env(), fetch: listing([implementation]) });
+  assert.deepEqual(report(unknown).matches.map((match) => [match.belongsTo, match.decision]), [["another-workflow-or-schedule", "skip"]], "nothing is known of the workflow");
+  for (const ref of ["sdlc/implement-report-", "sdlc/implement-report-41-x", "sdlc/implement-report-4a", "automation/implement-report-41", "sdlc/implement-reports-41"]) {
+    assert.notEqual(decide(pull(1, ref), { closeOlderKey: WEEKLY.closeOlderKey, upkeep: "weekly-audit" }).belongsTo, "implementation", ref);
+  }
+});
+
 test("AC10: the upkeep of a pull request is read from its head branch after automation/ or sdlc/ and from the two labels, and a pull request that says two upkeeps says none", () => {
   assert.equal(upkeepOf(pull(1, "automation/weekly-audit-2026-11-01")), "weekly-audit");
   assert.equal(upkeepOf(pull(1, "sdlc/weekly-audit-2026-11-01")), "weekly-audit");
@@ -441,7 +462,8 @@ for (const key of DRIFT_KEYS) {
     const rule = DEDUP_RULE.exec(rules)?.[0];
     assert.ok(rule, "the rule is among the operating rules");
     for (const word of ["`duplicate`", "`decision`", "`skip`", "`supersede`", "`ignore`", "`close-older-pull-requests: true`", "Never open a duplicate."]) assert.ok(rule.includes(word), `the rule says ${word}`);
-    assert.match(rule, /skip the upkeep when it lists a matching open pull request that you must not duplicate/);
+    assert.match(rule, /skip the pull request when it lists a matching open pull request that you must not duplicate \(`duplicate` is `true`: a match whose `decision` is `skip`\), and list what you would have changed under `## Recommended` of the drift report instead\./, "a duplicate stops the pull request and never the report (AC44)");
+    assert.match(rule, /a match whose `decision` is `ignore` is the pull request of another upkeep or of the implementation of an earlier report: neither is a reason to skip\./);
     assert.equal(body.split("\n").filter((line) => DEDUP_RULE.test(line)).length, 1, "and it is stated once");
     assert.equal(/skip the upkeep or let your own earlier pull request be superseded/.test(body), false, "no instruction offers the choice between skipping and superseding that the rule decides");
     assert.equal(/skip(?: the upkeep)? when it lists a matching open pull request\./.test(body), false, "nor says that any match is a reason to skip");

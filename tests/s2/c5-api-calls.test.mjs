@@ -1,6 +1,7 @@
 // AC26: contract C5 request, API calls. The create-pull-request step of safe-outputs makes the calls that open a pull request on an upstream
 // repository: the refs, the pull request and its labels. No S2 script issues any of them, nor any other write request to an upstream
-// repository, so a pull request is created only in that step. S2's own read call is the GET of AC10.
+// repository, so a pull request is created only in that step. S2's own read calls to the target are the GET of AC10 and the two GET requests of
+// read-report.mjs (AC45).
 //
 // The handler documentation describes the branch push as a GraphQL call (F47); the safe-outputs handler is not an S2 script, and what S2
 // asserts is the other side of the contract: its scripts send no write to an upstream repository, over REST or GraphQL.
@@ -16,6 +17,7 @@ import { run as dedupe } from "../../src/drift/dedupe-open-prs.mjs";
 import { run as escalate } from "../../src/drift/escalate-gate-failure.mjs";
 import { run as prepare } from "../../src/drift/prepare-run.mjs";
 import { run as previousIndex } from "../../src/drift/previous-watch-index.mjs";
+import { run as readReport } from "../../src/drift/read-report.mjs";
 import { run as snapshot } from "../../src/snapshot-watch-sources.mjs";
 import { run as validate } from "../../src/validate-copilot-lab-audit.mjs";
 import { abs, DRIFT_KEYS, driftPreset, fixture, listTree, readText, script, tempDir, WORKFLOWS } from "./helpers/fixtures.mjs";
@@ -29,6 +31,8 @@ const REPO = "example-target";
 const TARGET = `${OWNER}/${REPO}`;
 const CENTRAL = "example-owner/example-central";
 const PULLS = `/repos/${TARGET}/pulls?state=open&per_page=30`;
+const REPORT = `/repos/${TARGET}/issues/5`;
+const REPORT_PULLS = `/repos/${TARGET}/pulls?state=open&head=${encodeURIComponent(`${OWNER}:sdlc/implement-report-5`)}&per_page=10`;
 const CASE_INSENSITIVE_TARGET = new RegExp(`^/repos/${TARGET}(?:/|$)`, "i");
 const rsa = () => crypto.generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
 const label = (request) => `${request.method} ${request.pathAndSearch}`;
@@ -41,6 +45,10 @@ function githubAndPages() {
       if (entry.pathAndSearch === "/app/installations?per_page=100") return json(200, [{ id: 77, account: { login: OWNER } }]);
       if (entry.method === "POST" && entry.path === "/app/installations/77/access_tokens") return json(201, { token: "ghs_minted", expires_at: "2026-11-06T13:00:00Z" });
       if (entry.pathAndSearch === PULLS) return json(200, [{ number: 3, html_url: `https://github.example/${TARGET}/pull/3`, head: { ref: "sdlc/weekly-audit-2026-11-01" }, labels: [], draft: false }]);
+      if (entry.method === "GET" && entry.pathAndSearch === REPORT) {
+        return json(200, { number: 5, html_url: `https://github.example/${TARGET}/issues/5`, title: "[sdlc-drift] Drift report: example 2026-11-14", state: "open", user: { login: "example-app[bot]" }, labels: [{ name: "drift-report" }], created_at: "2026-11-14T00:00:00Z", body: "## Summary\n\nx\n" });
+      }
+      if (entry.method === "GET" && entry.pathAndSearch === REPORT_PULLS) return json(200, []);
       if (entry.method === "GET" && entry.path === `/repos/${CENTRAL}/issues`) return json(200, issues);
       if (entry.method === "POST" && entry.path === `/repos/${CENTRAL}/issues`) {
         const issue = { number: issues.length + 1, state: "open", ...JSON.parse(entry.body), labels: [{ name: "sdlc-gate-failure" }] };
@@ -75,6 +83,7 @@ async function runEveryScript() {
     await record("prepare-run", () => invoke(prepare, ["--out", workspace.out, "--target-repo", TARGET, "--dry-run", "true", "--checkout", "checkout"], { ...common, env: cleanEnv(workspaceEnv) }));
     await record("dedupe (installation token)", () => invoke(dedupe, ["--out", path.join(workspace.out, "a"), "--target-repo", TARGET], { ...common, env: cleanEnv({ CONFIGURED_TARGET_REPO: TARGET, GH_APP_INSTALLATION_TOKEN: "ghs_token" }) }));
     await record("dedupe (App credential)", () => invoke(dedupe, ["--out", path.join(workspace.out, "b"), "--target-repo", TARGET], { ...common, env: cleanEnv({ CONFIGURED_TARGET_REPO: TARGET, APP_CLIENT_ID: "Iv1.fixture", APP_PRIVATE_KEY: privateKey }) }));
+    await record("read-report", () => invoke(readReport, ["--out", path.join(workspace.out, "r"), "--target-repo", TARGET, "--report-issue", "5", "--project-key", "example", "--author", "example-app[bot]"], { ...common, env: cleanEnv({ GH_APP_INSTALLATION_TOKEN: "ghs_token" }) }));
     await record("previous-watch-index", () => invoke(previousIndex, ["--out", path.join(workspace.out, "p"), "--workflow", "drift-example.lock.yml", "--artifact", "sdlc-watch-index-example"], { ...common, env: cleanEnv({ GH_TOKEN: "ghs_jobtoken", GITHUB_REPOSITORY: CENTRAL, GITHUB_RUN_ID: "9" }) }));
     await record("snapshot (fixture manifest)", () => invoke(snapshot, ["--out", path.join(workspace.out, "c"), "--project", "snapshot-fixture", "--manifest", workspace.manifest, "--checkout", workspace.checkout, "--timeout-ms", "150"], { ...common, env: cleanEnv() }));
     for (const key of DRIFT_KEYS) {
@@ -100,18 +109,19 @@ async function runEveryScript() {
 
 test("AC26: every script of src/drift/ is covered by this suite: the list below is the directory", () => {
   const scripts = fs.readdirSync(abs("src", "drift")).filter((entry) => entry.endsWith(".mjs")).sort();
-  assert.deepEqual(scripts, ["check-pr-response.mjs", "dedupe-open-prs.mjs", "escalate-gate-failure.mjs", "prepare-run.mjs", "previous-watch-index.mjs"], "a new script needs a case in runEveryScript");
+  assert.deepEqual(scripts, ["check-pr-response.mjs", "dedupe-open-prs.mjs", "escalate-gate-failure.mjs", "prepare-run.mjs", "previous-watch-index.mjs", "read-report.mjs"], "a new script needs a case in runEveryScript");
 });
 
 let everyScript;
 /** One run of every script is shared by the tests below: they only read what it recorded. */
 const recorded = () => (everyScript ??= runEveryScript());
 
-test("AC26: the only request to an upstream-repository path is the GET of AC10, and no S2 script sends a git ref, pull request, merge or review write", async () => {
+test("AC26: the only requests to an upstream-repository path are the GET of AC10 and the two reads of the report (AC45), and no S2 script sends a git ref, pull request, merge or review write", async () => {
   const { calls, requests } = await recorded();
   for (const [name, { result }] of Object.entries(calls)) assert.equal(result.code, 0, `${name}: ${result.stderr}`);
   const upstream = requests.filter((request) => CASE_INSENSITIVE_TARGET.test(request.path));
-  assert.deepEqual(upstream.map(label), [`GET ${PULLS}`, `GET ${PULLS}`], "the dedupe reads, once with each kind of credential, and nothing else touches the target repository");
+  assert.deepEqual(upstream.map(label), [`GET ${PULLS}`, `GET ${PULLS}`, `GET ${REPORT}`, `GET ${REPORT_PULLS}`], "the dedupe reads, once with each kind of credential, the report step reads the report and its open implementation, and nothing else touches the target repository");
+  assert.deepEqual(calls["read-report"].requests.map(label), [`GET ${REPORT}`, `GET ${REPORT_PULLS}`]);
   assert.deepEqual(
     calls["dedupe (installation token)"].requests.map(label),
     [`GET ${PULLS}`],

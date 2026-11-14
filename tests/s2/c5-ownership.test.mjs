@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
-import { abs, DRIFT_KEYS, driftLock, driftPreset, driftWorkflow, listTree, readText } from "./helpers/fixtures.mjs";
+import { abs, DRIFT_KEYS, driftLock, driftPreset, driftWorkflow, implementLock, implementWorkflow, listTree, readText } from "./helpers/fixtures.mjs";
 
 const FORBIDDEN_OPERATIONS = /Never run `git push`, `gh pr` or a write-method `gh api` call and never merge: pull requests and issues are created only through the `create_pull_request` and `create_issue` safe outputs\./;
 const S2_SOURCES = () => [abs("src", "snapshot-watch-sources.mjs"), abs("src", "validate-copilot-lab-audit.mjs"), ...listTree(abs("src", "drift")).map((file) => abs("src", "drift", file))];
@@ -52,6 +52,35 @@ for (const key of DRIFT_KEYS) {
       assert.equal(runs(jobs.safe_outputs).includes(script), false, `and not in safe_outputs`);
     }
     if (key === "copilot-lab") assert.ok(runs(jobs.agent).includes("src/validate-copilot-lab-audit.mjs"), "the lab's audit validator is a step of the agent job, so the report is final before the push");
+    assert.equal(runs(jobs.safe_outputs).includes("src/"), false, "no S2 script runs in the publishing job");
+  });
+}
+
+const IMPLEMENT_FORBIDDEN = /Never run `git push`, `gh pr` or a write-method `gh api` call and never merge: the pull request and the comment are created only through the `create_pull_request` and `add_comment` safe outputs\./;
+
+for (const key of DRIFT_KEYS) {
+  test(`AC28 and AC45: implement-${key}.md publishes only through create-pull-request and the add-comment on its report, and its agent cannot write otherwise`, () => {
+    const { frontmatter, body } = implementWorkflow(key);
+    assert.match(body.slice(body.indexOf("## Operating rules")), IMPLEMENT_FORBIDDEN);
+    assert.deepEqual(Object.keys(frontmatter["safe-outputs"]).sort(), ["add-comment", "create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"]);
+    assert.equal(frontmatter["safe-outputs"]["create-pull-request"]["target-repo"], driftPreset(key).repo);
+    assert.deepEqual(frontmatter["safe-outputs"]["add-comment"], { "target-repo": driftPreset(key).repo, target: "*", max: 1 }, "one comment, on an issue of the target repository");
+    assert.deepEqual(frontmatter.permissions, { contents: "read", issues: "read", "pull-requests": "read" }, "the agent job's token reads and cannot write");
+    for (const tool of ["gh", "curl", "wget"]) assert.equal(frontmatter.tools.bash.includes(tool), false, `the agent may not run ${tool}`);
+    for (const step of [...frontmatter["pre-agent-steps"], ...frontmatter["post-steps"]]) {
+      assert.equal(/git push|gh pr |gh api|\/merge|enablePullRequestAutoMerge/.test(step.run), false, `${step.name}: no step pushes or calls the API`);
+    }
+  });
+
+  test(`AC28 and AC45: in implement-${key}.lock.yml the report is read in the agent job, which cannot write, and only safe_outputs publishes`, () => {
+    const { jobs } = implementLock(key).workflow;
+    assert.equal(Object.values(jobs.agent.permissions).includes("write"), false);
+    assert.deepEqual(jobs.safe_outputs.permissions, { contents: "write", issues: "write", "pull-requests": "write" });
+    const runs = (job) => (job.steps ?? []).map((step) => String(step.run ?? "")).join("\n");
+    for (const script of ["src/drift/prepare-run.mjs", "src/drift/read-report.mjs"]) {
+      assert.ok(runs(jobs.agent).includes(script), `${script} runs in the agent job`);
+      assert.equal(runs(jobs.safe_outputs).includes(script), false);
+    }
     assert.equal(runs(jobs.safe_outputs).includes("src/"), false, "no S2 script runs in the publishing job");
   });
 }

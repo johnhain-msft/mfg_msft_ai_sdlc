@@ -80,12 +80,12 @@ test("AC57: every change of the manifest is applied by one run, and an immediate
     };
 
     const baseline = await reconcileTwice("baseline");
-    assert.equal(baseline.created.length, 22, "ten pairs, the router and aw.json");
+    assert.equal(baseline.created.length, 28, "thirteen pairs, the router and aw.json");
 
     manifest.projects.push(NEW_PROJECT);
     write(manifest);
     assert.deepEqual(await reconcileTwice("add a project"), {
-      created: [`${W}/drift-docs-site.lock.yml`, `${W}/drift-docs-site.md`],
+      created: [`${W}/drift-docs-site.lock.yml`, `${W}/drift-docs-site.md`, `${W}/implement-docs-site.lock.yml`, `${W}/implement-docs-site.md`],
       changed: [],
       removed: [],
     });
@@ -95,7 +95,7 @@ test("AC57: every change of the manifest is applied by one run, and an immediate
     assert.deepEqual(await reconcileTwice("remove the project"), {
       created: [],
       changed: [],
-      removed: [`${W}/drift-docs-site.lock.yml`, `${W}/drift-docs-site.md`],
+      removed: [`${W}/drift-docs-site.lock.yml`, `${W}/drift-docs-site.md`, `${W}/implement-docs-site.lock.yml`, `${W}/implement-docs-site.md`],
     });
 
     edgeOf(manifest, "ghec-admin").allowedFiles.push("public/ghec-admin-extra/**");
@@ -111,7 +111,7 @@ test("AC57: every change of the manifest is applied by one run, and an immediate
     write(manifest);
     assert.deepEqual(await reconcileTwice("edit only an instructions string"), {
       created: [],
-      changed: [`${W}/drift-gh-admin-msft.lock.yml`, `${W}/drift-gh-admin-msft.md`],
+      changed: [`${W}/drift-gh-admin-msft.lock.yml`, `${W}/drift-gh-admin-msft.md`, `${W}/implement-gh-admin-msft.lock.yml`, `${W}/implement-gh-admin-msft.md`],
       removed: [],
     });
     const bodyAfter = parseWorkflow(workspace.read(`${W}/drift-gh-admin-msft.md`));
@@ -123,7 +123,7 @@ test("AC57: every change of the manifest is applied by one run, and an immediate
     manifest.dependencyEdges.push(newEdge());
     write(manifest);
     assert.deepEqual(await reconcileTwice("add a project and an edge"), {
-      created: [`${W}/cascade-mechanical-docs-sync.lock.yml`, `${W}/cascade-mechanical-docs-sync.md`, `${W}/drift-docs-site.lock.yml`, `${W}/drift-docs-site.md`],
+      created: [`${W}/cascade-mechanical-docs-sync.lock.yml`, `${W}/cascade-mechanical-docs-sync.md`, `${W}/drift-docs-site.lock.yml`, `${W}/drift-docs-site.md`, `${W}/implement-docs-site.lock.yml`, `${W}/implement-docs-site.md`],
       changed: [`${W}/cascade-router.yml`],
       removed: [],
     });
@@ -166,6 +166,7 @@ test("AC57: sources that match a managed pattern but are no longer rendered are 
   try {
     workspace.write(`${W}/drift-obsolete.md`, "---\non: workflow_dispatch\n---\n\n# obsolete\n");
     workspace.write(`${W}/drift-obsolete.lock.yml`, "# lock of an obsolete workflow\n");
+    workspace.write(`${W}/implement-obsolete.md`, "---\non: workflow_dispatch\n---\n\n# obsolete\n");
     workspace.write(`${W}/cascade-mechanical-old.md`, "---\non: workflow_dispatch\n---\n\n# old\n");
     workspace.write(`${W}/cascade-ai-old.md`, "---\non: workflow_dispatch\n---\n\n# old\n");
     workspace.write(`${W}/cascade-router.yml`, "name: stale router\n");
@@ -173,7 +174,7 @@ test("AC57: sources that match a managed pattern but are no longer rendered are 
     workspace.write(`${W}/notes.md`, "---\non: workflow_dispatch\n---\n\n# a hand-written workflow\n");
     const result = await workspace.reconcile(request);
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
-    for (const gone of ["drift-obsolete.md", "drift-obsolete.lock.yml", "cascade-mechanical-old.md", "cascade-ai-old.md"]) {
+    for (const gone of ["drift-obsolete.md", "drift-obsolete.lock.yml", "implement-obsolete.md", "cascade-mechanical-old.md", "cascade-ai-old.md"]) {
       assert.equal(workspace.exists(`${W}/${gone}`), false, gone);
     }
     assert.equal(workspace.read(`${W}/ci.yml`), "name: operator workflow\non: push\n");

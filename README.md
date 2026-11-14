@@ -166,10 +166,23 @@ Each `drift-<projectKey>` workflow, on its schedule or dispatched by hand:
   and the pages that changed, with the files that cite them. A source whose first page no longer reaches that run is read
   back through its older pages (up to ten); one that still does not is listed under `## Possible gaps` with the period
   that neither run saw, so nothing published between two runs is dropped in silence;
-* files one issue in the target repository on every run that is not a dry run, `[sdlc-drift] Drift report: <projectKey>
-  <date>`, with a decision on every item of the work list and a `## Recommendations` section for what the sources announce
-  and the target does not cover yet, and opens a pull request only for the changes that a source corroborates. Each report
-  closes the previous report of the same workflow.
+* files one issue in the target repository, `[sdlc-drift] Drift report: <projectKey> <date>`, when at least one item of
+  the work list needs someone to act on it, and none otherwise (the agent calls `noop` and says how many items it
+  triaged). The report lists only what is actionable: `## Applied` (what its own pull request changes), `## Recommended`
+  and `## Could not confirm`, as task lists whose items name the change, the files and the source; the items that are not
+  relevant are counted on one line of `## Summary` and never listed. It opens a pull request only for the changes that a
+  source corroborates. No report closes an earlier one: the next run no longer lists its items, because they are in its
+  baseline.
+
+Filing a report starts its implementation. The drift workflow's `implement_report` job dispatches
+`implement-<projectKey>` with the number of the report, using the job's `GITHUB_TOKEN`. That workflow reads the report
+(`src/drift/read-report.mjs` checks that it is an open report of this project that the App filed), researches every item
+under `## Recommended` and `## Could not confirm` again, changes what the sources support, runs the project's build and
+verification commands, and opens one pull request on `sdlc/implement-report-<number>` whose body ends with `Closes
+#<number>`: merging it closes the report. When nothing survives the research, or an implementation of the report is open
+already, it comments on the report instead. To implement a report by hand, or again after its pull request was closed,
+dispatch `implement-<projectKey>` with `report_issue` set to the issue number (`dry_run: true` rehearses it). A dispatch
+finds the workflow only on the default branch, so a new implementation workflow can be dispatched once it is merged.
 
 A first run, or a run whose baseline artifact has expired, has no previous index: its work list holds the most recent
 entries of each changelog, feed and release source, and pages are compared from the next run on. The artifact expires
