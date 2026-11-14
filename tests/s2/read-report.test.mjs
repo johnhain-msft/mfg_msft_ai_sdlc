@@ -71,7 +71,6 @@ test("AC45: an open drift report of this project that the App filed is read with
       author: AUTHOR,
       labels: ["automated", "drift-report", "sdlc-drift"],
       branch: "implement-report-32",
-      openPullRequests: [],
       body: BODY,
     });
     assert.match(result.stdout, /read-report: report #32 of example-owner\/example-target/);
@@ -80,13 +79,14 @@ test("AC45: an open drift report of this project that the App filed is read with
   }
 });
 
-test("AC45: an open implementation pull request of the report is recorded, so that the agent does not open a second one", async () => {
+test("AC45: a report whose implementation is open already stops the run before the agent, names that pull request and writes nothing", async () => {
   const out = tempDir("sdlc-s2-report-open-");
   try {
     const pulls = [{ number: 40, html_url: `https://github.com/${TARGET}/pull/40`, head: { ref: "sdlc/implement-report-32" }, draft: false }];
     const result = await invoke(run, args(out), { env: env(), fetch: api({ pulls }) });
-    assert.equal(result.code, 0, result.stderr);
-    assert.deepEqual(readJson(path.join(out, "report.json")).openPullRequests, [{ number: 40, url: `https://github.com/${TARGET}/pull/40`, headRef: "sdlc/implement-report-32" }]);
+    assert.equal(result.code, 1, "a second run would force-push the branch of the open pull request, which closes it");
+    assert.match(result.stderr, /has an open implementation already: #40 \(https:\/\/github\.com\/example-owner\/example-target\/pull\/40\)/);
+    assert.deepEqual(listTree(out), []);
   } finally {
     fs.rmSync(out, { recursive: true, force: true });
   }

@@ -111,7 +111,7 @@ safe-outputs:
     branch-prefix: sdlc/
     preserve-branch-name: true
     recreate-ref: true
-    close-older-pull-requests: true
+    close-older-pull-requests: false
     close-older-key: sdlc-drift-self-improving-agents
     exclude-lock-yml: true
     protected-files:
@@ -135,11 +135,19 @@ engine:
   copilot-sdk: true
   env:
     COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+  args:
+    - --allow-url
+    - docs.github.com
+    - --allow-url
+    - github.blog
+    - --allow-url
+    - github.com
 tools:
   web-fetch: {}
   bash:
     - cat
     - cd
+    - curl
     - date
     - find
     - git
@@ -239,7 +247,7 @@ Scan every agent, skill and prompt for these five signals, taken from the lab's 
 
 ## Pull request
 
-- The pull requests that this upkeep must not duplicate are the ones that the lab's own scheduled self-improvement run opens (`automation/self-improve-*`, labelled `self-improving-agents`). The operating rules at the end say what to do with each match that `/tmp/gh-aw/agent/open-pr-dedup.json` lists: your own earlier pull request is superseded when the new one is created, and a pull request of the lab's content audit is another upkeep.
+- The pull requests that this upkeep must not duplicate are the ones that the lab's own scheduled self-improvement run opens (`automation/self-improve-*`, labelled `self-improving-agents`). The operating rules at the end say what to do with each match that `/tmp/gh-aw/agent/open-pr-dedup.json` lists: your own earlier pull request stays open and is no reason to skip, and a pull request of the lab's content audit is another upkeep.
 - Name the working branch `self-improve-YYYY-MM-DD` with the current UTC date. The `sdlc/` prefix is added when the pull request is created; do not write it yourself. The pull request is a draft for a human to review.
 - Write a copy of the report to `/tmp/gh-aw/agent/self-improvement-report.md` before you call `create_pull_request`.
 - When nothing needs to change, record that outcome and do not open a pull request.
@@ -270,16 +278,15 @@ Start with `/tmp/gh-aw/agent/sources/changes.md`. It compares this run's snapsho
 
 When a source's first page lists none of the entries that the baseline knew, the snapshot step has read its older pages until one does, up to a limit; a source that still does not reach the baseline is listed under `## Possible gaps` with the period that neither run saw. Open the older pages of that source for that period yourself, decide those entries as well, and name the gap under `## Limitations` when you cannot.
 
-That list is your work list, and every item of it gets a decision. Triage each item first from its title and excerpt: search this repository for the feature, setting or product that it names. Open, read and corroborate the items that touch something this repository covers or should cover, and fetch an entry or a page with the `web_fetch` tool whenever its excerpt is not enough to decide (the shell has no `curl`, `wget` or `gh`, and refuses a redirection or a heredoc; the hosts of the watched URLs and of the cited pages are reachable). An item that does not concern this repository is not relevant: count it, but do not list it in the report. A long list is no reason to skip items: decide each one.
+That list is your work list, and every item of it gets a decision. Triage each item first from its title and excerpt: search this repository for the feature, setting or product that it names. Open, read and corroborate the items that touch something this repository covers or should cover, and read an entry or a page with `curl --fail --silent --show-error --location <url>` whenever its excerpt is not enough to decide, piped into `grep` or `head` when the page is long: `curl` reaches the hosts of the watched URLs and of the cited pages and no other, there is no `web_fetch` tool, and the shell has no `wget` or `gh` and refuses a redirection or a heredoc. An item that does not concern this repository is not relevant: count it, but do not list it in the report. A long list is no reason to skip items: decide each one.
 
 ## Drift report
 
-File a drift report when at least one item of the work list is applied, recommended or could not be confirmed: exactly one `create_issue` call, which a human reads and which starts the implementation of the report as soon as it is filed: a run of the workflow `implement-self-improving-agents` researches every item under `## Recommended` and `## Could not confirm` again and opens one pull request that closes the report, starting from the report alone. Title it `Drift report: self-improving-agents YYYY-MM-DD` with the current UTC date (the `[sdlc-drift] ` prefix is added for you). When every item is not relevant, or the work list is empty, file no report: call `noop` with one line that says how many items you triaged and which baseline you compared with.
+File a drift report when at least one item of the work list is recommended or could not be confirmed, or when this run has a limitation that a human has to know about: a source that could not be fetched, or a possible gap that you could not close. File it with exactly one `create_issue` call; a human reads it, and filing it starts its implementation: a run of the workflow `implement-self-improving-agents` researches every item under `## Recommended` and `## Could not confirm` again and opens one pull request that closes the report, starting from the report alone. Title it `Drift report: self-improving-agents YYYY-MM-DD` with the current UTC date (the `[sdlc-drift] ` prefix is added for you). When there is nothing of that kind (every item is not relevant or applied by your pull request, every source was fetched and every gap closed), file no report: call `noop` with one line that says how many items you triaged and which baseline you compared with. Your pull request lists the items that it applies; the report does not list them again.
 
-When the registration instructions above define a report of their own (such as `docs/_meta/audit-report.md` or `self-improvement-report.md`), write that report as they say on every run, a dry run and a run that changes nothing included, because the checks that run after you look for it; the body of the issue is that report followed by the sections below other than `## Summary`. Otherwise the body has these sections, in this order, and leaves out `## Applied`, `## Recommended` and `## Could not confirm` when they would be empty:
+When the registration instructions above define a report of their own (such as `docs/_meta/audit-report.md` or `self-improvement-report.md`), write that report as they say on every run, a dry run and a run that changes nothing included, because the checks that run after you look for it; the body of the issue is that report followed by the sections below other than `## Summary`. Otherwise the body has these sections, in this order, and leaves out `## Recommended` and `## Could not confirm` when they would be empty:
 
 - `## Summary`: the baseline run, what changed upstream since then and what this run did, including the pull request that it opened, if any, and one line that counts the items that you triaged as not relevant (never list them).
-- `## Applied`: the items that your pull request changes, each linked, with the files that it changes.
 - `## Recommended`: a task list (`- [ ] `) of what this run did not change and should be changed: content that the sources announce and this repository does not cover yet (a new feature, setting, limit or retirement that deserves a lab step, a slide or a reference note), corrections and judgement calls. Each item says what to change, names the files that it concerns and links its source.
 - `## Could not confirm`: a task list (`- [ ] `) of the claims that you could not corroborate, each with its source, what stopped you and the files that it would concern.
 - `## Limitations`: the sources that could not be fetched, the possible gaps that you could not close and the checks that could not run.
@@ -296,7 +303,7 @@ This project has no build commands.
 
 ## Operating rules
 
-- Read `/tmp/gh-aw/agent/open-pr-dedup.json` before you call `create_pull_request`; skip the pull request when it lists a matching open pull request that you must not duplicate (`duplicate` is `true`: a match whose `decision` is `skip`), and list what you would have changed under `## Recommended` of the drift report instead. A match whose `decision` is `supersede` is an earlier pull request of this same workflow, which your new pull request replaces (`close-older-pull-requests: true`), and a match whose `decision` is `ignore` is the pull request of another upkeep or of the implementation of an earlier report: neither is a reason to skip. Never open a duplicate.
+- Read `/tmp/gh-aw/agent/open-pr-dedup.json` before you call `create_pull_request`; skip the pull request when it lists a matching open pull request that you must not duplicate (`duplicate` is `true`: a match whose `decision` is `skip`), and list what you would have changed under `## Recommended` of the drift report instead. A match whose `decision` is `ignore` is an earlier pull request of this same workflow, which stays open and carries other items, the pull request of another upkeep or the implementation of an earlier report: none is a reason to skip. Never open a duplicate.
 - Corroborate every proposed change through the Microsoft Learn and Context7 servers or by fetching the cited page.
 - Commit rebuilt outputs and source edits to the working branch before you call `create_pull_request`.
 - Never run `git push`, `gh pr` or a write-method `gh api` call and never merge: pull requests and issues are created only through the `create_pull_request` and `create_issue` safe outputs.

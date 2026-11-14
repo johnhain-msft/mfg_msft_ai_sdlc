@@ -78,14 +78,15 @@ for (const key of DRIFT_KEYS) {
     assert.equal(/needs one line that says why/.test(body), false, "and no longer asks for a line for each of them");
     assert.match(
       body,
-      /fetch an entry or a page with the `web_fetch` tool whenever its excerpt is not enough to decide \(the shell has no `curl`, `wget` or `gh`, and refuses a redirection or a heredoc; the hosts of the watched URLs and of the cited pages are reachable\)/,
-      "live run 43558253314 tried curl, was refused, and concluded that it could not fetch: name the tool that can",
+      /read an entry or a page with `curl --fail --silent --show-error --location <url>` whenever its excerpt is not enough to decide, piped into `grep` or `head` when the page is long: `curl` reaches the hosts of the watched URLs and of the cited pages and no other, there is no `web_fetch` tool, and the shell has no `wget` or `gh` and refuses a redirection or a heredoc\./,
+      "dry run 43631574930: behind the API proxy there is no web_fetch tool, so the prompt names the one that works",
     );
-    assert.match(body, /## Drift report\n\nFile a drift report when at least one item of the work list is applied, recommended or could not be confirmed: exactly one `create_issue` call,/);
+    assert.match(body, /## Drift report\n\nFile a drift report when at least one item of the work list is recommended or could not be confirmed, or when this run has a limitation that a human has to know about: a source that could not be fetched, or a possible gap that you could not close\. File it with exactly one `create_issue` call;/, "a failed source or an open gap is never dropped in silence (AC11, AC42)");
     assert.ok(body.includes(`a run of the workflow \`implement-${key}\` researches every item under \`## Recommended\` and \`## Could not confirm\` again and opens one pull request that closes the report`), "the agent knows that the report starts its implementation (AC46)");
-    assert.match(body, /When every item is not relevant, or the work list is empty, file no report: call `noop` with one line that says how many items you triaged and which baseline you compared with\./);
+    assert.match(body, /When there is nothing of that kind \(every item is not relevant or applied by your pull request, every source was fetched and every gap closed\), file no report: call `noop` with one line that says how many items you triaged and which baseline you compared with\. Your pull request lists the items that it applies; the report does not list them again\./);
     assert.ok(body.includes(`Title it \`Drift report: ${key} YYYY-MM-DD\``));
-    const sections = ["## Summary", "## Applied", "## Recommended", "## Could not confirm", "## Limitations"].map((section) => body.indexOf(`- \`${section}\``));
+    const sections = ["## Summary", "## Recommended", "## Could not confirm", "## Limitations"].map((section) => body.indexOf(`- \`${section}\``));
+    assert.equal(body.includes("## Applied"), false, "an applied item is in the pull request, so a report never waits on it");
     assert.ok(sections.every((at) => at > 0), "every section is described");
     assert.deepEqual([...sections].sort((a, b) => a - b), sections, "in this order");
     assert.match(body, /one line that counts the items that you triaged as not relevant \(never list them\)/);

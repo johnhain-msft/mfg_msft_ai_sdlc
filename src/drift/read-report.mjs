@@ -7,12 +7,13 @@
 // The target repository is --target-repo, else CONFIGURED_TARGET_REPO. The script reads the issue --report-issue of that repository with
 // `GET /repos/{owner}/{repo}/issues/{number}` and the open pull requests of its implementation branch with
 // `GET /repos/{owner}/{repo}/pulls?state=open&head={owner}:sdlc/implement-report-{number}&per_page=10`, and writes <out>/report.md (the title, the
-// address and the body of the report) and <out>/report.json (the same facts as data, the working branch of the run and the open implementation
-// pull requests) for the agent. It does so only for a drift report of this project that the App filed: an open issue, not a pull request, opened
-// by --author, labelled drift-report, whose title contains `Drift report: <projectKey> ` (two projects can share a target repository, and
-// their reports differ only in the key). Anything else stops the run before the agent starts, with exit code 1 and nothing written: a
-// report_issue that is not a positive whole number, an issue that is not such a report, a read that fails. A missing option that the workflow
-// always passes is a usage error (exit code 2).
+// address and the body of the report) and <out>/report.json (the same facts as data, and the working branch of the run) for the agent. It does so
+// only for a drift report of this project that the App filed and that nothing implements yet: an open issue, not a pull request, opened by
+// --author, labelled drift-report, whose title contains `Drift report: <projectKey> ` (two projects can share a target repository, and their
+// reports differ only in the key), and with no open pull request on its implementation branch (a second run would force-push that branch, which
+// closes the open pull request; merge or close it first). Anything else stops the run before the agent starts, with exit code 1 and nothing
+// written: a report_issue that is not a positive whole number, an issue that is not such a report, an open implementation, a read that fails. A
+// missing option that the workflow always passes is a usage error (exit code 2).
 //
 // Authentication is a GitHub App installation token: GH_APP_INSTALLATION_TOKEN when the caller minted one, else the script signs a JSON Web
 // Token with APP_CLIENT_ID and APP_PRIVATE_KEY and exchanges it for a token that is limited to the target repository and to issues: read and
@@ -104,10 +105,11 @@ export async function run(argv, ioInput = {}) {
     if (why !== null) throw new NotAReport(`${target}${why}`);
     const pulls = await client.requestJson("GET", openImplementationQuery(owner, repo, number), { bearer: token });
     if (!Array.isArray(pulls)) throw new GitHubApiError(`GET ${openImplementationQuery(owner, repo, number)} did not return a list`);
-    const openPullRequests = pulls
-      .map((pull) => ({ number: pull?.number, url: String(pull?.html_url ?? ""), headRef: String(pull?.head?.ref ?? "") }))
-      .filter((pull) => Number.isInteger(pull.number))
-      .sort((a, b) => a.number - b.number);
+    const open = pulls.filter((pull) => Number.isInteger(pull?.number)).sort((a, b) => a.number - b.number);
+    if (open.length > 0) {
+      const list = open.map((pull) => `#${pull.number} (${String(pull.html_url ?? "")})`).join(", ");
+      throw new NotAReport(`report #${number} of ${target} has an open implementation already: ${list}; merge or close it before the report is implemented again`);
+    }
     const title = String(issue.title ?? "");
     const url = String(issue.html_url ?? "");
     const body = typeof issue.body === "string" ? issue.body.replace(/\r\n?/g, "\n") : "";
@@ -127,14 +129,13 @@ export async function run(argv, ioInput = {}) {
             author: String(issue.user?.login ?? ""),
             labels,
             branch: implementationBranch(number),
-            openPullRequests,
             body,
           }),
         },
       ],
       { fs: io.fs },
     );
-    io.stdout(`read-report: report #${number} of ${target} (${title.slice(0, 120)}) written to ${path.join(out, "report.md")}; ${openPullRequests.length === 0 ? "no implementation of it is open" : `its implementation is open already: ${openPullRequests.map((pull) => `#${pull.number}`).join(", ")}`}\n`);
+    io.stdout(`read-report: report #${number} of ${target} (${title.slice(0, 120)}) written to ${path.join(out, "report.md")}; no implementation of it is open\n`);
     return 0;
   } catch (error) {
     io.stderr(`read-report: ${error.message}\n`);

@@ -96,7 +96,7 @@ function assertContract(frontmatter, project) {
   assert.equal(handler["branch-prefix"], "sdlc/");
   assert.equal(handler["preserve-branch-name"], true);
   assert.equal(handler["recreate-ref"], true);
-  assert.equal(handler["close-older-pull-requests"], true);
+  assert.equal(handler["close-older-pull-requests"], false, "an earlier pull request of the workflow stays open (AC25)");
   assert.equal(typeof handler["close-older-key"], "string");
   assert.equal(handler["exclude-lock-yml"], true);
   assert.deepEqual(Object.keys(handler["protected-files"]).sort(), ["exclude", "policy"]);

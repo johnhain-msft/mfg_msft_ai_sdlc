@@ -74,7 +74,7 @@ function assertImplementContract(key) {
     },
     bots: [BOT],
   });
-  assert.deepEqual(frontmatter.concurrency, { group: `sdlc-implement-${key}`, "cancel-in-progress": false });
+  assert.deepEqual(frontmatter.concurrency, { group: `sdlc-implement-${key}`, "cancel-in-progress": false, queue: "max" }, "no dispatched run is cancelled while another one waits");
   assert.deepEqual(frontmatter.permissions, without(driftFrontmatter.permissions, "actions"), "the permissions of the drift agent without actions: read, which only its baseline lookup needs");
   for (const name of ["network", "checkout", "mcp-servers", "engine", "tools", "post-steps"]) assert.deepEqual(frontmatter[name], driftFrontmatter[name], `${key}: ${name} is the drift workflow's`);
   const steps = frontmatter["pre-agent-steps"];
@@ -93,9 +93,14 @@ function assertImplementContract(key) {
     },
     run: `node "$GITHUB_WORKSPACE/src/drift/read-report.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --report-issue "$REPORT_ISSUE" --project-key ${key} --author '${BOT}'`,
   });
+  assert.deepEqual(steps[2], {
+    name: "Deduplicate open pull requests",
+    env: { CONFIGURED_TARGET_REPO: project.repo, APP_CLIENT_ID: "${{ vars.APP_CLIENT_ID }}", APP_PRIVATE_KEY: "${{ secrets.APP_PRIVATE_KEY }}" },
+    run: `node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --upkeep-strategy ${project.driftAudit.upkeepStrategy} --implementation`,
+  }, "the pull requests of the target's own schedule that the implementation must not duplicate (SPEC-02 AC10)");
   const install = driftFrontmatter["pre-agent-steps"].filter((step) => step.name === "Install target checkout dependencies for in-sandbox validation");
-  assert.deepEqual(steps.slice(2), install, "the dependency install of the drift workflow, when its project asks for it, and nothing else");
-  for (const step of steps) assert.equal(JSON.stringify(step).includes("snapshot-watch-sources") || JSON.stringify(step).includes("dedupe-open-prs"), false, "no snapshot, no deduplication");
+  assert.deepEqual(steps.slice(3), install, "the dependency install of the drift workflow, when its project asks for it, and nothing else");
+  for (const step of steps) assert.equal(JSON.stringify(step).includes("snapshot-watch-sources"), false, "no snapshot: the run starts from the report");
   const outputs = frontmatter["safe-outputs"];
   assert.deepEqual(Object.keys(outputs).sort(), ["add-comment", "create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"]);
   const driftOutputs = driftFrontmatter["safe-outputs"];
@@ -108,7 +113,7 @@ function assertImplementContract(key) {
     "close-older-pull-requests": false,
   });
   assert.equal(outputs["create-pull-request"]["target-repo"], project.repo);
-  assert.deepEqual(outputs["add-comment"], { "target-repo": project.repo, target: "*", max: 1 });
+  assert.deepEqual(outputs["add-comment"], { "target-repo": project.repo, target: "${{ inputs.report_issue }}", max: 1 }, "a comment goes to the report and to no other issue or pull request");
   assert.equal(frontmatter.checkout[0].path, checkoutPath);
   assert.deepEqual(without(frontmatter.jobs, "escalate_failure"), without(driftFrontmatter.jobs, "escalate_failure", "implement_report"), "the guards of a drift workflow, the dry-run guard included");
   assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure"]);
@@ -147,15 +152,22 @@ test("SPEC-02 AC45: the prompt starts from the report, treats it as data, implem
       "Work on every item under `## Recommended` and `## Could not confirm`",
       "`## Watched-source changes` and `## Recommendations`",
       "`recommended` or `could not confirm`",
-      "the `web_fetch` tool",
-      "When `openPullRequests` is not empty",
+      "`/tmp/gh-aw/agent/open-pr-dedup.json`",
+      "When `duplicate` is `true`, a pull request of this repository's own schedule is open for the same upkeep",
+      "gives you nothing to do: call `noop` and stop",
+      "`curl --fail --silent --show-error --location <url>`",
+      "there is no `web_fetch` tool",
+      "it is opened ready for review, not as a draft",
+      "A comment goes to the report and nowhere else.",
       "commit your changes to the branch `implement-report-<number>`",
       "the last line `Closes #<number>`",
       "When no item survives the research, open no pull request: call `add_comment`",
       "In a dry run call neither",
       "`/tmp/gh-aw/agent/dry-run-proposal.json`",
       "The instructions above were written for the drift run that filed the report.",
+      "Where they name a working branch, a pull request body, a draft or a dry-run file",
     ]) assert.ok(body.includes(text), `${key}: ${text}`);
+    assert.equal(body.includes("openPullRequests"), false, "an open implementation stops the run before the agent (read-report.mjs)");
     const order = ["## Registration instructions", "## The report", "## Pull request", "## Build commands", "## Operating rules"].map((heading) => body.indexOf(heading));
     assert.ok(order.every((at) => at > 0), `${key}: every section is there`);
     assert.deepEqual([...order].sort((a, b) => a - b), order, `${key}: in this order`);
@@ -177,6 +189,24 @@ test("AC28 and AC72: an implementation workflow without the checkout of its targ
   assert.ok(result.errors.some((error) => /^drift-checkout-mapping-missing: project 'gh-admin-msft': /.test(error)), JSON.stringify(result.errors));
   files.set(name, text);
   assert.equal(checkRendered(files, request, preset).find((entry) => entry.file === name).valid, true, "the control: the rendered file passes");
+});
+
+test("AC72 and SPEC-02 AC13: a Copilot URL permission beyond network.allowed, or one for every URL, is refused in any rendered workflow", () => {
+  const name = `${W}/implement-gh-admin-msft.md`;
+  const { frontmatter, body } = implement("gh-admin-msft");
+  const withArgs = (args) => {
+    const files = new Map(rendered.files);
+    files.set(name, `---\n${toYaml({ ...frontmatter, engine: { ...frontmatter.engine, args } })}---\n\n${body}\n`);
+    return checkRendered(files, request, preset).find((entry) => entry.file === name);
+  };
+  assert.deepEqual(frontmatter.engine.args, ["--allow-url", "docs.github.com", "--allow-url", "github.blog"], "the control: exactly the two hosts of network.allowed");
+  assert.equal(withArgs(frontmatter.engine.args).valid, true);
+  const outside = withArgs([...frontmatter.engine.args, "--allow-url", "api.github.com"]);
+  assert.ok(outside.errors.some((error) => /^engine-url-permission-outside-network: .*'api\.github\.com'/.test(error)), JSON.stringify(outside.errors));
+  const joined = withArgs(["--allow-url=example.org"]);
+  assert.ok(joined.errors.some((error) => /^engine-url-permission-outside-network: .*'example\.org'/.test(error)), JSON.stringify(joined.errors));
+  const all = withArgs(["--allow-all-urls"]);
+  assert.ok(all.errors.some((error) => /^engine-url-permission-unbounded: /.test(error)), JSON.stringify(all.errors));
 });
 
 test("AC72: a minimal fleet renders the implementation workflow of its one drift project from the same manifest", () => {

@@ -33,7 +33,10 @@ for (const key of DRIFT_KEYS) {
     assert.equal(frontmatter["safe-outputs"]["create-issue"].max, 1, "one report per run");
     assert.deepEqual(frontmatter.permissions, { actions: "read", contents: "read", issues: "read", "pull-requests": "read" }, "the agent job's token reads and cannot write a ref, an issue or a pull request");
     const bash = frontmatter.tools.bash;
-    for (const tool of ["gh", "curl", "wget"]) assert.equal(bash.includes(tool), false, `the agent may not run ${tool}`);
+    for (const tool of ["gh", "wget"]) assert.equal(bash.includes(tool), false, `the agent may not run ${tool}`);
+    assert.ok(bash.includes("curl"), "curl reads a source page (AC13)");
+    assert.deepEqual(frontmatter.engine.args, frontmatter.network.allowed.flatMap((host) => ["--allow-url", host]), "and Copilot lets it reach only the hosts that the firewall allows, none of them the GitHub API");
+    assert.equal(frontmatter.network.allowed.some((host) => /(^|\.)api\.github\.com$/.test(host)), false);
     assert.ok(bash.includes("git"), "git stays allowed: the agent commits in the checkout, and the safe_outputs job pushes");
     assert.equal(frontmatter.checkout.length, 1, "the commits stay in the one target checkout");
     for (const step of [...frontmatter["pre-agent-steps"], ...frontmatter["post-steps"]]) {
@@ -64,9 +67,10 @@ for (const key of DRIFT_KEYS) {
     assert.match(body.slice(body.indexOf("## Operating rules")), IMPLEMENT_FORBIDDEN);
     assert.deepEqual(Object.keys(frontmatter["safe-outputs"]).sort(), ["add-comment", "create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"]);
     assert.equal(frontmatter["safe-outputs"]["create-pull-request"]["target-repo"], driftPreset(key).repo);
-    assert.deepEqual(frontmatter["safe-outputs"]["add-comment"], { "target-repo": driftPreset(key).repo, target: "*", max: 1 }, "one comment, on an issue of the target repository");
+    assert.deepEqual(frontmatter["safe-outputs"]["add-comment"], { "target-repo": driftPreset(key).repo, target: "${{ inputs.report_issue }}", max: 1 }, "one comment, on the report and no other issue or pull request of the target repository");
     assert.deepEqual(frontmatter.permissions, { contents: "read", issues: "read", "pull-requests": "read" }, "the agent job's token reads and cannot write");
-    for (const tool of ["gh", "curl", "wget"]) assert.equal(frontmatter.tools.bash.includes(tool), false, `the agent may not run ${tool}`);
+    for (const tool of ["gh", "wget"]) assert.equal(frontmatter.tools.bash.includes(tool), false, `the agent may not run ${tool}`);
+    assert.deepEqual(frontmatter.engine.args, frontmatter.network.allowed.flatMap((host) => ["--allow-url", host]));
     for (const step of [...frontmatter["pre-agent-steps"], ...frontmatter["post-steps"]]) {
       assert.equal(/git push|gh pr |gh api|\/merge|enablePullRequestAutoMerge/.test(step.run), false, `${step.name}: no step pushes or calls the API`);
     }

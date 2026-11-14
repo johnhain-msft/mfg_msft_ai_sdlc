@@ -137,7 +137,7 @@ function assertContract(frontmatter, project) {
   assert.equal(handler["branch-prefix"], "sdlc/");
   assert.equal(handler["preserve-branch-name"], true);
   assert.equal(handler["recreate-ref"], true);
-  assert.equal(handler["close-older-pull-requests"], true);
+  assert.equal(handler["close-older-pull-requests"], false, "an earlier pull request stays open: its items are in the next run's baseline (SPEC-02 AC25)");
   assert.equal(handler["close-older-key"], `sdlc-drift-${project.projectKey}`);
   assert.equal(handler["exclude-lock-yml"], true);
   assert.deepEqual(handler["protected-files"], { policy: "blocked", exclude: [] });
@@ -146,6 +146,9 @@ function assertContract(frontmatter, project) {
   assert.equal(handler.max, 1);
   assert.equal(handler["max-patch-size"], 10240);
   assert.ok(frontmatter.engine, "an engine key is rendered");
+  assert.deepEqual(frontmatter.engine.args, frontmatter.network.allowed.flatMap((host) => ["--allow-url", host]), "Copilot may let curl reach exactly the hosts of network.allowed (SPEC-02 AC13)");
+  assert.ok(frontmatter.tools.bash.includes("curl"), "curl reads a source page: the native web_fetch tool does not exist behind the API proxy");
+  for (const word of ["gh", "wget"]) assert.equal(frontmatter.tools.bash.includes(word), false, word);
   assert.ok("web-fetch" in frontmatter.tools);
   assert.ok(frontmatter.tools.bash.includes("git"));
   assert.ok(frontmatter.tools.bash.includes("node"), "the lab's own S2 scripts and the preset's build commands run on node");
@@ -311,7 +314,8 @@ test("AC22: agentSandbox.bashCommands extend the bash allowlist with the words t
   const extended = renderSandbox({ bashCommands: ["xargs", "awk", "git", "rg", "python3"] });
   assert.deepEqual(extended.frontmatter.tools.bash, [...new Set([...plain.frontmatter.tools.bash, "awk", "python3", "rg", "xargs"])].sort());
   assert.ok(extended.frontmatter.tools.bash.length > plain.frontmatter.tools.bash.length);
-  for (const word of ["gh", "curl", "wget", "*"]) assert.equal(extended.frontmatter.tools.bash.includes(word), false, word);
+  for (const word of ["gh", "wget", "*"]) assert.equal(extended.frontmatter.tools.bash.includes(word), false, word);
+  assert.ok(plain.frontmatter.tools.bash.includes("curl"), "the renderer, not the manifest, adds curl, with the URL permission that bounds it");
   const without = (workflow) => ({ ...workflow.frontmatter, tools: { ...workflow.frontmatter.tools, bash: null } });
   assert.deepEqual(without(extended), without(plain));
   assert.equal(extended.body, plain.body);
@@ -333,6 +337,7 @@ test("AC71: an engine that cannot enforce an allowlist keeps the wildcard that t
   assert.equal(codex.ok, true, JSON.stringify(codex.result));
   assert.equal(codex.frontmatter.engine.id, "codex");
   assert.deepEqual(codex.frontmatter.tools.bash, ["*"]);
+  assert.equal("args" in codex.frontmatter.engine, false, "--allow-url is a Copilot flag: another engine gets none, and the firewall alone bounds its shell");
   assert.equal(codex.frontmatter["pre-agent-steps"].length, 6, "the install step does not depend on the engine");
 });
 

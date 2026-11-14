@@ -166,23 +166,32 @@ Each `drift-<projectKey>` workflow, on its schedule or dispatched by hand:
   and the pages that changed, with the files that cite them. A source whose first page no longer reaches that run is read
   back through its older pages (up to ten); one that still does not is listed under `## Possible gaps` with the period
   that neither run saw, so nothing published between two runs is dropped in silence;
+* reads a source page that the snapshot does not hold with `curl`, which reaches the hosts of the watched URLs and of
+  the cited pages and nothing else: Copilot gets one `--allow-url` engine argument for each host of `network.allowed`,
+  and the firewall refuses every other host. (`gh-aw` v1.0.1 runs Copilot offline behind its API proxy, where the
+  native `web_fetch` tool does not exist.)
+* opens a pull request only for the changes that a source corroborates. An earlier drift pull request stays open: the
+  next run no longer lists its items, so closing it would drop them.
 * files one issue in the target repository, `[sdlc-drift] Drift report: <projectKey> <date>`, when at least one item of
-  the work list needs someone to act on it, and none otherwise (the agent calls `noop` and says how many items it
-  triaged). The report lists only what is actionable: `## Applied` (what its own pull request changes), `## Recommended`
-  and `## Could not confirm`, as task lists whose items name the change, the files and the source; the items that are not
-  relevant are counted on one line of `## Summary` and never listed. It opens a pull request only for the changes that a
-  source corroborates. No report closes an earlier one: the next run no longer lists its items, because they are in its
-  baseline.
+  the work list is recommended or could not be confirmed, or when a source could not be fetched or a possible gap could
+  not be closed; otherwise it files none (the agent calls `noop` and says how many items it triaged). The report lists
+  what is left to do, `## Recommended` and `## Could not confirm`, as task lists whose items name the change, the files
+  and the source. Items that the pull request applies are listed there, not in the report, and the items that are not
+  relevant are counted on one line of `## Summary` and never listed. No report closes an earlier one.
 
 Filing a report starts its implementation. The drift workflow's `implement_report` job dispatches
 `implement-<projectKey>` with the number of the report, using the job's `GITHUB_TOKEN`. That workflow reads the report
-(`src/drift/read-report.mjs` checks that it is an open report of this project that the App filed), researches every item
-under `## Recommended` and `## Could not confirm` again, changes what the sources support, runs the project's build and
+(`src/drift/read-report.mjs` checks that it is an open report of this project that the App filed and that no
+implementation of it is open), researches every item under `## Recommended` and `## Could not confirm` again with
+`curl` and the Microsoft Learn and Context7 servers, changes what the sources support, runs the project's build and
 verification commands, and opens one pull request on `sdlc/implement-report-<number>` whose body ends with `Closes
-#<number>`: merging it closes the report. When nothing survives the research, or an implementation of the report is open
-already, it comments on the report instead. To implement a report by hand, or again after its pull request was closed,
-dispatch `implement-<projectKey>` with `report_issue` set to the issue number (`dry_run: true` rehearses it). A dispatch
-finds the workflow only on the default branch, so a new implementation workflow can be dispatched once it is merged.
+#<number>`: merging it closes the report. When nothing survives the research, or a pull request of the target's own
+schedule already covers the upkeep, it comments on the report instead, and on nothing else. Every dispatched run waits
+its turn (`queue: max`). To implement a report by hand, or again after its pull request was closed, dispatch
+`implement-<projectKey>` with `report_issue` set to the issue number (`dry_run: true` rehearses it). A dispatch finds the
+workflow only on the default branch, so a new implementation workflow can be dispatched once it is merged. Do not
+re-run a drift run that succeeded: a run is never its own baseline, so the re-run files the same items in a second
+report, and they get a second implementation. Dispatch a new run instead.
 
 A first run, or a run whose baseline artifact has expired, has no previous index: its work list holds the most recent
 entries of each changelog, feed and release source, and pages are compared from the next run on. The artifact expires

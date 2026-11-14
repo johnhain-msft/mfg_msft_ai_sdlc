@@ -30,7 +30,7 @@ function shellCommands(id) {
 const INSTALL_STEP = { name: "Install target checkout dependencies for in-sandbox validation", "working-directory": "gh-admin-msft", run: "npm ci --ignore-scripts" };
 const UPLOAD_STEP_NAME = "Upload the watch index";
 const GH_ADMIN_MSFT_BASH = [
-  "awk", "cat", "cd", "cut", "date", "diff", "echo", "find", "git", "grep", "head", "jq", "ls", "mkdir", "node", "npm", "python3", "rg", "sed", "sort", "tail", "tr", "uniq", "wc", "xargs",
+  "awk", "cat", "cd", "curl", "cut", "date", "diff", "echo", "find", "git", "grep", "head", "jq", "ls", "mkdir", "node", "npm", "python3", "rg", "sed", "sort", "tail", "tr", "uniq", "wc", "xargs",
 ];
 const BROWSER_GATE = "npx playwright test tests/browser/sites.spec.ts";
 
@@ -58,11 +58,18 @@ test("ae32bf1: the drift workflows of the projects that did not ask for the inst
   }
 });
 
-test("61f0678: drift-gh-admin-msft lets its agent run the text tools of its validators and nothing that reaches the network", () => {
+test("61f0678: drift-gh-admin-msft lets its agent run the text tools of its validators, and curl only for the hosts that its firewall allows", () => {
   for (const [label, workflow] of versions("drift-gh-admin-msft.md")) assert.deepEqual(workflow.frontmatter.tools.bash, GH_ADMIN_MSFT_BASH, label);
   const commands = shellCommands("drift-gh-admin-msft");
   for (const word of GH_ADMIN_MSFT_BASH) assert.ok(commands.includes(word), `the lock lets the agent run ${word}`);
-  for (const word of ["gh", "curl", "wget"]) assert.equal(commands.includes(word), false, `the lock does not let the agent run ${word}`);
+  for (const word of ["gh", "wget"]) assert.equal(commands.includes(word), false, `the lock does not let the agent run ${word}`);
+  // dry run 43631574930: behind the API proxy the agent has no web_fetch tool, so curl is how it reads a source page, and Copilot runs it only for a URL it
+  // was given permission for: the lock passes exactly the hosts of network.allowed to the Copilot server, and the firewall allows those and no other
+  const step = agentSteps("drift-gh-admin-msft").find(isAgentStep);
+  const server = JSON.parse(step.env.GH_AW_COPILOT_SDK_SERVER_ARGS);
+  const urls = server.flatMap((arg, index) => (arg === "--allow-url" ? [server[index + 1]] : []));
+  assert.deepEqual(urls, readWorkflow("drift-gh-admin-msft.md").frontmatter.network.allowed);
+  assert.equal(server.some((arg) => arg.startsWith("--allow-all-urls")), false);
 });
 
 // Dry runs 43497657653 (this branch) and 43499249738 (main) of drift-copilot-lab: the agent opened with `cd` into the artifact directory and into
@@ -71,7 +78,7 @@ test("61f0678: drift-gh-admin-msft lets its agent run the text tools of its vali
 test("61f0678: the other drift workflows keep the allowlist that cd, git, node and their build commands give them", () => {
   for (const key of ["copilot-lab", "self-improving-agents"]) {
     for (const [label, workflow] of versions(`drift-${key}.md`)) {
-      assert.deepEqual(workflow.frontmatter.tools.bash, ["cat", "cd", "date", "find", "git", "grep", "head", "ls", "node", "tail", "wc"], `${key} ${label}`);
+      assert.deepEqual(workflow.frontmatter.tools.bash, ["cat", "cd", "curl", "date", "find", "git", "grep", "head", "ls", "node", "tail", "wc"], `${key} ${label}`);
     }
     assert.ok(shellCommands(`drift-${key}`).includes("cd"), `${key}: the lock lets the agent run cd`);
   }
