@@ -45,10 +45,10 @@ Three Specialist Roles | `source-verifier` corroborates changes, `curriculum-upd
 # S3 · Hybrid Push + ETag Event Router
 
 :::timeline
-Push | `sdlc-bridge-dispatch.yml` posts `upstream_pr_merged` on every merge. | push
+Push | `sdlc-bridge-dispatch.yml` posts `upstream_pr_merged` on a merge in this repository. | push
 Check | `route-upstream.mjs` sends `If-None-Match` and compares recorded state. | check
 Dispatch | Router starts `cascade-mechanical-*` or `cascade-ai-*` with a correlation id. | dispatch
-Every 6 h | Scheduled poll catches direct pushes; `304` answers cost no primary rate limit. | poll
+Every 6 h | Poll at :17 covers every other upstream; `304` answers cost no primary rate limit. | poll
 :::
 
 :::spec specs/03-event-routing-and-mechanical-cascade.md

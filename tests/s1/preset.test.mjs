@@ -130,13 +130,27 @@ test("AC6: the ai-sdlc edge is the self-cascade: this repository is its upstream
   assert.equal(project.defaultBranch, "main");
   assert.equal(project.driftAudit.enabled, false);
   assert.equal(edge.initialBaselineSha, "6ad036d3a23eb17dbf46dacbcdd61f1a5d47b307");
-  assert.equal(edge.schedule, "0 */6 * * *");
+  assert.equal(edge.schedule, "17 */6 * * *");
   assert.equal(edge.onCommitOnlyAdvance, "noop");
   assert.deepEqual(edge.reviewers, ["johnhain-msft"]);
   assert.deepEqual(edge.installDirectories, [".", "apps/lab-studio"]);
   assert.deepEqual([edge.preflightCommands, edge.acceptCommands, edge.protectedFilesExclude, edge.immutableGates], [[], [], [], { zeroDiffPaths: [] }]);
   assert.equal(edge.adaptationInstructions, "");
   assert.deepEqual(edge.buildCommands, ["npm run build", "STUDIO_ORIGIN=https://studio.example.com npm run build:catalog"]);
+});
+
+test("every schedule of the preset that GitHub runs (each edge and each enabled drift audit) starts at a minute other than the top of the hour", () => {
+  // GitHub delays scheduled runs under load, most at the start of every hour, and may drop them; its documentation advises another minute.
+  const schedules = [
+    ...manifest.dependencyEdges.filter((edge) => edge.schedule !== null).map((edge) => [`edge ${edge.edgeId}`, edge.schedule]),
+    ...manifest.projects.filter((project) => project.driftAudit.enabled).map((project) => [`drift ${project.projectKey}`, project.driftAudit.schedule]),
+  ];
+  assert.ok(schedules.length >= 9, "six edges and three drift audits");
+  for (const [owner, cron] of schedules) {
+    const minute = cron.split(" ")[0];
+    assert.match(minute, /^\d+$/, `${owner}: '${cron}' names one minute`);
+    assert.notEqual(Number(minute), 0, `${owner}: '${cron}' starts on the hour`);
+  }
 });
 
 test("AC6: per-edge derived values, baselines and reviewers", () => {

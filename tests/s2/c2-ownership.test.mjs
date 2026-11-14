@@ -189,14 +189,17 @@ for (const key of DRIFT_KEYS) {
     assert.match(text, /src\/drift\/prepare-run\.mjs/);
     assert.match(text, /src\/drift\/dedupe-open-prs\.mjs/);
     assert.match(text, /src\/snapshot-watch-sources\.mjs/);
+    assert.match(text, /src\/drift\/previous-watch-index\.mjs/);
     assert.match(text, /src\/drift\/escalate-gate-failure\.mjs/);
     const { frontmatter } = driftWorkflow(key);
-    const [prepareStep, dedupeStep, snapshotStep] = frontmatter["pre-agent-steps"];
+    const [prepareStep, dedupeStep, previousStep, snapshotStep, uploadStep] = frontmatter["pre-agent-steps"];
     assert.match(prepareStep.run, /node "\$GITHUB_WORKSPACE\/src\/drift\/prepare-run\.mjs" --out \/tmp\/gh-aw\/agent /);
     assert.match(dedupeStep.run, /node "\$GITHUB_WORKSPACE\/src\/drift\/dedupe-open-prs\.mjs" --out \/tmp\/gh-aw\/agent /);
+    assert.match(previousStep.run, /node "\$GITHUB_WORKSPACE\/src\/drift\/previous-watch-index\.mjs" --out \/tmp\/gh-aw\/agent /);
     assert.match(snapshotStep.run, /node "\$GITHUB_WORKSPACE\/src\/snapshot-watch-sources\.mjs" --out \/tmp\/gh-aw\/agent /);
+    assert.equal(uploadStep.with.path, "/tmp/gh-aw/agent/sources/watch-index.json", "the upload reads the index that the snapshot wrote under the artifact directory");
     for (const step of frontmatter["pre-agent-steps"]) {
-      assert.equal(/\.github\/workflows|network\.allowed|on\.bots|safe-outputs/.test(step.run), false, `${step.name}: the step names no S1-owned location`);
+      assert.equal(/\.github\/workflows|network\.allowed|on\.bots|safe-outputs/.test(step.run ?? ""), false, `${step.name}: the step names no S1-owned location`);
     }
   });
 }

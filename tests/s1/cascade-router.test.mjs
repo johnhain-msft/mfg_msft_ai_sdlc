@@ -53,7 +53,7 @@ test("AC31: on carries exactly repository_dispatch, schedule and workflow_dispat
 });
 
 test("AC31: on.schedule holds one cron per distinct non-null edge schedule, sorted", () => {
-  assert.deepEqual(rendered.on.schedule, [{ cron: "0 */6 * * *" }]);
+  assert.deepEqual(rendered.on.schedule, [{ cron: "17 */6 * * *" }]);
   const varied = mutate(preset, (copy) => {
     copy.dependencyEdges[0].schedule = "30 8 * * *";
     copy.dependencyEdges[1].schedule = "0 */2 * * *";

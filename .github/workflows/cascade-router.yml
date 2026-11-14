@@ -5,7 +5,7 @@ on:
     types:
       - upstream_pr_merged
   schedule:
-    - cron: 0 */6 * * *
+    - cron: 17 */6 * * *
   workflow_dispatch:
     inputs:
       reset_blocked:
@@ -40,7 +40,7 @@ jobs:
             initialBaselineSha: a2f9a3bbbb60df80a7c4fed8428d061898f504dc
             downstreamRepo: johnhain-msft/portfolio
             mode: mechanical
-            schedule: 0 */6 * * *
+            schedule: 17 */6 * * *
             onCommitOnlyAdvance: noop
             stateVariable: SDLC_SYNC_STATE_GH_ADMIN_MSFT
             provenanceFile: public/ghec-admin/source.json
@@ -71,7 +71,7 @@ jobs:
             initialBaselineSha: 2108ac9a1e9eff96e97b500117b0de4a546768c3
             downstreamRepo: johnhain-msft/portfolio
             mode: ai-adaptation
-            schedule: 0 */6 * * *
+            schedule: 17 */6 * * *
             onCommitOnlyAdvance: noop
             stateVariable: SDLC_SYNC_STATE_COPILOT_LAB
             provenanceFile: experiences/copilot-workshop/source-inputs.json
@@ -139,7 +139,7 @@ jobs:
             initialBaselineSha: c00b58a9fea6cbbbe9b1ac8f52c3632aafc32b46
             downstreamRepo: johnhain-msft/portfolio
             mode: ai-adaptation
-            schedule: 0 */6 * * *
+            schedule: 17 */6 * * *
             onCommitOnlyAdvance: noop
             stateVariable: SDLC_SYNC_STATE_PIPELINE_SHOWCASE
             provenanceFile: experiences/pipeline-showcase/content/provenance.json
@@ -222,7 +222,7 @@ jobs:
             initialBaselineSha: 03b997f220a6ecaf60c8c8cbc63fc1154077a686
             downstreamRepo: johnhain-msft/portfolio
             mode: ai-adaptation
-            schedule: 0 */6 * * *
+            schedule: 17 */6 * * *
             onCommitOnlyAdvance: noop
             stateVariable: SDLC_SYNC_STATE_GITHUB_INTERMEDIATE
             provenanceFile: experiences/github-intermediate-labs/provenance.json
@@ -282,7 +282,7 @@ jobs:
             initialBaselineSha: 6ad036d3a23eb17dbf46dacbcdd61f1a5d47b307
             downstreamRepo: johnhain-msft/portfolio
             mode: mechanical
-            schedule: 0 */6 * * *
+            schedule: 17 */6 * * *
             onCommitOnlyAdvance: noop
             stateVariable: SDLC_SYNC_STATE_AI_SDLC
             provenanceFile: public/ai-sdlc/source.json
@@ -313,7 +313,7 @@ jobs:
             initialBaselineSha: d47e218e9d5cff8741c687c72b2c12df1bf53905
             downstreamRepo: johnhain-msft/ai_asset_management
             mode: mechanical
-            schedule: 0 */6 * * *
+            schedule: 17 */6 * * *
             onCommitOnlyAdvance: noop
             stateVariable: SDLC_SYNC_STATE_COPILOT_CONFIG
             provenanceFile: governance/upstream-provenance.json

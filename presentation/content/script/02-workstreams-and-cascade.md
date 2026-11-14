@@ -54,19 +54,19 @@ SHOW: Four numbered rows. The last one has a dashed border and a circular arrow.
 
 I'll trace one merge through S3. Rows one to three are the fast path, and row four is the safety net.
 
-Row one is the push. The upstream repository carries a small workflow called the merge bridge. When a pull request merges to the main branch, it mints a short-lived token for the App, or uses a stored dispatch token, and sends a repository dispatch to the orchestrator. The event is named upstream underscore pr underscore merged, and its payload has six fields, including the merged commit, the pull request number and a correlation id.
+Row one is the push. This repository carries a small workflow called the merge bridge. When a pull request merges to its main branch, it mints a short-lived token for the App and sends a repository dispatch to its own router. The event is named upstream underscore pr underscore merged, and its payload has six fields, including the merged commit, the pull request number and a correlation id. The other upstreams don't get the bridge, because it would need the App's private key, and that key can reach every installation of the App. We don't copy it anywhere.
 
 Row two is the check. The router wakes up and reads that edge's state variable. Then it asks GitHub for the upstream's latest commit, sending the stored ETag in an If-None-Match header. If nothing changed, GitHub answers 304, and a 304 doesn't count against the primary rate limit. If something changed, the router compares the new head with the recorded state and runs the edge's cheap preflight checks, so a commit that changes nothing material, like a refreshed timestamp, doesn't start a cascade.
 
 Row three is the dispatch. Otherwise the router starts the cascade workflow for that edge and passes the correlation id along, so the dispatch, the run and any failure issue share one id you can search for.
 
-Row four is the safety net. Every six hours the same router runs on a schedule. If a developer pushes straight to main, or the bridge isn't installed, or a dispatch gets dropped, the poll still sees the new head. That's the hybrid: the push is fast, and the poll catches whatever the push misses.
+Row four is the safety net, and for every other upstream it's the main path. Four times a day, at 17 minutes past the hour, the same router runs on a schedule. Not on the hour, because that's when GitHub delays scheduled runs the most, and sometimes drops them. If a developer pushes straight to main, or an upstream has no bridge, or a dispatch gets dropped, the poll still sees the new head. That's the hybrid: the push is fast where we have it, and the poll catches everything else.
 
 The router has two safeguards. Runs are serialized per edge, in a concurrency group that never cancels a run in progress, so two runs can't corrupt the state. And if a revision fails twice, the router stops and waits for a person instead of retrying forever.
 
 > The router has decided a cascade is needed. Now, which kind?
 
-SOURCE: src/route-upstream.mjs · src/update-poll-state.mjs · .github/workflows/cascade-router.yml · specs/03-event-routing-and-mechanical-cascade.md · https://github.com/johnhain-msft/gh-admin-msft/blob/main/.github/workflows/sdlc-bridge-dispatch.yml
+SOURCE: src/route-upstream.mjs · src/update-poll-state.mjs · .github/workflows/cascade-router.yml · specs/03-event-routing-and-mechanical-cascade.md · .github/workflows/sdlc-bridge-dispatch.yml
 
 ## [s4-cascade-modes] S4 · Mechanical vs AI-Adaptation Cascade
 

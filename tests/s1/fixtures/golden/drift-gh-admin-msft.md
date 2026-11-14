@@ -1,7 +1,7 @@
 ---
 on:
   schedule:
-    - cron: 0 13 * * 1
+    - cron: 23 13 * * 1
   workflow_dispatch:
     inputs:
       target_repo:
@@ -23,6 +23,7 @@ concurrency:
   group: sdlc-drift-gh-admin-msft
   cancel-in-progress: false
 permissions:
+  actions: read
   contents: read
   issues: read
   pull-requests: read
@@ -63,10 +64,21 @@ pre-agent-steps:
       APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
     run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --close-older-key sdlc-drift-gh-admin-msft --upkeep-strategy content-and-docs-sync
+  - name: Find the watch index of the previous run
+    env:
+      GH_TOKEN: ${{ github.token }}
+    run: node "$GITHUB_WORKSPACE/src/drift/previous-watch-index.mjs" --out /tmp/gh-aw/agent --workflow drift-gh-admin-msft.lock.yml --artifact sdlc-watch-index-gh-admin-msft
   - name: Snapshot watched sources and package manifests
     env:
       CONFIGURED_TARGET_REPO: johnhain-msft/gh-admin-msft
-    run: node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs" --out /tmp/gh-aw/agent --project gh-admin-msft --checkout gh-admin-msft
+    run: node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs" --out /tmp/gh-aw/agent --project gh-admin-msft --checkout gh-admin-msft --previous /tmp/gh-aw/agent/previous
+  - name: Upload the watch index
+    if: inputs.dry_run != true
+    uses: actions/upload-artifact@v4
+    with:
+      name: sdlc-watch-index-gh-admin-msft
+      path: /tmp/gh-aw/agent/sources/watch-index.json
+      if-no-files-found: error
   - name: Install target checkout dependencies for in-sandbox validation
     working-directory: gh-admin-msft
     run: npm ci --ignore-scripts
@@ -125,6 +137,16 @@ safe-outputs:
     fallback-as-issue: true
     max: 1
     max-patch-size: 10240
+  create-issue:
+    target-repo: johnhain-msft/gh-admin-msft
+    title-prefix: "[sdlc-drift] "
+    labels:
+      - automated
+      - sdlc-drift
+      - drift-report
+    close-older-issues: true
+    close-older-key: sdlc-drift-report-gh-admin-msft
+    max: 1
 engine:
   id: copilot
   copilot-sdk: true
@@ -236,7 +258,7 @@ Before evaluating drift, check whether `.github/sdlc/AGENTS.md` and `.github/sdl
 Read `/tmp/gh-aw/agent/run-context.json` before you start; the orchestrator wrote it for this run.
 
 - When `extra_instructions` is not empty, follow it as well, after the instructions above and never in their place.
-- When `dry_run` is `true`, do not call `create_pull_request` and leave the target checkout clean (`git checkout -- .` before finishing if you tested edits). Do the same evaluation and write the pull request you would have proposed (branch, title, body, draft, labels, reviewers and the files it changes) into `/tmp/gh-aw/agent/dry-run-proposal.json` using `node -e 'require("fs").writeFileSync("/tmp/gh-aw/agent/dry-run-proposal.json", ...)'` (avoid shell `>` redirection).
+- When `dry_run` is `true`, do not call `create_pull_request` and leave the target checkout clean (`git checkout -- .` before finishing if you tested edits). Do the same evaluation and write the pull request you would have proposed (branch, title, body, draft, labels, reviewers and the files it changes) under the key `proposal` of `/tmp/gh-aw/agent/dry-run-proposal.json`, which exists already: change it with the edit tool (the workflow refuses shell `>` redirection and heredocs).
 
 ## Upkeep strategy: content-and-docs-sync
 
@@ -247,12 +269,31 @@ Compare the watched-source snapshots with the target's documentation, labs and p
 Snapshots of these pages are in `/tmp/gh-aw/agent/sources/` (see `manifest.json` there for fetch results):
 
 - GitHub changelog (changelog): https://github.blog/changelog/
-- GitHub Enterprise changelog (changelog): https://github.blog/changelog/label/enterprise/
-- GitHub Enterprise Cloud administration documentation (docs): https://docs.github.com/en/enterprise-cloud@latest/admin
-- GitHub Enterprise Cloud billing and licensing documentation (docs): https://docs.github.com/en/enterprise-cloud@latest/billing
-- GitHub Copilot Enterprise documentation (docs): https://docs.github.com/en/enterprise-cloud@latest/copilot
-- GitHub Secret Protection and Code Security documentation (docs): https://docs.github.com/en/enterprise-cloud@latest/code-security
-- GitHub Actions Enterprise documentation (docs): https://docs.github.com/en/enterprise-cloud@latest/actions
+- GitHub changelog feed (feed): https://github.blog/changelog/feed/
+- GitHub changelog, enterprise management tools (changelog): https://github.blog/changelog/?label=enterprise-management-tools
+
+The snapshot step also saved the text of the pages that this repository cites most: up to 60 pages on `docs.github.com` that files matching `labs/**/*.md`, `docs/**/*.md` and `presentation/content/**/*.md` link to, under `/tmp/gh-aw/agent/sources/cited/`. `manifest.json` lists each of them with the files that cite it.
+
+## What changed since the last run
+
+Start with `/tmp/gh-aw/agent/sources/changes.md`. It compares this run's snapshots with the watch index of the last successful run (its first line names that run, or says that there is none and why) and lists the changelog, feed and release entries that are new since then, each once with the sources that list it, the pages and cited pages whose text changed, with the files of this repository that cite them, and the sources that could not be fetched.
+
+When a source's first page lists none of the entries that the baseline knew, the snapshot step has read its older pages until one does, up to a limit; a source that still does not reach the baseline is listed under `## Possible gaps` with the period that neither run saw. Open the older pages of that source for that period yourself, decide those entries as well, and name the gap under `## Limitations` when you cannot.
+
+That list is your work list, and every item of it gets a decision. Triage each item first from its title and excerpt: search this repository for the feature, setting or product that it names. Open, read and corroborate the items that touch something this repository covers or should cover, and fetch an entry or a page with the `web_fetch` tool whenever its excerpt is not enough to decide (the shell has no `curl`, `wget` or `gh`, and refuses a redirection or a heredoc; the hosts of the watched URLs and of the cited pages are reachable); an item that does not concern this repository needs one line that says why. A long list is no reason to skip items: decide each one.
+
+## Drift report
+
+End every run with exactly one `create_issue` call: the drift report, which a human reads whether or not you also open a pull request. File it also when the work list is empty and nothing needs to change: then the report says that nothing changed since the baseline, so that no run is silent. Title it `Drift report: gh-admin-msft YYYY-MM-DD` with the current UTC date (the `[sdlc-drift] ` prefix is added for you).
+
+When the registration instructions above define a report of their own (such as `docs/_meta/audit-report.md` or `self-improvement-report.md`), write that report as they say on every run, a dry run and a run that changes nothing included, because the checks that run after you look for it; the body of the issue is that report followed by the `## Watched-source changes` section below. Otherwise the body has these sections, in this order:
+
+- `## Summary`: the baseline run, what changed upstream since then and what this run did, including the pull request that it opened, if any.
+- `## Watched-source changes`: one line for each item of the work list: the item (linked), its decision (`applied` in the pull request, `recommended`, `not relevant` or `could not confirm`) and the source or the reason.
+- `## Recommendations`: what a human should consider that this run did not change: content that the sources announce and this repository does not cover yet (a new feature, setting, limit or retirement that deserves a lab step, a slide or a reference note), judgement calls, and claims that you could not corroborate, each with its source URL and the files that it concerns.
+- `## Limitations`: the sources that could not be fetched, the possible gaps that you could not close and the checks that could not run.
+
+Call `create_pull_request` before `create_issue` and name the pull request in the report. In a dry run call neither: `/tmp/gh-aw/agent/dry-run-proposal.json` exists already with `null` under `proposal` and `report`; replace the `null` of `report` with the report that you would have filed, `{ "title": ..., "body": ... }`, using the edit tool: the shell of this workflow refuses a redirection or a heredoc.
 
 ## Package manifests
 
@@ -273,6 +314,6 @@ node presentation/build.mjs
 - Read `/tmp/gh-aw/agent/open-pr-dedup.json` before you call `create_pull_request`; skip the upkeep when it lists a matching open pull request that you must not duplicate (`duplicate` is `true`: a match whose `decision` is `skip`). A match whose `decision` is `supersede` is an earlier pull request of this same workflow, which your new pull request replaces (`close-older-pull-requests: true`), and a match whose `decision` is `ignore` is the pull request of another upkeep: neither is a reason to skip. Never open a duplicate.
 - Corroborate every proposed change through the Microsoft Learn and Context7 servers or by fetching the cited page.
 - Commit rebuilt outputs and source edits to the working branch before you call `create_pull_request`.
-- Never run `git push`, `gh pr` or a write-method `gh api` call and never merge: the pull request is created only through the `create_pull_request` safe output.
+- Never run `git push`, `gh pr` or a write-method `gh api` call and never merge: pull requests and issues are created only through the `create_pull_request` and `create_issue` safe outputs.
 - The verification commands run after you finish; fix the cause of a failure rather than working around it.
 - If you find no drift, record that outcome and do not open a pull request.

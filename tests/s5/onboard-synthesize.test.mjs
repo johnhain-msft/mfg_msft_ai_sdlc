@@ -206,14 +206,14 @@ test("AC47: resolveStrategy is a pure rule: watch URL or provenance first, then 
   }
 });
 
-test("AC47: --schedule is validated as a five-field cron expression and written to driftAudit.schedule; the default is 0 6 * * 1", async () => {
-  assert.equal(DEFAULT_SCHEDULE, "0 6 * * 1");
+test("AC47: --schedule is validated as a five-field cron expression and written to driftAudit.schedule; the default is 23 6 * * 1, off the hour", async () => {
+  assert.equal(DEFAULT_SCHEDULE, "23 6 * * 1");
   await onboarded(["--repo", "example-owner/node-app", "--schedule", "0 5 * * 0"], ({ run, scenario, manifest }) => {
     assert.equal(run.code, 0, run.stderr);
     assert.equal(entryOf(manifest(), "node-app").driftAudit.schedule, "0 5 * * 0");
     assert.match(scenario.workspace.read("sdlc.yaml"), /^ {6}schedule: "0 5 \* \* 0"$/m, "written as a quoted string");
   });
-  await onboarded(["--repo", "example-owner/node-app"], ({ manifest }) => assert.equal(entryOf(manifest(), "node-app").driftAudit.schedule, "0 6 * * 1"));
+  await onboarded(["--repo", "example-owner/node-app"], ({ manifest }) => assert.equal(entryOf(manifest(), "node-app").driftAudit.schedule, "23 6 * * 1"));
 });
 
 for (const schedule of ["every day", "0 6 * * 1 *", "* * * *", "61 * * * *", "0 24 * * *", "0 0 0 * *", "0 0 * 13 *", "0 0 * * 7", "@daily", "0  6 * * 1", " 0 6 * * 1", "0 6 * * 1 ", "5-1 * * * *", "*/0 * * * *", "a b c d e"]) {

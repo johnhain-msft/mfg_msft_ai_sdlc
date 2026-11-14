@@ -32,7 +32,7 @@ for (const key of DRIFT_KEYS) {
   test(`AC9: every pre-agent step of drift-${key} that reads the target uses the checkout path`, () => {
     const { frontmatter } = driftWorkflow(key);
     const [{ path: checkoutPath, repository }] = frontmatter.checkout;
-    const [prepare, deduplicate, snapshot] = frontmatter["pre-agent-steps"];
+    const [prepare, deduplicate, previous, snapshot, upload] = frontmatter["pre-agent-steps"];
     const named = (step) => /--checkout (\S+)/.exec(step.run)?.[1];
     assert.equal(named(snapshot), checkoutPath, "the snapshot step names the checkout path");
     assert.equal(snapshot.env.CONFIGURED_TARGET_REPO, repository);
@@ -41,8 +41,12 @@ for (const key of DRIFT_KEYS) {
     assert.equal(named(deduplicate), undefined, "the deduplication reads the target through the API, not the checkout");
     assert.equal(deduplicate.env.CONFIGURED_TARGET_REPO, repository);
     for (const step of [prepare, deduplicate, snapshot]) assert.equal(step.env.CONFIGURED_TARGET_REPO, repository, `${step.name}: one target`);
-    // a step after the three S2 scripts is the install of the dependencies of this very target: it runs in its checkout and is given no variable or credential
-    for (const step of frontmatter["pre-agent-steps"].slice(3)) {
+    // the lookup of the previous watch index reads the Actions data of the central repository with the job's own token, and the upload writes an
+    // artifact of this run: neither reads the target, so neither names it (AC41)
+    assert.deepEqual([named(previous), previous.env], [undefined, { GH_TOKEN: "${{ github.token }}" }], `${previous.name}: no target, no App credential`);
+    assert.deepEqual([upload.uses, "env" in upload, upload.with.path], ["actions/upload-artifact@v4", false, "/tmp/gh-aw/agent/sources/watch-index.json"], `${upload.name}: only the index`);
+    // a step after the five S2 steps is the install of the dependencies of this very target: it runs in its checkout and is given no variable or credential
+    for (const step of frontmatter["pre-agent-steps"].slice(5)) {
       assert.equal(step["working-directory"], checkoutPath, `${step.name}: runs in the checkout of the target`);
       assert.equal("env" in step, false, `${step.name}: holds no variable or credential`);
       assert.equal(step.run, "npm ci --ignore-scripts", `${step.name}: installs without running the lifecycle scripts of the target`);

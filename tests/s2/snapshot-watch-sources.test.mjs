@@ -30,6 +30,8 @@ const pages = (extra = {}) =>
 
 const snapshotArgs = (workspace, extra = []) => ["--out", workspace.out, "--project", "snapshot-fixture", "--manifest", workspace.manifest, "--checkout", workspace.checkout, "--timeout-ms", "150", ...extra];
 const manifestOf = (workspace) => JSON.parse(fs.readFileSync(path.join(workspace.out, "sources", "manifest.json"), "utf8"));
+/** The files that every run writes besides the snapshots: the record of the attempts, the watch index and the comparison (AC42). */
+const DERIVED = new Set(["sources/manifest.json", "sources/watch-index.json", "sources/changes.json", "sources/changes.md"]);
 
 test("AC11: a 200, a 404 and a slow response give three manifest records (two failed) and one snapshot file", async () => {
   const workspace = createSnapshotWorkspace();
@@ -46,7 +48,7 @@ test("AC11: a 200, a 404 and a slow response give three manifest records (two fa
     assert.deepEqual({ url: slow.url, kind: slow.kind, status: slow.status, snapshot: slow.snapshot }, { url: `${ORIGIN}/slow`, kind: "blog", status: null, snapshot: null });
     assert.match(slow.error, /timed out after 150 ms/);
     // exactly one snapshot file for the 200, under sources/, with the bytes of the response
-    const files = listTree(workspace.out).filter((file) => !file.startsWith("sources/manifests/") && file !== "sources/manifest.json");
+    const files = listTree(workspace.out).filter((file) => !file.startsWith("sources/manifests/") && !DERIVED.has(file));
     assert.deepEqual(files, [ok.snapshot]);
     assert.match(ok.snapshot, /^sources\/changelog\.example\.test-[0-9a-f]{12}\.html$/);
     assert.equal(fs.readFileSync(path.join(workspace.out, ...ok.snapshot.split("/")), "utf8"), "<html><body>Release 18.0.0</body></html>");
@@ -116,7 +118,7 @@ test("AC11: the command, run as a process, records a response that never comes a
     assert.deepEqual(watchUrls.map((record) => [record.status, record.state, record.snapshot]), Array(3).fill([null, "failed", null]));
     for (const record of watchUrls) assert.match(record.error, /^timed out after 300 ms$/, record.url);
     assert.equal(limitations.filter((line) => /timed out after 300 ms$/.test(line)).length, 3, "each is carried as a limitation");
-    assert.equal(listTree(workspace.out).some((file) => file.startsWith("sources/") && !file.startsWith("sources/manifests/") && file !== "sources/manifest.json"), false, "and no snapshot file was written for any of them");
+    assert.equal(listTree(workspace.out).some((file) => file.startsWith("sources/") && !file.startsWith("sources/manifests/") && !DERIVED.has(file)), false, "and no snapshot file was written for any of them");
   } finally {
     workspace.cleanup();
     await server.close();
@@ -273,7 +275,19 @@ test("AC11: the manifest reader refuses what the snapshot must not rely on: a wi
     };
     const project = (extra = "") => `projects:\n  - projectKey: p\n    repo: o/r\n    driftAudit:\n      knowledgeSources:\n        watchUrls:\n          - url: https://example.org/a\n            label: A\n            kind: docs\n${extra}`;
     const ok = await readProjectSources({ manifestPath: write("ok.yaml", project("        packageManifests:\n          - package.json\n")), projectKey: "p" });
-    assert.deepEqual(ok, { projectKey: "p", repo: "o/r", watchUrls: [{ url: "https://example.org/a", label: "A", kind: "docs" }], packageManifests: ["package.json"] });
+    assert.deepEqual(ok, { projectKey: "p", repo: "o/r", watchUrls: [{ url: "https://example.org/a", label: "A", kind: "docs" }], packageManifests: ["package.json"], citedPages: null });
+    const cited = (block) => project(`        citedPages:\n${block}`);
+    const withCited = await readProjectSources({ manifestPath: write("cited.yaml", cited("          include: [labs/**/*.md]\n          hosts: [Docs.GitHub.com]\n")), projectKey: "p" });
+    assert.deepEqual(withCited.citedPages, { include: ["labs/**/*.md"], hosts: ["docs.github.com"], maxPages: 50 }, "maxPages defaults to 50 and a host is matched in lower case");
+    for (const [name, text, message] of [
+      ["cited-wild.yaml", cited("          include: [labs/**/*.md]\n          hosts: ['*.github.com']\n"), /not a literal hostname/],
+      ["cited-url.yaml", cited("          include: [labs/**/*.md]\n          hosts: [https://docs.github.com]\n"), /not a literal hostname/],
+      ["cited-empty.yaml", cited("          include: []\n          hosts: [docs.github.com]\n"), /include of 'p' must be a non-empty list/],
+      ["cited-traversal.yaml", cited("          include: [../x/**]\n          hosts: [docs.github.com]\n"), /leaves the checkout/],
+      ["cited-max.yaml", cited("          include: [labs/**]\n          hosts: [docs.github.com]\n          maxPages: 201\n"), /maxPages of 'p' must be a whole number from 1 to 200/],
+    ]) {
+      await assert.rejects(readProjectSources({ manifestPath: write(name, text), projectKey: "p" }), message, name);
+    }
     for (const [name, text, message] of [
       ["wild.yaml", project().replace("https://example.org/a", "https://*.example.org/a"), /wildcard/],
       ["creds.yaml", project().replace("https://example.org/a", "https://user:pw@example.org/a"), /credentials/],

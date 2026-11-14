@@ -103,7 +103,7 @@ test("AC51: a changed --schedule on an existing project changes only that field"
     assert.deepEqual(git(scenario, "status", "--porcelain").trimEnd().split("\n"), [" M sdlc.yaml"], "only sdlc.yaml changed, the instructions file did not");
     assert.equal(git(scenario, "diff", "--numstat").trim(), "1\t1\tsdlc.yaml");
     const patch = git(scenario, "diff", "-U0").split("\n").filter((line) => /^[-+][^-+]/.test(line));
-    assert.deepEqual(patch, ['-      schedule: "0 6 * * 1"', '+      schedule: "0 5 * * 0"']);
+    assert.deepEqual(patch, ['-      schedule: "23 6 * * 1"', '+      schedule: "0 5 * * 0"']);
   });
 });
 
@@ -121,7 +121,7 @@ test("AC51: re-onboarding without flags never overwrites a value that the operat
       tail
         .replace("      reviewers: []\n", "      reviewers:\n        - the-operator\n")
         .replace("      draft: false\n", "      draft: true\n")
-        .replace('      schedule: "0 6 * * 1"\n      upkeepStrategy: dependency-and-pattern-modernization', '      schedule: "15 3 * * 4"\n      upkeepStrategy: custom')
+        .replace('      schedule: "23 6 * * 1"\n      upkeepStrategy: dependency-and-pattern-modernization', '      schedule: "15 3 * * 4"\n      upkeepStrategy: custom')
         .replace("        - npm test\n", "        - npm run verify:all\n")
         .replace("    defaultBranch: main\n", "    defaultBranch: trunk\n"),
     );

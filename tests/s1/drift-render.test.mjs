@@ -85,14 +85,23 @@ function assertContract(frontmatter, project) {
   for (const name of ["target_repo", "correlation_id", "extra_instructions"]) assert.equal(inputs[name].type, "string", name);
   assert.equal(inputs.dry_run.type, "boolean");
   assert.deepEqual(frontmatter.concurrency, { group: `sdlc-drift-${project.projectKey}`, "cancel-in-progress": false });
-  assert.deepEqual(frontmatter.permissions, { contents: "read", issues: "read", "pull-requests": "read" });
+  assert.deepEqual(frontmatter.permissions, { actions: "read", contents: "read", issues: "read", "pull-requests": "read" }, "actions: read lets the job find the previous run's watch index (SPEC-02 AC41)");
   assert.deepEqual(Object.keys(frontmatter.network), ["allowed"]);
   assert.ok(Array.isArray(frontmatter.network.allowed) && frontmatter.network.allowed.every((host) => typeof host === "string"));
   assert.deepEqual(frontmatter.checkout, [{ repository: project.repo, path: repoName, current: true, "github-app": { ...APP, repositories: [repoName] } }]);
   assert.deepEqual(frontmatter["mcp-servers"], audit.knowledgeSources.mcpServers);
   assert.ok(Array.isArray(frontmatter["pre-agent-steps"]) && Array.isArray(frontmatter["post-steps"]));
   const outputs = frontmatter["safe-outputs"];
-  assert.deepEqual(Object.keys(outputs).sort(), ["create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"]);
+  assert.deepEqual(Object.keys(outputs).sort(), ["create-issue", "create-pull-request", "github-app", "report-failure-as-issue", "threat-detection"]);
+  assert.deepEqual(outputs["create-issue"], {
+    "target-repo": project.repo,
+    "title-prefix": "[sdlc-drift] ",
+    labels: ["automated", "sdlc-drift", "drift-report"],
+    "close-older-issues": true,
+    "close-older-key": `sdlc-drift-report-${project.projectKey}`,
+    max: 1,
+  }, "one drift report per run, in the target repository, superseding only this workflow's earlier report (SPEC-02 AC44)");
+  assert.equal("noop" in outputs, false, "no explicit noop: an opt-in would make the compiler expect a maintenance workflow that the fleet does not keep");
   assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", repoName] });
   assert.equal(outputs["report-failure-as-issue"], false);
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
@@ -224,13 +233,31 @@ test("AC25: the prompt body carries the instructions (inline first, then the fil
   }
 });
 
-test("AC25: pre-agent-steps holds exactly the three S2 scripts in order, with one snapshot step and no per-entry hook", () => {
-  const steps = fixtureRender().frontmatter["pre-agent-steps"];
-  assert.equal(steps.length, 3);
+/** The five S2 steps that every drift workflow runs before its agent, in order (AC25; SPEC-02 AC3, AC41). */
+function assertS2PreAgentSteps(steps, key) {
   assert.ok(steps[0].run.startsWith('node "$GITHUB_WORKSPACE/src/drift/prepare-run.mjs"'));
   assert.ok(steps[1].run.startsWith('node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs"'));
-  assert.ok(steps[2].run.startsWith('node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs"'));
+  assert.deepEqual(steps[2], {
+    name: "Find the watch index of the previous run",
+    env: { GH_TOKEN: "${{ github.token }}" },
+    run: `node "$GITHUB_WORKSPACE/src/drift/previous-watch-index.mjs" --out /tmp/gh-aw/agent --workflow drift-${key}.lock.yml --artifact sdlc-watch-index-${key}`,
+  });
+  assert.ok(steps[3].run.startsWith('node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs"'));
+  assert.ok(steps[3].run.endsWith(" --previous /tmp/gh-aw/agent/previous"), "the snapshot compares with what the step before it fetched");
+  assert.deepEqual(steps[4], {
+    name: "Upload the watch index",
+    if: "inputs.dry_run != true",
+    uses: "actions/upload-artifact@v4",
+    with: { name: `sdlc-watch-index-${key}`, path: "/tmp/gh-aw/agent/sources/watch-index.json", "if-no-files-found": "error" },
+  }, "a dry run uploads no index, so it is never the next run's baseline");
   assert.equal(steps.filter((step) => String(step.run).includes("snapshot-watch-sources.mjs")).length, 1);
+}
+
+test("AC25: pre-agent-steps holds exactly the five S2 steps in order, with one snapshot step and no per-entry hook", () => {
+  const steps = fixtureRender().frontmatter["pre-agent-steps"];
+  assert.equal(steps.length, 5);
+  assertS2PreAgentSteps(steps, "alpha-service");
+  for (const key of DRIFT_KEYS) assertS2PreAgentSteps(generated(key).frontmatter["pre-agent-steps"], key);
 });
 
 /** The minimal manifest with an agentSandbox on its drift project, rendered: the drift workflow of alpha-service, parsed, or the refusal. */
@@ -248,16 +275,16 @@ function renderSandbox(agentSandbox, renderRequest = request, change = () => und
   }
 }
 
-test("AC25: agentSandbox.installDependencies adds one fourth pre-agent step, after the three S2 scripts, that installs the dependencies of the target without running their scripts; without it there are exactly three", () => {
+test("AC25: agentSandbox.installDependencies adds one last pre-agent step, after the five S2 steps, that installs the dependencies of the target without running their scripts; without it there are exactly five", () => {
   const plain = renderSandbox(undefined).frontmatter["pre-agent-steps"];
-  assert.equal(plain.length, 3);
+  assert.equal(plain.length, 5);
   for (const agentSandbox of [{}, { installDependencies: false }, { bashCommands: ["awk"] }]) {
     assert.deepEqual(renderSandbox(agentSandbox).frontmatter["pre-agent-steps"], plain, `${JSON.stringify(agentSandbox)} asks for no step`);
   }
   const steps = renderSandbox({ installDependencies: true }).frontmatter["pre-agent-steps"];
-  assert.equal(steps.length, 4);
-  assert.deepEqual(steps.slice(0, 3), plain, "the three S2 steps are what they were");
-  assert.deepEqual(steps[3], { name: "Install target checkout dependencies for in-sandbox validation", "working-directory": "alpha-service", run: "npm ci --ignore-scripts" });
+  assert.equal(steps.length, 6);
+  assert.deepEqual(steps.slice(0, 5), plain, "the five S2 steps are what they were");
+  assert.deepEqual(steps[5], { name: "Install target checkout dependencies for in-sandbox validation", "working-directory": "alpha-service", run: "npm ci --ignore-scripts" });
 });
 
 test("AC22: agentSandbox.bashCommands extend the bash allowlist with the words that they name, sorted and once each, and nothing else of the workflow changes", () => {
@@ -287,7 +314,7 @@ test("AC71: an engine that cannot enforce an allowlist keeps the wildcard that t
   assert.equal(codex.ok, true, JSON.stringify(codex.result));
   assert.equal(codex.frontmatter.engine.id, "codex");
   assert.deepEqual(codex.frontmatter.tools.bash, ["*"]);
-  assert.equal(codex.frontmatter["pre-agent-steps"].length, 4, "the install step does not depend on the engine");
+  assert.equal(codex.frontmatter["pre-agent-steps"].length, 6, "the install step does not depend on the engine");
 });
 
 test("AC25: the deduplication step names its workflow: the close-older key that its pull requests carry and its upkeepStrategy (SPEC-02 AC10)", () => {

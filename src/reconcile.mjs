@@ -509,6 +509,11 @@ function watchHostnames(urls) {
   return uniqueSorted(urls.map((entry) => validWatchUrl(entry.url).hostname).filter(Boolean));
 }
 
+/** The hosts that the agent of a drift workflow may reach: those of the watched URLs and those of the cited pages (SPEC-02 AC3, AC43). */
+function driftHostnames(knowledgeSources) {
+  return uniqueSorted([...watchHostnames(knowledgeSources.watchUrls), ...(knowledgeSources.citedPages?.hosts ?? []).map((host) => host.toLowerCase())]);
+}
+
 /** `instructionsFile` is repository-relative (SPEC-01 AC21): it resolves against the repository root, never against the manifest's directory. */
 function readInstructionFile(cwd, relative) {
   const absolute = path.resolve(cwd, relative);
@@ -630,7 +635,7 @@ function validateSemantics(manifest, request, context) {
     (audit.agentSandbox?.bashCommands ?? []).forEach((command, position) => {
       if (FORBIDDEN_AGENT_BASH.includes(command.toLowerCase())) {
         errors.push(
-          rule("drift-bash-command-forbidden", `${where}/agentSandbox/bashCommands/${position}: '${command}' reaches the network or the GitHub API, and a drift agent publishes only through the create_pull_request safe output`),
+          rule("drift-bash-command-forbidden", `${where}/agentSandbox/bashCommands/${position}: '${command}' reaches the network or the GitHub API, and a drift agent publishes only through its create_pull_request and create_issue safe outputs`),
         );
       }
     });
@@ -682,8 +687,14 @@ const BASE_BASH = ["cat", "date", "find", "git", "grep", "head", "ls", "tail", "
  */
 const MECHANICAL_BASH = ["cd", "echo", "git", "node"];
 /**
- * Executables that no manifest may add to the bash tool of a drift agent: each of them reaches the network or the GitHub API, and the only way for a drift
- * agent to publish anything is its `create_pull_request` safe output (SPEC-02 AC28).
+ * What the agent of a drift workflow may run besides the base list, the first words of its build commands and its `agentSandbox.bashCommands`.
+ * Dry runs of drift-copilot-lab (43497657653 and, on main, 43499249738) showed the agent opening with `cd` into the artifact directory and into
+ * its checkout; the allowlist refused the whole command and the agent gave up the shell, so it wrote no audit report and failed its validator.
+ */
+const DRIFT_BASH = ["cd", "git", "node"];
+/**
+ * Executables that no manifest may add to the bash tool of a drift agent: each of them reaches the network or the GitHub API, and a drift agent
+ * publishes only through its safe outputs, the `create_pull_request` of its changes and the `create_issue` of its drift report (SPEC-02 AC28).
  */
 const FORBIDDEN_AGENT_BASH = ["curl", "gh", "wget"];
 
@@ -750,6 +761,14 @@ function permissionsSection(ctx) {
   const permissions = { contents: "read", issues: "read", "pull-requests": "read" };
   if (ctx.request.engineAuthMode === "copilot-requests") permissions["copilot-requests"] = "write";
   return permissions;
+}
+
+/**
+ * The agent job of a drift workflow also reads the Actions data of the central repository: the step before the snapshot lists the earlier runs of the
+ * workflow and downloads the watch index that the last successful one uploaded (SPEC-02 AC41), with the job's GITHUB_TOKEN.
+ */
+function driftPermissionsSection(ctx) {
+  return { actions: "read", ...permissionsSection(ctx) };
 }
 
 function apiKeyProvider(secretName) {
@@ -946,6 +965,11 @@ function readStrategyFragment(cwd, strategy) {
 }
 
 const driftCloseOlderKey = (projectKey) => `sdlc-drift-${projectKey}`;
+/** The close-older key of a drift workflow's report issue: each workflow supersedes only its own earlier report (SPEC-02 AC44). */
+const driftReportCloseOlderKey = (projectKey) => `sdlc-drift-report-${projectKey}`;
+/** The artifact that holds a run's watch index; the next run compares its snapshots with it (SPEC-02 AC41, AC42). */
+const watchIndexArtifact = (projectKey) => `sdlc-watch-index-${projectKey}`;
+const PREVIOUS_INDEX_DIR = `${AGENT_DIR}/previous`;
 
 /**
  * What the agent of a drift workflow has inside its sandbox besides what every drift workflow gives it (SPEC-01 AC21, AC25). Both settings are opt-in, so a
@@ -992,9 +1016,23 @@ function driftPreAgentSteps(ctx, project) {
         ` --close-older-key ${shArg(driftCloseOlderKey(key))} --upkeep-strategy ${shArg(project.driftAudit.upkeepStrategy)}`,
     },
     {
+      name: "Find the watch index of the previous run",
+      env: { GH_TOKEN: expr("github.token") },
+      run:
+        `node "$GITHUB_WORKSPACE/src/drift/previous-watch-index.mjs" --out ${AGENT_DIR}` +
+        ` --workflow ${shArg(`drift-${key}.lock.yml`)} --artifact ${shArg(watchIndexArtifact(key))}`,
+    },
+    {
       name: "Snapshot watched sources and package manifests",
       env: { CONFIGURED_TARGET_REPO: project.repo },
-      run: `node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs" --out ${AGENT_DIR} --project ${shArg(key)} --checkout ${shArg(checkoutPath)}`,
+      run: `node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs" --out ${AGENT_DIR} --project ${shArg(key)} --checkout ${shArg(checkoutPath)} --previous ${PREVIOUS_INDEX_DIR}`,
+    },
+    {
+      // a dry run is not a baseline: what its agent saw was not reviewed, so the next run must see it again (SPEC-02 AC41)
+      name: "Upload the watch index",
+      if: DRIFT_DRY_RUN_GUARD,
+      uses: "actions/upload-artifact@v4",
+      with: { name: watchIndexArtifact(key), path: `${AGENT_DIR}/sources/watch-index.json`, "if-no-files-found": "error" },
     },
   ];
   if (agentSandboxOf(project.driftAudit).installDependencies) {
@@ -1068,6 +1106,52 @@ function driftBody(ctx, project) {
     lines.push("");
     for (const entry of urls) lines.push(`- ${oneLine(entry.label)} (${entry.kind}): ${oneLine(entry.url)}`);
   }
+  const cited = audit.knowledgeSources.citedPages;
+  if (cited) {
+    const code = (values) => values.map((value) => `\`${oneLine(value)}\``);
+    const list = (values) => (values.length < 3 ? values.join(" and ") : `${values.slice(0, -1).join(", ")} and ${values.at(-1)}`);
+    lines.push("");
+    lines.push(
+      `The snapshot step also saved the text of the pages that this repository cites most: up to ${cited.maxPages ?? 50} pages on ${list(code(cited.hosts))} that files matching ${list(code(cited.include))} link to, under \`${AGENT_DIR}/sources/cited/\`. \`manifest.json\` lists each of them with the files that cite it.`,
+    );
+  }
+  lines.push("");
+  lines.push("## What changed since the last run");
+  lines.push("");
+  lines.push(
+    `Start with \`${AGENT_DIR}/sources/changes.md\`. It compares this run's snapshots with the watch index of the last successful run (its first line names that run, or says that there is none and why) and lists the changelog, feed and release entries that are new since then, each once with the sources that list it, the pages and cited pages whose text changed, with the files of this repository that cite them, and the sources that could not be fetched.`,
+  );
+  lines.push("");
+  lines.push(
+    "When a source's first page lists none of the entries that the baseline knew, the snapshot step has read its older pages until one does, up to a limit; a source that still does not reach the baseline is listed under `## Possible gaps` with the period that neither run saw. Open the older pages of that source for that period yourself, decide those entries as well, and name the gap under `## Limitations` when you cannot.",
+  );
+  lines.push("");
+  lines.push(
+    "That list is your work list, and every item of it gets a decision. Triage each item first from its title and excerpt: search this repository for the feature, setting or product that it names. Open, read and corroborate the items that touch something this repository covers or should cover, and fetch an entry or a page with the `web_fetch` tool whenever its excerpt is not enough to decide (the shell has no `curl`, `wget` or `gh`, and refuses a redirection or a heredoc; the hosts of the watched URLs and of the cited pages are reachable); an item that does not concern this repository needs one line that says why. A long list is no reason to skip items: decide each one.",
+  );
+  lines.push("");
+  lines.push("## Drift report");
+  lines.push("");
+  lines.push(
+    `End every run with exactly one \`create_issue\` call: the drift report, which a human reads whether or not you also open a pull request. File it also when the work list is empty and nothing needs to change: then the report says that nothing changed since the baseline, so that no run is silent. Title it \`Drift report: ${oneLine(project.projectKey)} YYYY-MM-DD\` with the current UTC date (the \`[sdlc-drift] \` prefix is added for you).`,
+  );
+  lines.push("");
+  lines.push(
+    "When the registration instructions above define a report of their own (such as `docs/_meta/audit-report.md` or `self-improvement-report.md`), write that report as they say on every run, a dry run and a run that changes nothing included, because the checks that run after you look for it; the body of the issue is that report followed by the `## Watched-source changes` section below. Otherwise the body has these sections, in this order:",
+  );
+  lines.push("");
+  lines.push("- `## Summary`: the baseline run, what changed upstream since then and what this run did, including the pull request that it opened, if any.");
+  lines.push(
+    "- `## Watched-source changes`: one line for each item of the work list: the item (linked), its decision (`applied` in the pull request, `recommended`, `not relevant` or `could not confirm`) and the source or the reason.",
+  );
+  lines.push(
+    "- `## Recommendations`: what a human should consider that this run did not change: content that the sources announce and this repository does not cover yet (a new feature, setting, limit or retirement that deserves a lab step, a slide or a reference note), judgement calls, and claims that you could not corroborate, each with its source URL and the files that it concerns.",
+  );
+  lines.push("- `## Limitations`: the sources that could not be fetched, the possible gaps that you could not close and the checks that could not run.");
+  lines.push("");
+  lines.push(
+    `Call \`create_pull_request\` before \`create_issue\` and name the pull request in the report. In a dry run call neither: \`${AGENT_DIR}/dry-run-proposal.json\` exists already with \`null\` under \`proposal\` and \`report\`; replace the \`null\` of \`report\` with the report that you would have filed, \`{ "title": ..., "body": ... }\`, using the edit tool: the shell of this workflow refuses a redirection or a heredoc.`,
+  );
   lines.push("");
   lines.push("## Package manifests");
   lines.push("");
@@ -1102,7 +1186,7 @@ function driftBody(ctx, project) {
   lines.push("- Corroborate every proposed change through the Microsoft Learn and Context7 servers or by fetching the cited page.");
   lines.push("- Commit rebuilt outputs and source edits to the working branch before you call `create_pull_request`.");
   lines.push(
-    `- Never run ${"`" + gitCommand("push") + "`"}, ${"`" + ["gh", "pr"].join(" ") + "`"} or a write-method \`${["gh", "api"].join(" ")}\` call and never merge: the pull request is created only through the \`create_pull_request\` safe output.`,
+    `- Never run ${"`" + gitCommand("push") + "`"}, ${"`" + ["gh", "pr"].join(" ") + "`"} or a write-method \`${["gh", "api"].join(" ")}\` call and never merge: pull requests and issues are created only through the \`create_pull_request\` and \`create_issue\` safe outputs.`,
   );
   lines.push("- The verification commands run after you finish; fix the cause of a failure rather than working around it.");
   lines.push("- If you find no drift, record that outcome and do not open a pull request.");
@@ -1128,8 +1212,8 @@ function renderDrift(ctx, project) {
       bots: [ctx.bot],
     },
     concurrency: { group: `sdlc-drift-${key}`, "cancel-in-progress": false },
-    permissions: permissionsSection(ctx),
-    network: { allowed: watchHostnames(audit.knowledgeSources.watchUrls) },
+    permissions: driftPermissionsSection(ctx),
+    network: { allowed: driftHostnames(audit.knowledgeSources) },
     checkout: [{ repository: project.repo, path: checkoutPath, current: true, "github-app": appBlock(ctx, [checkoutPath]) }],
     "mcp-servers": sortKeysDeep(audit.knowledgeSources.mcpServers),
     "pre-agent-steps": driftPreAgentSteps(ctx, project),
@@ -1156,9 +1240,19 @@ function renderDrift(ctx, project) {
         max: 1,
         "max-patch-size": 10240,
       },
+      // the drift report: what the run looked at, what it changed and what a human should consider, in the target repository; every run that is
+      // not a dry run files one, also when nothing changed, so that a run is never silent (SPEC-02 AC44)
+      "create-issue": {
+        "target-repo": project.repo,
+        "title-prefix": "[sdlc-drift] ",
+        labels: ["automated", "sdlc-drift", "drift-report"],
+        "close-older-issues": true,
+        "close-older-key": driftReportCloseOlderKey(key),
+        max: 1,
+      },
     },
     engine: engineSection(ctx, { sdk: true }),
-    tools: { "web-fetch": {}, bash: bashTool(ctx, ["git", "node", ...audit.buildCommands, ...agentSandboxOf(audit).bashCommands]), edit: {} },
+    tools: { "web-fetch": {}, bash: bashTool(ctx, [...DRIFT_BASH, ...audit.buildCommands, ...agentSandboxOf(audit).bashCommands]), edit: {} },
     jobs: { ...agentSuccessGuards({ drift: true }), escalate_failure: driftEscalation(ctx, project, workflowId) },
   };
   return { id: workflowId, kind: "drift", project, text: serializeWorkflow(frontmatter, driftBody(ctx, project)) };
@@ -2377,7 +2471,7 @@ export function buildAcks(request, options = {}) {
       workflowId: `drift-${project.projectKey}`,
       lockPath: `${WORKFLOWS_DIR}/drift-${project.projectKey}.lock.yml`,
       targetRepo: project.repo,
-      allowedNetworkDomains: watchHostnames(project.driftAudit.knowledgeSources.watchUrls),
+      allowedNetworkDomains: driftHostnames(project.driftAudit.knowledgeSources),
       gateCommands: [...project.driftAudit.verifyCommands],
     }));
   const edges = manifest.dependencyEdges;

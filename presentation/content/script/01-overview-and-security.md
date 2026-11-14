@@ -58,7 +58,7 @@ S2 watches the upstream repositories on the left that have a drift audit enabled
 
 DO: Hover S3.
 
-When one of those pull requests merges, S3 learns about it two ways. The upstream sends a push signal at the moment of the merge, and S3 also polls every six hours as a safety net, so a direct push or a dropped signal still gets caught.
+When one of those pull requests merges, S3 learns about it two ways. A merge in this repository sends a push signal at once, and S3 polls every upstream four times a day, so a merge anywhere else, a direct push or a dropped signal still gets caught.
 
 DO: Hover S4.
 

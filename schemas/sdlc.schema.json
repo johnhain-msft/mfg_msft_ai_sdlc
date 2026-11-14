@@ -135,7 +135,23 @@
               }
             },
             "packageManifests": { "type": "array", "items": { "type": "string" } },
-            "mcpServers": { "type": "object" }
+            "mcpServers": { "type": "object" },
+            "citedPages": {
+              "description": "Optional: documentation pages that the target's own files cite. The snapshot step reads every file of the target checkout that matches an include pattern, collects the URLs on the listed hosts that they cite, and snapshots the text of the most cited pages (at most maxPages, default 50), so that a run can tell which cited page changed since the previous one. The hosts are added to network.allowed.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["include", "hosts"],
+              "properties": {
+                "include": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/definitions/globEntry" } },
+                "hosts": {
+                  "type": "array",
+                  "minItems": 1,
+                  "uniqueItems": true,
+                  "items": { "type": "string", "pattern": "^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$" }
+                },
+                "maxPages": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 }
+              }
+            }
           }
         },
         "buildCommands": { "$ref": "#/definitions/commandList" },
