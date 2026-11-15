@@ -101,9 +101,42 @@ test("9a49f71: the mechanical cascades run the browser gate that ubuntu-latest c
   for (const edge of mechanical.filter((e) => e.downstreamRepo === "johnhain-msft/portfolio")) assert.equal(edge.verifyCommands.at(-1), BROWSER_GATE, edge.edgeId);
   assert.deepEqual(mechanical.find((e) => e.edgeId === "copilot-config").verifyCommands, [
     "aiam validate",
-    "pytest -q",
+    "python -m pytest -q",
     "aiam release build --out /tmp/aiam-verify-dist",
   ]);
+});
+
+// Runs 43645598635 and 43647886060, the first cascades of the copilot-config edge, show three more gates that only the first live import reaches. The downstream's
+// tests import a top-level module that only `python -m pytest` puts on sys.path, as its own CI runs them. Its importer rewrites .github/CODEOWNERS and the README.md
+// of assets, which the blocking protected-files policy refuses whatever allowed-files says. And its first import changes 170 files, past the handler's default of 100.
+test("43645598635: the copilot-config cascade runs pytest as the downstream's CI does, un-protects the files its importer rewrites and allows a whole-catalog patch", () => {
+  const id = "cascade-mechanical-copilot-config";
+  for (const [label, workflow] of versions(`${id}.md`)) {
+    const handler = workflow.frontmatter["safe-outputs"]["create-pull-request"];
+    assert.deepEqual(handler["protected-files"], { policy: "blocked", exclude: ["/.github/CODEOWNERS", "README.md"] }, label);
+    assert.equal(handler["max-patch-files"], 1000, label);
+    const runs = workflow.frontmatter["post-steps"].map((step) => step.run);
+    assert.ok(runs.includes("python -m pytest -q"), label);
+    assert.equal(runs.includes("pytest -q"), false, `${label}: the console script leaves the repository root off sys.path`);
+  }
+  const steps = agentSteps(id);
+  assert.ok(steps.some((step) => step.run === "python -m pytest -q" && step["working-directory"] === "ai_asset_management"), "the lock runs the module form");
+  assert.equal(steps.some((step) => step.run === "pytest -q"), false);
+  const lock = lockOf(id);
+  for (const [job, key] of [
+    ["agent", "GH_AW_SAFE_OUTPUTS_CONFIG"],
+    ["safe_outputs", "GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG"],
+  ]) {
+    const [config] = lock.jobs[job].steps.filter((step) => Object.hasOwn(step.env ?? {}, key)).map((step) => JSON.parse(step.env[key]).create_pull_request);
+    assert.equal(config.max_patch_files, 1000, `${id}: ${key}`);
+  }
+  const [handler] = lock.jobs.safe_outputs.steps
+    .filter((step) => Object.hasOwn(step.env ?? {}, "GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG"))
+    .map((step) => JSON.parse(step.env.GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG).create_pull_request);
+  assert.equal(handler.protected_files_policy, "blocked");
+  assert.deepEqual(handler.protected_files_path_exclude, [".github/CODEOWNERS"], "the one CODEOWNERS file the importer writes, by its exact path");
+  assert.equal(handler.protected_files.includes("README.md"), false, "README.md is writable, within allowed-files");
+  assert.ok(handler.protected_files.includes("CODEOWNERS"), "a CODEOWNERS file at any other path stays protected");
 });
 
 test("9a49f71: the AI cascades also run the narrowed browser gate that ubuntu-latest can run, without the full Segoe UI browser suite", () => {

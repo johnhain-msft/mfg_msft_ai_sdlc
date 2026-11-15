@@ -245,6 +245,25 @@ test("AC34: every cascade handler (mechanical and AI adaptation) raises the patc
   }
 });
 
+test("AC73: an edge's maxPatchFiles becomes its handler's max-patch-files, mechanical or AI adaptation; an edge without one renders no such key", () => {
+  assert.equal("max-patch-files" in frontmatter["safe-outputs"]["create-pull-request"], false, "the preset's ghec-admin edge sets none");
+  const manifest = mutate(presetManifest(), (copy) => {
+    edgeOf(copy, "ghec-admin").maxPatchFiles = 250;
+    edgeOf(copy, "copilot-lab").maxPatchFiles = 300;
+  });
+  const workspace = createWorkspace({ manifestText: toYaml(manifest), instructions: true });
+  try {
+    const result = renderFleet(request, { cwd: workspace.dir });
+    assert.ok(result.ok, JSON.stringify(result.result));
+    const handlerOf = (name) => parseWorkflow(result.files.get(`${W}/${name}`)).frontmatter["safe-outputs"]["create-pull-request"];
+    assert.equal(handlerOf(NAME)["max-patch-files"], 250);
+    assert.equal(handlerOf("cascade-ai-copilot-lab.md")["max-patch-files"], 300);
+    assert.equal("max-patch-files" in handlerOf("cascade-ai-pipeline-showcase.md"), false);
+  } finally {
+    workspace.cleanup();
+  }
+});
+
 test("AC32: the agent may cd into the downstream checkout, as the prompt tells it to, and run echo, git, node and the first word of every import and build command", () => {
   assert.deepEqual(frontmatter.tools.bash, ["cat", "cd", "date", "echo", "find", "git", "grep", "head", "ls", "node", "npm", "tail", "wc"]);
   assert.ok(committed.body.includes('cd "$GITHUB_WORKSPACE/portfolio"'), "the prompt begins with the cd that the allowlist has to permit");

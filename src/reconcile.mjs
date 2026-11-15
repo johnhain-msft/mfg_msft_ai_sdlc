@@ -2115,6 +2115,8 @@ function renderCascade(ctx, edge) {
     // size limit (in KB); 10 MB leaves room for them.
     "max-patch-size": 10240,
   };
+  // the handler's own file limit (100) stands unless the edge raises it for an import that rewrites a whole catalog
+  if (edge.maxPatchFiles !== undefined) handler["max-patch-files"] = edge.maxPatchFiles;
   const frontmatter = {
     on: {
       workflow_dispatch: { inputs: inputsOf(mechanical ? MECHANICAL_INPUTS : AI_INPUTS, DISPATCH_DESCRIPTIONS) },

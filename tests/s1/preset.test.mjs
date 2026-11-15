@@ -218,7 +218,7 @@ test("AC7: every portfolio edge's verifyCommands list the five portfolio gates i
   }
   assert.deepEqual(edgeOf(manifest, "copilot-config").verifyCommands, [
     "aiam validate",
-    "pytest -q",
+    "python -m pytest -q",
     "aiam release build --out /tmp/aiam-verify-dist",
   ]);
 });

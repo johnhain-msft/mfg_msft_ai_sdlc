@@ -236,6 +236,11 @@
         "adaptationInstructions": { "type": "string" },
         "allowedFiles": { "type": "array", "items": { "$ref": "#/definitions/globEntry" } },
         "protectedFilesExclude": { "type": "array", "items": { "$ref": "#/definitions/protectedFilesEntry" } },
+        "maxPatchFiles": {
+          "description": "Optional largest number of files that one cascade pull request may change, rendered as create-pull-request max-patch-files; the handler refuses a larger patch, and its own limit is 100 when this is omitted.",
+          "type": "integer",
+          "minimum": 1
+        },
         "autoMerge": { "const": false },
         "syncScopes": {
           "description": "Optional list of workflow_dispatch sync_scope values that an ai-adaptation workflow accepts; all five members are accepted when omitted.",

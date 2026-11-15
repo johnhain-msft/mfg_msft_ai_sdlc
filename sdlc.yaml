@@ -891,9 +891,10 @@ dependencyEdges:
     preflightCommands: []
     acceptCommands: []
     buildCommands: []
+    # `python -m pytest`, as the repository's own CI runs it: its tests import the top-level demo module, which the bare `pytest` script leaves off sys.path.
     verifyCommands:
       - aiam validate
-      - pytest -q
+      - python -m pytest -q
       - aiam release build --out /tmp/aiam-verify-dist
     adaptationInstructions: ""
     allowedFiles:
@@ -901,7 +902,13 @@ dependencyEdges:
       - governance/upstream-provenance.json
       - governance/cowork-preferences-source.md
       - .github/CODEOWNERS
-    protectedFilesExclude: []
+    # The importer regenerates .github/CODEOWNERS and copies each asset's README.md, both protected names that the blocking policy refuses whatever
+    # allowedFiles says: the CODEOWNERS file is released by its exact path, README.md by name, and allowedFiles still confines both to the paths above.
+    protectedFilesExclude:
+      - /.github/CODEOWNERS
+      - README.md
+    # A catch-up import rewrites much of the catalog (170 files for the first one, about 500 if every asset changed); the handler's own limit is 100.
+    maxPatchFiles: 1000
     autoMerge: false
     immutableGates:
       zeroDiffPaths: []

@@ -286,6 +286,14 @@ test("AC55: protectedFilesExclude entries are basenames, prefixes or rooted path
   assert.ok(!accepts(withList("README.md")));
 });
 
+test("AC73: maxPatchFiles is an optional positive integer of an edge", () => {
+  const withLimit = (value) => mutate(base(), (copy) => (firstEdge(copy).maxPatchFiles = value));
+  assert.equal(schema.definitions.edge.required.includes("maxPatchFiles"), false);
+  assert.ok(accepts(base()), "an edge without it validates");
+  for (const good of [1, 100, 1000]) assert.ok(accepts(withLimit(good)), String(good));
+  for (const bad of [0, -1, 1.5, "100", null]) assert.ok(!accepts(withLimit(bad)), JSON.stringify(bad));
+});
+
 test("AC65, AC66, AC69: a manifest that asks for allow-workflows, staging or a safe-outputs token fails validation", () => {
   for (const key of ["allowWorkflows", "allow-workflows", "staged", "githubToken", "github-token"]) {
     rejectsNaming(mutate(base(), (copy) => (copy[key] = true)), `additionalProperties ${key}`);
