@@ -181,6 +181,8 @@ safe-outputs:
       policy: blocked
       exclude:
         - /.github/CODEOWNERS
+        - /assets/skills/ai-landing-zone-design/DESIGN.md
+        - /assets/skills/slide-review/scripts/requirements.txt
         - README.md
     max: 1
     max-patch-size: 10240

@@ -107,13 +107,19 @@ test("9a49f71: the mechanical cascades run the browser gate that ubuntu-latest c
 });
 
 // Runs 43645598635 and 43647886060, the first cascades of the copilot-config edge, show three more gates that only the first live import reaches. The downstream's
-// tests import a top-level module that only `python -m pytest` puts on sys.path, as its own CI runs them. Its importer rewrites .github/CODEOWNERS and the README.md
-// of assets, which the blocking protected-files policy refuses whatever allowed-files says. And its first import changes 170 files, past the handler's default of 100.
-test("43645598635: the copilot-config cascade runs pytest as the downstream's CI does, un-protects the files its importer rewrites and allows a whole-catalog patch", () => {
+// tests import a top-level module that only `python -m pytest` puts on sys.path, as its own CI runs them. Its importer writes files with protected names, which the
+// blocking protected-files policy refuses whatever allowed-files says: .github/CODEOWNERS and the README.md of whole skills in the first import, and the catalog's one
+// DESIGN.md and one requirements.txt in any later import that changes them. And its first import changes 170 files, past the handler's default of 100.
+const COPILOT_CONFIG_PATH_EXCLUDES = [
+  ".github/CODEOWNERS",
+  "assets/skills/ai-landing-zone-design/DESIGN.md",
+  "assets/skills/slide-review/scripts/requirements.txt",
+];
+test("43645598635: the copilot-config cascade runs pytest as the downstream's CI does, un-protects the files its importer writes and allows a whole-catalog patch", () => {
   const id = "cascade-mechanical-copilot-config";
   for (const [label, workflow] of versions(`${id}.md`)) {
     const handler = workflow.frontmatter["safe-outputs"]["create-pull-request"];
-    assert.deepEqual(handler["protected-files"], { policy: "blocked", exclude: ["/.github/CODEOWNERS", "README.md"] }, label);
+    assert.deepEqual(handler["protected-files"], { policy: "blocked", exclude: [...COPILOT_CONFIG_PATH_EXCLUDES.map((path) => `/${path}`), "README.md"] }, label);
     assert.equal(handler["max-patch-files"], 1000, label);
     const runs = workflow.frontmatter["post-steps"].map((step) => step.run);
     assert.ok(runs.includes("python -m pytest -q"), label);
@@ -134,9 +140,9 @@ test("43645598635: the copilot-config cascade runs pytest as the downstream's CI
     .filter((step) => Object.hasOwn(step.env ?? {}, "GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG"))
     .map((step) => JSON.parse(step.env.GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG).create_pull_request);
   assert.equal(handler.protected_files_policy, "blocked");
-  assert.deepEqual(handler.protected_files_path_exclude, [".github/CODEOWNERS"], "the one CODEOWNERS file the importer writes, by its exact path");
+  assert.deepEqual(handler.protected_files_path_exclude, COPILOT_CONFIG_PATH_EXCLUDES, "each protected file the catalog holds, by its exact path");
   assert.equal(handler.protected_files.includes("README.md"), false, "README.md is writable, within allowed-files");
-  assert.ok(handler.protected_files.includes("CODEOWNERS"), "a CODEOWNERS file at any other path stays protected");
+  for (const name of ["CODEOWNERS", "DESIGN.md", "requirements.txt"]) assert.ok(handler.protected_files.includes(name), `a ${name} at any other path stays protected`);
 });
 
 test("9a49f71: the AI cascades also run the narrowed browser gate that ubuntu-latest can run, without the full Segoe UI browser suite", () => {
