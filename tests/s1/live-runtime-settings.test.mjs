@@ -108,8 +108,9 @@ test("9a49f71: the mechanical cascades run the browser gate that ubuntu-latest c
 
 // Runs 43645598635 and 43647886060, the first cascades of the copilot-config edge, show three more gates that only the first live import reaches. The downstream's
 // tests import a top-level module that only `python -m pytest` puts on sys.path, as its own CI runs them. Its importer writes files with protected names, which the
-// blocking protected-files policy refuses whatever allowed-files says: .github/CODEOWNERS and the README.md of whole skills in the first import, and the catalog's one
-// DESIGN.md and one requirements.txt in any later import that changes them. And its first import changes 170 files, past the handler's default of 100.
+// blocking protected-files policy refuses whatever allowed-files says: .github/CODEOWNERS and README.md files in the first import (12 deleted with retired skills, 1
+// added), and the catalog's one DESIGN.md and one requirements.txt in any later import that changes them. And its first import changes 170 files, past the
+// handler's default of 100.
 const COPILOT_CONFIG_PATH_EXCLUDES = [
   ".github/CODEOWNERS",
   "assets/skills/ai-landing-zone-design/DESIGN.md",

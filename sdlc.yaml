@@ -903,9 +903,10 @@ dependencyEdges:
       - governance/cowork-preferences-source.md
       - .github/CODEOWNERS
     # The importer writes files with protected names, which the blocking policy refuses whatever allowedFiles says. It regenerates .github/CODEOWNERS
-    # and adds or deletes the README.md of whole skills (13 in the first import), so README.md is released by name. The catalog's other protected
-    # names, one DESIGN.md and one requirements.txt, are released by exact path, so those names stay protected at every other path. allowedFiles
-    # still confines all of them to the paths above. A protected name that a later skill brings fails the cascade closed until its path is added here.
+    # and adds or deletes README.md files as skills change (the first import deletes 12 with retired skills and adds 1), so README.md is released by
+    # name. The catalog's other protected names, one DESIGN.md and one requirements.txt, are released by exact path, so those names stay protected at
+    # every other path. allowedFiles still confines all of them to the paths above. A protected name that a later skill brings fails the cascade closed
+    # until its path is added here.
     protectedFilesExclude:
       - /.github/CODEOWNERS
       - /assets/skills/ai-landing-zone-design/DESIGN.md
