@@ -73,7 +73,7 @@ test("AC1: every driftAudit block of the preset has exactly the keys of the C2 c
   for (const project of presetManifest().projects) {
     const audit = project.driftAudit;
     assert.deepEqual(Object.keys(audit).filter((key) => key !== "agentSandbox").sort(), [...DRIFT_AUDIT_KEYS].sort(), `${project.projectKey}: the driftAudit keys`);
-    assert.equal("agentSandbox" in audit, project.projectKey === "gh-admin-msft", `${project.projectKey}: the one optional key, agentSandbox, is the one of the project that asks for it`);
+    assert.equal("agentSandbox" in audit, ["gh-admin-msft", "copilot-lab"].includes(project.projectKey), `${project.projectKey}: the one optional key, agentSandbox, is the one of the projects that ask for it`);
     assert.deepEqual(Object.keys(audit.knowledgeSources).filter((key) => key !== "citedPages").sort(), ["mcpServers", "packageManifests", "watchUrls"], `${project.projectKey}: the knowledgeSources keys`);
     const cited = audit.knowledgeSources.citedPages;
     assert.equal(cited !== undefined, ["gh-admin-msft", "copilot-lab"].includes(project.projectKey), `${project.projectKey}: the one optional knowledgeSources key, citedPages, is the one of the projects that ask for it`);

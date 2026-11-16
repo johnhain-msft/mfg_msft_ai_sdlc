@@ -33,7 +33,8 @@ const PLANS = {
   "self-improving-agents": {
     files: labFiles,
     failures: [
-      { command: 'node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" --self-improve', prepare: (gate) => gate.remove("docs/_meta/self-improvement-report.md") },
+      // a registry without a key fails every run; a missing report fails only a run that commits something (SPEC-02 AC23), and these runs commit nothing
+      { command: 'node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" --self-improve', prepare: (gate) => gate.write("docs/_meta/registry.yaml", withoutTopLevelKey(labFiles()["docs/_meta/registry.yaml"], "audit")) },
       { command: "the isolated GH_DATA_DIR gate", env: { SDLC_S2_NPM_FAIL: JSON.stringify(["test"]) } },
     ],
   },

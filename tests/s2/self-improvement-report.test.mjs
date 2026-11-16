@@ -23,6 +23,10 @@ let out;
 before(() => {
   repo = createRepo(labFiles());
   base = repo.head();
+  // the run has committed a change, so it proposes a pull request and its working tree is held to the report (SPEC-02 AC23: a run that commits
+  // nothing is not asked for the report file, since gh-aw makes a pull request only of commits)
+  repo.write("labs/proposed-change.md", "# a change that the run committed\n");
+  repo.commitAll("the run's change");
   out = tempDir("sdlc-s2-selfimprove-");
 });
 

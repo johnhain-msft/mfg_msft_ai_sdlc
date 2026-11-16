@@ -74,13 +74,18 @@ test("61f0678: drift-gh-admin-msft lets its agent run the text tools of its vali
 
 // Dry runs 43497657653 (this branch) and 43499249738 (main) of drift-copilot-lab: the agent opened with `cd` into the artifact directory and into
 // its checkout, the allowlist refused the whole command, and the agent gave up the shell, wrote no audit report and failed the validator. `cd`
-// reaches nothing, so every drift workflow allows it, as the mechanical cascades do.
-test("61f0678: the other drift workflows keep the allowlist that cd, git, node and their build commands give them", () => {
-  for (const key of ["copilot-lab", "self-improving-agents"]) {
+// reaches nothing, so every drift workflow allows it, as the mechanical cascades do. Run 43716421196 of drift-copilot-lab (issue #14) did the same
+// over `sed` and `cut`, so the lab's audit has those two text tools as well.
+const DRIFT_BASE_BASH = ["cat", "cd", "curl", "date", "find", "git", "grep", "head", "ls", "node", "tail", "wc"];
+test("61f0678: the other drift workflows keep the allowlist that cd, git, node and their build commands give them, and the lab's audit adds sed and cut", () => {
+  for (const [key, bash] of [
+    ["copilot-lab", [...DRIFT_BASE_BASH, "cut", "sed"].sort()],
+    ["self-improving-agents", DRIFT_BASE_BASH],
+  ]) {
     for (const [label, workflow] of versions(`drift-${key}.md`)) {
-      assert.deepEqual(workflow.frontmatter.tools.bash, ["cat", "cd", "curl", "date", "find", "git", "grep", "head", "ls", "node", "tail", "wc"], `${key} ${label}`);
+      assert.deepEqual(workflow.frontmatter.tools.bash, bash, `${key} ${label}`);
     }
-    assert.ok(shellCommands(`drift-${key}`).includes("cd"), `${key}: the lock lets the agent run cd`);
+    for (const word of bash) assert.ok(shellCommands(`drift-${key}`).includes(word), `${key}: the lock lets the agent run ${word}`);
   }
 });
 

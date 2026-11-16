@@ -69,9 +69,11 @@ test("AC5: driftAudit.enabled is true for exactly gh-admin-msft, copilot-lab and
 // the sandbox; 61f0678: the allowlist refused the text tools of the validators). They are data of the manifest, so that no reconcile can take them out again.
 const GH_ADMIN_MSFT_BASH_COMMANDS = ["awk", "cd", "cut", "diff", "echo", "jq", "mkdir", "npm", "python3", "rg", "sed", "sort", "tr", "uniq", "xargs"];
 
-test("AC5: the gh-admin-msft agent has its dependencies installed before it starts and the text tools of its validators, and no other project asks for either", () => {
+test("AC5: the gh-admin-msft agent has its dependencies installed before it starts and the text tools of its validators, the lab's audit agent has sed and cut, and no other project asks for either", () => {
   assert.deepEqual(projectOf(manifest, "gh-admin-msft").driftAudit.agentSandbox, { installDependencies: true, bashCommands: GH_ADMIN_MSFT_BASH_COMMANDS });
-  for (const project of manifest.projects.filter((candidate) => candidate.projectKey !== "gh-admin-msft")) {
+  // run 43716421196 (issue #14): the allowlist refused the agent's sed and cut reads, and it gave up writing its audit report
+  assert.deepEqual(projectOf(manifest, "copilot-lab").driftAudit.agentSandbox, { bashCommands: ["cut", "sed"] });
+  for (const project of manifest.projects.filter((candidate) => !["gh-admin-msft", "copilot-lab"].includes(candidate.projectKey))) {
     assert.equal(project.driftAudit.agentSandbox, undefined, `${project.projectKey} asks for nothing extra`);
   }
 });
