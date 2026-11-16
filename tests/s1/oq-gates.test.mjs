@@ -149,7 +149,7 @@ test("OQ32", async (t) => {
 
 test("OQ38", async (t) => {
   t.diagnostic("AC64: every create-pull-request handler carries an explicit protected-files policy of blocked");
-  assert.equal(handlerFiles.length, 10);
+  assert.equal(handlerFiles.length, 13);
   const manifest = mutate(preset, (copy) => {
     copy.protectedFilesExclude = ["notes.md", "/docs/changelog.md"];
     copy.dependencyEdges[0].protectedFilesExclude = ["/public/ghec-admin/keep.md"];
@@ -161,7 +161,7 @@ test("OQ38", async (t) => {
       const policy = parseWorkflow(files.get(name)).frontmatter["safe-outputs"]["create-pull-request"]["protected-files"];
       assert.equal(policy.policy, "blocked", name);
       const base = mdNameOf(name);
-      if (base.startsWith("drift-") || base.startsWith("sdlc-onboard")) assert.deepEqual(policy.exclude, ["/docs/changelog.md", "notes.md"], `${base}: the manifest's list`);
+      if (base.startsWith("drift-") || base.startsWith("implement-") || base.startsWith("sdlc-onboard")) assert.deepEqual(policy.exclude, ["/docs/changelog.md", "notes.md"], `${base}: the manifest's list`);
       else if (base === "cascade-mechanical-ghec-admin.md") assert.deepEqual(policy.exclude, ["/public/ghec-admin/keep.md"], `${base}: the edge's list`);
       else assert.deepEqual(policy.exclude, preset.dependencyEdges.find((edge) => base === `cascade-${edge.mode === "mechanical" ? "mechanical" : "ai"}-${edge.edgeId}.md`).protectedFilesExclude, `${base}: the edge's list`);
     }
@@ -350,7 +350,7 @@ test("AC19, AC42 and AC54: this file holds one test for each of OQ30, OQ31, OQ32
 });
 
 test("AC30, AC42 and AC54: the gated behaviours hold against every generated workflow at once (router, mechanical, AI, drift, onboarding)", () => {
-  assert.equal(mdFiles.length, 10);
+  assert.equal(mdFiles.length, 13);
   assert.ok(rendered.files.has(`${W}/cascade-router.yml`));
   const router = rendered.files.get(`${W}/cascade-router.yml`);
   assert.equal(/staged|allow-workflows|github-token|allow_workflows/.test(router), false);

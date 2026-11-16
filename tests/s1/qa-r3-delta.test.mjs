@@ -97,7 +97,7 @@ test("AC11 delta: malformed detection is rejected in every generated workflow ki
   const files = render(work, manifest);
   const originals = [...files];
   const sources = [...files.keys()].filter((file) => file.endsWith(".md"));
-  assert.equal(sources.length, 4, "drift, mechanical, AI and onboarding are all exercised");
+  assert.equal(sources.length, 5, "drift, implementation, mechanical, AI and onboarding are all exercised");
   for (const file of sources) {
     for (const value of [null, true, 17, "disabled", [], [{ "continue-on-error": false }]]) {
       const results = checkRendered(withDetection(files, file, value), referenceRequest(), manifest);

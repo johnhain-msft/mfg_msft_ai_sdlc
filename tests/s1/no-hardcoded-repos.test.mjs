@@ -82,6 +82,7 @@ test("AC59: the fixture manifest with other owners and repositories renders vali
     assert.deepEqual(result.generatedWorkflows.map((pair) => pair.sourceMd), [
       ".github/workflows/cascade-mechanical-alpha-to-beta.md",
       ".github/workflows/drift-alpha-service.md",
+      ".github/workflows/implement-alpha-service.md",
       ".github/workflows/sdlc-onboard.md",
     ]);
     const text = workspace.list(".github/workflows").filter((file) => file.endsWith(".md") || file.endsWith(".yml")).map((file) => workspace.read(file)).join("\n");

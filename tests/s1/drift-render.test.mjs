@@ -70,6 +70,25 @@ test("AC20: git ls-files lists exactly the six preset drift paths", () => {
   assert.deepEqual(trackedFiles(`${W}/drift-*`), expected);
 });
 
+/** The job that starts the implementation of the report that a run filed (SPEC-02 AC46). */
+const implementReportJob = (key) => ({
+  needs: ["safe_outputs"],
+  if: "needs.safe_outputs.result == 'success' && needs.safe_outputs.outputs.created_issue_number != '' && inputs.dry_run != true",
+  permissions: { actions: "write" },
+  steps: [
+    {
+      name: "Start the implementation of the drift report",
+      env: {
+        GH_TOKEN: "${{ github.token }}",
+        WORKFLOW_FILE: `implement-${key}.lock.yml`,
+        REPORT_ISSUE: "${{ needs.safe_outputs.outputs.created_issue_number }}",
+        CORRELATION_ID: "${{ inputs.correlation_id || format('run-{0}-{1}', github.run_id, github.run_attempt) }}",
+      },
+      run: 'gh workflow run "$WORKFLOW_FILE" --repo "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME" -f report_issue="$REPORT_ISSUE" -f correlation_id="$CORRELATION_ID"',
+    },
+  ],
+});
+
 function assertContract(frontmatter, project) {
   const audit = project.driftAudit;
   const repoName = project.repo.split("/")[1];
@@ -97,17 +116,16 @@ function assertContract(frontmatter, project) {
     "target-repo": project.repo,
     "title-prefix": "[sdlc-drift] ",
     labels: ["automated", "sdlc-drift", "drift-report"],
-    "close-older-issues": true,
-    "close-older-key": `sdlc-drift-report-${project.projectKey}`,
+    "close-older-issues": false,
     max: 1,
-  }, "one drift report per run, in the target repository, superseding only this workflow's earlier report (SPEC-02 AC44)");
+  }, "at most one drift report per run, in the target repository, and no report closes an earlier one (SPEC-02 AC44)");
   assert.equal("noop" in outputs, false, "no explicit noop: an opt-in would make the compiler expect a maintenance workflow that the fleet does not keep");
   assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", repoName] });
   assert.equal(outputs["report-failure-as-issue"], false);
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
   const handler = outputs["create-pull-request"];
   assert.deepEqual(Object.keys(handler).sort(), [
-    "auto-merge", "branch-prefix", "close-older-key", "close-older-pull-requests", "draft", "exclude-lock-yml", "fallback-as-issue", "labels", "max",
+    "auto-merge", "branch-prefix", "close-older-key", "close-older-pull-requests", "draft", "exclude-lock-yml", "fallback-as-issue", "if-no-changes", "labels", "max",
     "max-patch-size", "preserve-branch-name", "protected-files", "recreate-ref", "reviewers", "target-repo", "title-prefix",
   ]);
   assert.equal(handler["target-repo"], project.repo);
@@ -118,8 +136,9 @@ function assertContract(frontmatter, project) {
   assert.equal(handler.draft, audit.draft);
   assert.equal(handler["branch-prefix"], "sdlc/");
   assert.equal(handler["preserve-branch-name"], true);
-  assert.equal(handler["recreate-ref"], true);
-  assert.equal(handler["close-older-pull-requests"], true);
+  assert.equal(handler["recreate-ref"], false, "a second run of the same day does not force-push the branch of an open pull request, which would close it (SPEC-02 AC25)");
+  assert.equal(handler["if-no-changes"], "error", "a call with nothing committed fails the run, so the items that only the pull request lists are not dropped (SPEC-02 AC44)");
+  assert.equal(handler["close-older-pull-requests"], false, "an earlier pull request stays open: its items are in the next run's baseline (SPEC-02 AC25)");
   assert.equal(handler["close-older-key"], `sdlc-drift-${project.projectKey}`);
   assert.equal(handler["exclude-lock-yml"], true);
   assert.deepEqual(handler["protected-files"], { policy: "blocked", exclude: [] });
@@ -128,11 +147,15 @@ function assertContract(frontmatter, project) {
   assert.equal(handler.max, 1);
   assert.equal(handler["max-patch-size"], 10240);
   assert.ok(frontmatter.engine, "an engine key is rendered");
+  assert.deepEqual(frontmatter.engine.args, frontmatter.network.allowed.flatMap((host) => ["--allow-url", host]), "Copilot may let curl reach exactly the hosts of network.allowed (SPEC-02 AC13)");
+  assert.ok(frontmatter.tools.bash.includes("curl"), "curl reads a source page: the native web_fetch tool does not exist behind the API proxy");
+  for (const word of ["gh", "wget"]) assert.equal(frontmatter.tools.bash.includes(word), false, word);
   assert.ok("web-fetch" in frontmatter.tools);
   assert.ok(frontmatter.tools.bash.includes("git"));
   assert.ok(frontmatter.tools.bash.includes("node"), "the lab's own S2 scripts and the preset's build commands run on node");
   for (const command of audit.buildCommands) assert.ok(frontmatter.tools.bash.includes(command.trim().split(/\s+/)[0]), `bash allows the first word of '${command}'`);
-  assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure"]);
+  assert.deepEqual(Object.keys(customJobsOf(frontmatter.jobs)), ["escalate_failure", "implement_report"]);
+  assert.deepEqual(frontmatter.jobs.implement_report, implementReportJob(project.projectKey));
   const job = frontmatter.jobs.escalate_failure;
   assert.deepEqual(job.permissions, { actions: "read", contents: "read", issues: "write" });
   assert.deepEqual(job.needs, ["agent", "detection", "safe_outputs"]);
@@ -292,7 +315,8 @@ test("AC22: agentSandbox.bashCommands extend the bash allowlist with the words t
   const extended = renderSandbox({ bashCommands: ["xargs", "awk", "git", "rg", "python3"] });
   assert.deepEqual(extended.frontmatter.tools.bash, [...new Set([...plain.frontmatter.tools.bash, "awk", "python3", "rg", "xargs"])].sort());
   assert.ok(extended.frontmatter.tools.bash.length > plain.frontmatter.tools.bash.length);
-  for (const word of ["gh", "curl", "wget", "*"]) assert.equal(extended.frontmatter.tools.bash.includes(word), false, word);
+  for (const word of ["gh", "wget", "*"]) assert.equal(extended.frontmatter.tools.bash.includes(word), false, word);
+  assert.ok(plain.frontmatter.tools.bash.includes("curl"), "the renderer, not the manifest, adds curl, with the URL permission that bounds it");
   const without = (workflow) => ({ ...workflow.frontmatter, tools: { ...workflow.frontmatter.tools, bash: null } });
   assert.deepEqual(without(extended), without(plain));
   assert.equal(extended.body, plain.body);
@@ -314,6 +338,7 @@ test("AC71: an engine that cannot enforce an allowlist keeps the wildcard that t
   assert.equal(codex.ok, true, JSON.stringify(codex.result));
   assert.equal(codex.frontmatter.engine.id, "codex");
   assert.deepEqual(codex.frontmatter.tools.bash, ["*"]);
+  assert.equal("args" in codex.frontmatter.engine, false, "--allow-url is a Copilot flag: another engine gets none, and the firewall alone bounds its shell");
   assert.equal(codex.frontmatter["pre-agent-steps"].length, 6, "the install step does not depend on the engine");
 });
 

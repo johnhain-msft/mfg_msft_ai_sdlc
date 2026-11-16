@@ -124,7 +124,7 @@ test("AC9: every generated workflow allowlists the App sender and references the
     const result = await workspace.reconcile(referenceRequest());
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
     const workflows = readAll(workspace);
-    assert.equal(workflows.length, 10);
+    assert.equal(workflows.length, 13);
     for (const { name, frontmatter } of workflows) {
       assert.deepEqual(frontmatter.on.bots, ["mfg-msft-ai-sdlc[bot]"], `${name} on.bots`);
       const blocks = collectKey(frontmatter, "github-app");
@@ -242,7 +242,7 @@ test("AC10: with dryRun true no file of the working tree changes, generatedWorkf
       result = await workspace.reconcile(withRequest({ dryRun: true }));
     });
     assert.equal(result.status, "ok", JSON.stringify(result.validationResults));
-    assert.equal(result.generatedWorkflows.length, 10);
+    assert.equal(result.generatedWorkflows.length, 13);
     assert.equal(workspace.hash(), hashBefore, ".github/workflows is identical");
     assert.equal(workspace.hash(["."]), treeBefore, "the whole working tree is identical");
     assert.equal(workspace.status(), statusBefore);
@@ -433,7 +433,7 @@ test("AC71: the engine that an api-key secret selects decides tools.bash: codex 
         const result = renderFleet(withRequest({ engineAuthMode: mode }), { cwd: workspace.dir });
         assert.ok(result.ok, `${label}: ${JSON.stringify(result.result)}`);
         const sources = [...result.files].filter(([file]) => file.endsWith(".md"));
-        assert.equal(sources.length, 3, `${label}: one drift, one cascade and the onboarding workflow`);
+        assert.equal(sources.length, 4, `${label}: one drift, its implementation, one cascade and the onboarding workflow`);
         for (const [file, text] of sources) {
           const { frontmatter } = parseWorkflow(text);
           assert.equal(frontmatter.engine.id, engine, `${label}: ${file} engine`);

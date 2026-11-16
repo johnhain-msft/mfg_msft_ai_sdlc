@@ -197,7 +197,7 @@ test("AC8: every compiled job of a drift workflow that holds a write permission 
     const writers = Object.entries(jobs)
       .filter(([, job]) => Object.values(job.permissions ?? {}).includes("write"))
       .map(([name]) => name);
-    for (const expected of ["safe_outputs", "conclusion", "escalate_failure"]) assert.ok(writers.includes(expected), `${key}: ${expected} holds a write permission (found ${writers})`);
+    for (const expected of ["safe_outputs", "conclusion", "escalate_failure", "implement_report"]) assert.ok(writers.includes(expected), `${key}: ${expected} holds a write permission (found ${writers})`);
     for (const name of writers.filter((candidate) => candidate !== "activation")) assert.match(String(jobs[name].if), /inputs\.dry_run/, `${key}: ${name}.if is ${JSON.stringify(jobs[name].if)}`);
   }
 });
@@ -226,13 +226,13 @@ test("AC8: the conclusion job, which opens the failure, missing-tool and incompl
   }
 });
 
-test("AC8: a dry run reaches no job that writes: not safe_outputs, not conclusion, not escalate_failure, however the agent job ended", () => {
+test("AC8: a dry run reaches no job that writes: not safe_outputs, not conclusion, not escalate_failure, not implement_report, however the agent job ended", () => {
   for (const key of DRIFT_KEYS) {
     const { jobs } = driftLock(key).workflow;
     for (const agent of ["success", "failure", "cancelled"]) {
       const { ran } = simulateJobs(jobs, { results: { agent }, inputs: { dry_run: true } });
       assert.ok(ran.includes("agent"), `${key}: the dry run itself runs the agent`);
-      for (const name of ["safe_outputs", "conclusion", "escalate_failure"]) assert.equal(ran.includes(name), false, `${key}: ${name} after an agent that ended ${agent}`);
+      for (const name of ["safe_outputs", "conclusion", "escalate_failure", "implement_report"]) assert.equal(ran.includes(name), false, `${key}: ${name} after an agent that ended ${agent}`);
     }
   }
 });

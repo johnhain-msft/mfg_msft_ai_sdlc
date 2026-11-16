@@ -1,8 +1,11 @@
 #!/usr/bin/env node
-// Second pre-agent step of every drift workflow: open pull request deduplication (SPEC-02 AC10, AC26, AC32).
+// Second pre-agent step of every drift workflow, and third of every implementation workflow: open pull request deduplication (SPEC-02 AC10, AC26,
+// AC32, AC45).
 //
 //   node src/drift/dedupe-open-prs.mjs --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" \
 //     --close-older-key "<the close-older-key of this workflow>" --upkeep-strategy "<its upkeepStrategy>"
+//   node src/drift/dedupe-open-prs.mjs --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" \
+//     --upkeep-strategy "<the upkeepStrategy of the project>" --implementation
 //
 // The target repository is --target-repo, else CONFIGURED_TARGET_REPO. The script lists the open pull requests of the
 // target with `GET /repos/{owner}/{repo}/pulls?state=open&per_page=30` (further pages when the repository has more) and
@@ -13,15 +16,20 @@
 // `sdlc/*` is every pull request of the orchestrator (every drift workflow of every project that has the same target repository), so a match
 // does not always make a duplicate. Each match therefore says whose it is and what this workflow does about it:
 //  - belongsTo "current-workflow": the body carries the marker `<!-- gh-aw-close-key: <key> -->` that gh-aw embeds for this workflow's
-//    --close-older-key. It is an earlier pull request of this workflow, which the new one replaces (`close-older-pull-requests: true`).
-//    decision "supersede": no reason to skip.
+//    --close-older-key. It is an earlier pull request of this workflow, which stays open (`close-older-pull-requests: false`, SPEC-02 AC25): its
+//    items are in this run's baseline, so the new pull request carries other ones. decision "ignore": no reason to skip.
+//  - belongsTo "implementation": the workflow is known (--close-older-key or --implementation is given) and the head branch is
+//    sdlc/implement-report-<number>, the pull request that implements a drift report (SPEC-02 AC45). Its items are those of that report, which a
+//    drift run does not list again and another report does not list at all. decision "ignore".
+//  - with --implementation (the workflow implements one drift report, SPEC-02 AC45), every other sdlc/* match is a pull request of the fleet, which
+//    carries other items than the report: decision "ignore". The rule below then decides only the target's own scheduled pull requests.
 //  - belongsTo "another-workflow-or-schedule": any other match, which is a pull request of another workflow of the orchestrator or of the
 //    target's own scheduled workflows. Its `upkeep` is "weekly-audit" or "self-improve" when its head branch (after automation/ or sdlc/) or its
 //    label says so, else null. decision "ignore" when both it and this workflow have an upkeep and the two differ (a self-improvement pull
 //    request is no duplicate of a content audit; this workflow's upkeep follows from --upkeep-strategy: content-and-docs-sync is
 //    "weekly-audit", code-quality-and-improvement-scan is "self-improve"), else "skip": what is not known to be another upkeep counts as the same.
 // `duplicate` is true when some match has the decision "skip", and then the agent does not call create_pull_request. Without
-// --close-older-key and --upkeep-strategy nothing is known about this workflow and every match is "skip".
+// --close-older-key, --implementation and --upkeep-strategy nothing is known about this workflow and every match is "skip".
 //
 // Authentication is a GitHub App installation token: GH_APP_INSTALLATION_TOKEN when the caller minted one, else the
 // script signs a JSON Web Token with APP_CLIENT_ID and APP_PRIVATE_KEY and exchanges it for a token that is limited to the
@@ -43,6 +51,7 @@ const OPTIONS = {
   "target-repo": { type: "string" },
   "close-older-key": { type: "string" },
   "upkeep-strategy": { type: "string" },
+  implementation: { type: "boolean" },
   "api-url": { type: "string" },
   "max-retries": { type: "string" },
   "max-wait-seconds": { type: "string" },
@@ -61,6 +70,8 @@ const UPKEEP_OF_STEM = [
 ];
 /** The upkeep of a workflow, from its upkeepStrategy; any other strategy has no upkeep of the target's own schedules to tell apart. */
 export const UPKEEP_OF_STRATEGY = { "content-and-docs-sync": "weekly-audit", "code-quality-and-improvement-scan": "self-improve" };
+/** The head branch of the pull request that implements drift report <number> (SPEC-02 AC45). */
+export const IMPLEMENTATION_HEAD = /^sdlc\/implement-report-[1-9][0-9]*$/;
 
 /** Why a pull request counts as a possible duplicate: [] when it does not. */
 export function matchReasons(pull) {
@@ -102,14 +113,18 @@ export function upkeepOf(pull) {
 }
 
 /**
- * What the workflow does about a match: "supersede" (its own earlier pull request, replaced through close-older-pull-requests), "ignore" (the pull
- * request of another upkeep) or "skip" (a possible duplicate: the agent does not call create_pull_request).
+ * What the workflow does about a match: "ignore" (its own earlier pull request, which stays open with other items, the pull request of another
+ * upkeep or of the fleet, or the implementation of a drift report) or "skip" (a possible duplicate: the agent does not call create_pull_request).
  * @param {object} pull a pull request of the list
- * @param {{ closeOlderKey: string | null, upkeep: string | null }} workflow
+ * @param {{ closeOlderKey: string | null, upkeep: string | null, implementation?: boolean }} workflow
  */
 export function decide(pull, workflow) {
-  if (workflow.closeOlderKey !== null && belongsToWorkflow(pull, workflow.closeOlderKey)) return { belongsTo: "current-workflow", upkeep: upkeepOf(pull), decision: "supersede" };
   const upkeep = upkeepOf(pull);
+  if (workflow.closeOlderKey !== null && belongsToWorkflow(pull, workflow.closeOlderKey)) return { belongsTo: "current-workflow", upkeep, decision: "ignore" };
+  const head = String(pull?.head?.ref ?? "");
+  const known = workflow.closeOlderKey !== null || workflow.implementation === true;
+  if (known && IMPLEMENTATION_HEAD.test(head)) return { belongsTo: "implementation", upkeep, decision: "ignore" };
+  if (workflow.implementation === true && head.startsWith("sdlc/")) return { belongsTo: "another-workflow-or-schedule", upkeep, decision: "ignore" };
   const other = workflow.upkeep !== null && upkeep !== null && upkeep !== workflow.upkeep;
   return { belongsTo: "another-workflow-or-schedule", upkeep, decision: other ? "ignore" : "skip" };
 }
@@ -132,7 +147,9 @@ export async function run(argv, ioInput = {}) {
     const closeOlderKey = flags["close-older-key"] === undefined || flags["close-older-key"].trim() === "" ? null : normalizeCloseOlderKey(flags["close-older-key"]);
     if (closeOlderKey === "") throw new UsageError("--close-older-key must contain a letter or a digit");
     const strategy = String(flags["upkeep-strategy"] ?? "").trim();
-    const workflow = { closeOlderKey, upkeep: Object.hasOwn(UPKEEP_OF_STRATEGY, strategy) ? UPKEEP_OF_STRATEGY[strategy] : null };
+    const implementation = flags.implementation === true;
+    if (implementation && closeOlderKey !== null) throw new UsageError("--implementation and --close-older-key name two different workflows; give one of them");
+    const workflow = { closeOlderKey, upkeep: Object.hasOwn(UPKEEP_OF_STRATEGY, strategy) ? UPKEEP_OF_STRATEGY[strategy] : null, implementation };
     const baseUrl = resolveApiBase({ GITHUB_API_URL: flags["api-url"] ?? io.env.GITHUB_API_URL });
     const out = path.resolve(io.cwd, outDirectory(flags.out, io.env));
     const client = createGitHubClient({
@@ -188,6 +205,7 @@ export async function run(argv, ioInput = {}) {
       inspected: items.length,
       truncated,
       closeOlderKey: workflow.closeOlderKey,
+      implementation: workflow.implementation,
       upkeep: workflow.upkeep,
       duplicate: count("skip") > 0,
       matches,
@@ -199,7 +217,7 @@ export async function run(argv, ioInput = {}) {
       ],
       { fs: io.fs },
     );
-    io.stdout(`dedupe-open-prs: ${items.length} open pull request(s) of ${target} inspected${truncated ? " (more exist than were read)" : ""}, ${matches.length} possible duplicate(s) recorded in ${path.join(out, "open-pr-dedup.json")} (${count("skip")} to skip for, ${count("supersede")} of this workflow to supersede, ${count("ignore")} of another upkeep)\n`);
+    io.stdout(`dedupe-open-prs: ${items.length} open pull request(s) of ${target} inspected${truncated ? " (more exist than were read)" : ""}, ${matches.length} possible duplicate(s) recorded in ${path.join(out, "open-pr-dedup.json")} (${count("skip")} to skip for, ${count("ignore")} that are no reason to skip)\n`);
     return 0;
   } catch (error) {
     io.stderr(`dedupe-open-prs: ${error.message}\n`);

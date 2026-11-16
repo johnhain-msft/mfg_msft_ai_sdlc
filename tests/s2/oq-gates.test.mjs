@@ -132,7 +132,7 @@ test("OQ36", (t) => {
   for (const key of DRIFT_KEYS) {
     const block = driftWorkflow(key).frontmatter["safe-outputs"]["create-pull-request"];
     assert.strictEqual(block["preserve-branch-name"], true, `AC2/AC25: ${key}`);
-    assert.strictEqual(block["recreate-ref"], true, `AC2/AC25: ${key}`);
+    assert.strictEqual(block["recreate-ref"], false, `AC2/AC25: ${key}: an earlier pull request stays open`);
     assert.strictEqual(block["fallback-as-issue"], true);
   }
   const collision = [["already exists and", "preserve-branch-name is enabled"].join(" "), ["push", "failed"].join("_"), ["error", "type"].join("_"), ["Remote", "branch"].join(" ")];

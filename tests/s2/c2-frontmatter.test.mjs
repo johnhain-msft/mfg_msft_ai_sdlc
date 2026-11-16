@@ -1,6 +1,6 @@
 // AC2: contract C2 request, rendered frontmatter. Each drift workflow carries typed gh-aw frontmatter with the structure and the
 // literals of the contract, plus only the three extra keys that AC3 names. The test asserts the rendered configuration, not
-// the runtime semantics of continue-on-error: false, preserve-branch-name: true or recreate-ref: true (OQ35, OQ36).
+// the runtime semantics of continue-on-error: false, preserve-branch-name: true, recreate-ref: false or if-no-changes: error (OQ35, OQ36).
 //
 // The compiler check at the end is opt-in, like tests/s1/compile.test.mjs, because the rest of the suite is offline:
 //   SDLC_REAL_GH_AW=1 node --test tests/s2/c2-frontmatter.test.mjs
@@ -63,10 +63,9 @@ function assertContract(frontmatter, project) {
     "target-repo": project.repo,
     "title-prefix": "[sdlc-drift] ",
     labels: ["automated", "sdlc-drift", "drift-report"],
-    "close-older-issues": true,
-    "close-older-key": `sdlc-drift-report-${project.projectKey}`,
+    "close-older-issues": false,
     max: 1,
-  });
+  }, "no report closes an earlier one: its items are in the next run's baseline, so only the pull request that implements it, or a human, may (AC44)");
   assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", checkout.path] }, "the token of the safe outputs reaches the central repository and the target repository");
   assert.equal(outputs["report-failure-as-issue"], false);
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
@@ -79,6 +78,7 @@ function assertContract(frontmatter, project) {
     "draft",
     "exclude-lock-yml",
     "fallback-as-issue",
+    "if-no-changes",
     "labels",
     "max",
     "max-patch-size",
@@ -96,8 +96,9 @@ function assertContract(frontmatter, project) {
   assert.equal(typeof handler.draft, "boolean");
   assert.equal(handler["branch-prefix"], "sdlc/");
   assert.equal(handler["preserve-branch-name"], true);
-  assert.equal(handler["recreate-ref"], true);
-  assert.equal(handler["close-older-pull-requests"], true);
+  assert.equal(handler["recreate-ref"], false);
+  assert.equal(handler["if-no-changes"], "error");
+  assert.equal(handler["close-older-pull-requests"], false, "an earlier pull request of the workflow stays open (AC25)");
   assert.equal(typeof handler["close-older-key"], "string");
   assert.equal(handler["exclude-lock-yml"], true);
   assert.deepEqual(Object.keys(handler["protected-files"]).sort(), ["exclude", "policy"]);
@@ -123,8 +124,7 @@ test("AC2: the three workflows differ only in the values that come from their pr
   assert.equal(new Set(groups).size, 3, "three distinct concurrency groups");
   const closeKeys = DRIFT_KEYS.map((key) => driftWorkflow(key).frontmatter["safe-outputs"]["create-pull-request"]["close-older-key"]);
   assert.equal(new Set(closeKeys).size, 3, "three distinct close-older-key values");
-  const reportKeys = DRIFT_KEYS.map((key) => driftWorkflow(key).frontmatter["safe-outputs"]["create-issue"]["close-older-key"]);
-  assert.equal(new Set([...closeKeys, ...reportKeys]).size, 6, "three distinct report keys, none of them a pull request's: two workflows of one lab never close each other's report");
+  for (const key of DRIFT_KEYS) assert.equal("close-older-key" in driftWorkflow(key).frontmatter["safe-outputs"]["create-issue"], false, `${key}: a report closes no other report`);
 });
 
 const requested = process.env.SDLC_REAL_GH_AW === "1";

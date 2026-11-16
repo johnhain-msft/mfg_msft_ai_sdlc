@@ -79,10 +79,10 @@ test("AC35: every downstreamRepo shares the owner of the App token: owner is alw
   for (const edge of preset.dependencyEdges) assert.equal(edge.downstreamRepo.split("/")[0], "johnhain-msft", "the preset's downstreams share one owner");
 });
 
-test("AC35: every drift workflow has exactly one custom job, escalate_failure, with its own guard, permissions, checkout and install steps", () => {
+test("AC35: every drift workflow has two custom jobs, escalate_failure, with its own guard, permissions, checkout and install steps, and implement_report (SPEC-02 AC46)", () => {
   for (const id of DRIFT) {
     const custom = jobs(id);
-    assert.deepEqual(Object.keys(custom), ["escalate_failure"], id);
+    assert.deepEqual(Object.keys(custom), ["escalate_failure", "implement_report"], id);
     const job = custom.escalate_failure;
     assert.equal(job.if, "failure() && inputs.dry_run != true", id);
     assert.deepEqual(job.needs, NEEDS);
