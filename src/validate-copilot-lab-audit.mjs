@@ -20,10 +20,10 @@
 // Rules 1 to 3 are checked on the working tree and on the tip of everything that a pull request could be made of (HEAD when it is ahead of the
 // base commit, every other local branch that is ahead of it, the last message of each patch, every tip of each bundle), so that the agent
 // cannot commit a registry or a report that is wrong, call `create_pull_request` and leave a working tree that is right.
-// Rules 2 and 3 ask the working tree for the report of a run that proposes something. A run that proposes nothing (HEAD is the base commit, no
-// commit is ahead of it, the index and the working tree do not differ from it, and there is no patch or bundle file) has nothing that a pull
-// request could be made of: its report is the body of its drift report issue, and the report file is not asked for (issue #14, where an agent
-// that wrote none failed the job, and the issue that carried its report was never filed). Rule 1 and rule 4 hold on every run.
+// Rules 2 and 3 ask the working tree for the report of a run that proposes a pull request. gh-aw makes a pull request only of commits, through the
+// patch or bundle that create_pull_request writes (SPEC-02 OQ37), so a run whose HEAD is the base commit, with no commit ahead of it and no patch or
+// bundle file, has nothing that a pull request could be made of, whatever it leaves uncommitted, and its report file is not asked for (issue #14, where
+// an agent that wrote none failed the job, and the drift report issue that it had queued was never filed). Rule 1 and rule 4 hold on every run.
 // Anything else exits 1 and names each missing key or section, or the changed value or path, and where it is, on stderr. A patch or a bundle
 // that cannot be read, or that does not apply to the base commit, exits 1 as well: a file that cannot be inspected is not a file that is fine.
 // The script only reads the checkout. It writes nothing there: everything that it asks git is asked in a scratch repository in a temporary
@@ -329,16 +329,17 @@ function describeCommit(commit, headSha, refs) {
  * (its value is the caller's, `headRegistry`). A path under .github/workflows/ that differs from the base commit, and a pinned value that differs from the
  * base commit's, are problems, and so is a file that cannot be read.
  * @returns {{ problems: string[], subjects: { place: string, read: (relative: string) => string | null }[], counts: { commits: number, patches: number, bundles: number }, proposed: boolean }}
- *   `subjects` are the tips, whose files rules 1 to 3 are applied to as well. `proposed` is false only when everything was read and nothing that a pull
- *   request could be made of exists: HEAD is the base commit, no commit is ahead of it, the index and the working tree do not differ from it and there is no
- *   patch or bundle file.
+ *   `subjects` are the tips, whose files rules 1 to 3 are applied to as well. `proposed` is false only when all of these were read and hold nothing that a
+ *   pull request could be made of: HEAD is the base commit, no commit is ahead of it, and there is no patch or bundle file. gh-aw makes a pull request only
+ *   of commits, through the patch or bundle that create_pull_request writes (SPEC-02 OQ37), so what the index and the working tree hold beyond the base
+ *   commit does not count here; rule 4 reads both all the same.
  */
 function reportOnlyScan({ checkout, baseSha, headRegistry, io, artifactDirectory }) {
   const subjects = [];
   const counts = { commits: 0, patches: 0, bundles: 0 };
   const short = baseSha.slice(0, 12);
   // each place is quiet only once it has been read and found to hold nothing beyond the base commit; a place that could not be read is not quiet
-  const quiet = { head: false, ahead: false, index: false, workTree: false, files: false };
+  const quiet = { head: false, ahead: false, files: false };
   const result = (problems) => ({ problems, subjects, counts, proposed: !Object.values(quiet).every(Boolean) });
   // Every git process of this script runs in the scratch repository (see the header): it takes the objects, the refs, the index file and the files
   // of the working tree from the checkout as data, and nothing of the checkout's configuration.
@@ -423,9 +424,7 @@ function reportOnlyScan({ checkout, baseSha, headRegistry, io, artifactDirectory
       problems.push(`the commits of the target checkout that are not reachable from the base commit ${short} cannot be listed: ${gitMessage(error)}`);
     }
     try {
-      const indexed = indexPaths(scratch, baseSha, io.fs);
-      quiet.index = indexed.length === 0;
-      for (const entry of indexed) if (isProtectedPath(entry)) flag(entry, "the index");
+      for (const entry of indexPaths(scratch, baseSha, io.fs)) if (isProtectedPath(entry)) flag(entry, "the index");
       // The registry as the index holds it: a bump that is staged and then put back in the working tree leaves HEAD and the working tree at the base's
       // value, and a pull request can still be made of the index (a missing entry, or an object that cannot be read, is an absent value, as for a commit).
       const staged = indexFileText(scratch, REGISTRY_FILE);
@@ -434,9 +433,7 @@ function reportOnlyScan({ checkout, baseSha, headRegistry, io, artifactDirectory
       problems.push(`the changes of the index against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
     }
     try {
-      const worked = workTreePaths(scratch, baseSha);
-      quiet.workTree = worked.length === 0;
-      for (const entry of worked) if (isProtectedPath(entry)) flag(entry, "the working tree");
+      for (const entry of workTreePaths(scratch, baseSha)) if (isProtectedPath(entry)) flag(entry, "the working tree");
     } catch (error) {
       problems.push(`the changes of the working tree against the base commit ${short} cannot be listed: ${gitMessage(error)}`);
     }
@@ -554,8 +551,8 @@ export async function run(argv, ioInput = {}) {
       ].filter(([count]) => count > 0);
       if (parts.length > 0) inspected = `; ${parts.map(([count, noun]) => `${count} ${noun}${count === 1 ? "" : "s"}`).join(", ")} of what a pull request could be made of also inspected`;
     }
-    // A run that proposes nothing (its checkout is still the base commit and create_pull_request wrote no patch or bundle) has nothing that a pull
-    // request could be made of: its report is the drift report issue, so the report file is not asked for (issue #14). Every other run is held to it.
+    // A run that proposes no pull request (HEAD is the base commit, no commit is ahead of it, and create_pull_request wrote no patch or bundle) has
+    // nothing that a pull request could be made of, so the report file is not asked for (issue #14). Every other run is held to it.
     if (proposed) problems.splice(reportAt, 0, ...workingTree.reportProblems);
 
     if (problems.length > 0) {
@@ -565,7 +562,7 @@ export async function run(argv, ioInput = {}) {
     const kind = selfImprove ? "self-improvement" : "audit";
     const report = proposed
       ? `the ${kind} report complete`
-      : `the ${kind} report not asked for, because the checkout is the base commit and there is no patch or bundle: the run proposes nothing, and its drift report issue carries the report`;
+      : `the ${kind} report not asked for, because HEAD is the base commit, no commit is ahead of it and there is no patch or bundle: the run proposes no pull request`;
     io.stdout(`validate-copilot-lab-audit: ok (${REGISTRY_KEYS.length} registry keys, ${report}, ${PINNED_KEY} and .github/workflows/ unchanged since ${base.sha.slice(0, 12)}${inspected})\n`);
     return 0;
   } catch (error) {

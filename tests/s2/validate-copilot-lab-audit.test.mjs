@@ -23,6 +23,10 @@ let out;
 before(() => {
   repo = createRepo(labFiles());
   base = repo.head();
+  // the run has committed a change, so it proposes a pull request and its working tree is held to the report (a run that commits nothing is not: see
+  // the issue #14 tests below)
+  repo.write("labs/proposed-change.md", "# a change that the run committed\n");
+  repo.commitAll("the run's change");
   out = tempDir("sdlc-s2-validate-");
 });
 
@@ -214,9 +218,10 @@ test("AC23: a self-improve run still holds the registry, the self-improvement re
 });
 
 // Issue #14 (run 43716421196): an audit agent that found nothing to change filed its report as the drift report issue and wrote nothing in the checkout.
-// The post-step failed on the missing audit report, so the job failed and the issue was never filed. A run whose checkout is still the base commit and
-// that wrote no patch or bundle has nothing that a pull request could be made of, so its report is not asked for, whether it is an audit or a
-// self-improve run. Anything that the run leaves behind is held to the report as before (the next test).
+// The post-step failed on the missing audit report, so the job failed and the issue was never filed. gh-aw makes a pull request only of commits, through
+// the patch or bundle that create_pull_request writes (SPEC-02 OQ37), so a run that commits nothing (HEAD is the base commit and no commit is ahead of it)
+// and writes no patch or bundle has nothing that a pull request could be made of: its report file is not asked for, whatever it leaves uncommitted,
+// whether it is an audit or a self-improve run. A run that commits, or calls create_pull_request, is held to the report as before (the second test).
 function quietLab(files) {
   const lab = createRepo(files);
   // the base commit has a parent with the same tree, so that HEAD can leave the base commit without changing a file
@@ -250,45 +255,56 @@ const withoutReports = () => {
   return files;
 };
 
-test("AC23: a run that leaves the lab checkout at the base commit and proposes nothing passes without its report, which its drift report issue carries", async () => {
-  const quiet = quietLab(withoutReports());
-  try {
-    const audit = await quiet.check();
-    assert.equal(audit.code, 0, audit.stderr);
-    assert.equal(audit.stderr, "");
-    assert.match(audit.stdout, /ok \(11 registry keys, the audit report not asked for, because the checkout is the base commit and there is no patch or bundle/);
-    assert.match(audit.stdout, new RegExp(`unchanged since ${quiet.base.slice(0, 12)}`));
-    const selfImprove = await quiet.check(["--self-improve"]);
-    assert.equal(selfImprove.code, 0, selfImprove.stderr);
-    assert.match(selfImprove.stdout, /the self-improvement report not asked for/);
-  } finally {
-    quiet.cleanup();
-  }
-  const files = withoutReports();
-  files["docs/_meta/registry.yaml"] = withoutTopLevelKey(files["docs/_meta/registry.yaml"], "labs");
-  const broken = quietLab(files);
-  try {
-    const result = await broken.check();
-    assert.notEqual(result.code, 0, "the registry rule holds on a run that proposes nothing");
-    assert.ok(result.stderr.includes("missing the top-level key 'labs'"), result.stderr);
-    assert.equal(result.stderr.includes("audit-report.md"), false, "and the report is still not asked for");
-  } finally {
-    broken.cleanup();
-  }
-});
-
-test("AC23: anything that a pull request could be made of brings the report back: a changed, untracked or staged file, a commit, a branch, a patch and a moved HEAD", async () => {
+test("AC23: a run that commits nothing and writes no patch or bundle passes without its report, whatever it leaves uncommitted, and still answers to rules 1 and 4", async () => {
   const quiet = quietLab(withoutReports());
   const { lab } = quiet;
   const registry = lab.read("docs/_meta/registry.yaml");
-  const places = {
+  // gh-aw makes a pull request only of commits (SPEC-02 OQ37): what a run leaves uncommitted cannot be published, so it asks for no report either
+  const uncommitted = {
+    "nothing at all": () => undefined,
     "an untracked file": () => lab.write("labs/notes.md", "# notes\n"),
     "a changed file": () => lab.write("docs/_meta/registry.yaml", `${registry}# reviewed\n`),
-    "a staged change that the working tree put back": () => {
+    "a staged change": () => {
       lab.write("docs/_meta/registry.yaml", `${registry}# reviewed\n`);
       lab.git("add", "docs/_meta/registry.yaml");
-      lab.write("docs/_meta/registry.yaml", registry);
     },
+    "a report without its sections": () => lab.write("docs/_meta/audit-report.md", "# nothing\n"),
+  };
+  try {
+    for (const [place, leave] of Object.entries(uncommitted)) {
+      leave();
+      try {
+        const audit = await quiet.check();
+        assert.equal(audit.code, 0, `${place}: ${audit.stderr}`);
+        assert.equal(audit.stderr, "", place);
+        assert.match(audit.stdout, /ok \(11 registry keys, the audit report not asked for, because HEAD is the base commit, no commit is ahead of it and there is no patch or bundle: the run proposes no pull request/, place);
+        assert.match(audit.stdout, new RegExp(`unchanged since ${quiet.base.slice(0, 12)}`), place);
+        const selfImprove = await quiet.check(["--self-improve"]);
+        assert.equal(selfImprove.code, 0, `${place}: ${selfImprove.stderr}`);
+        assert.match(selfImprove.stdout, /the self-improvement report not asked for/, place);
+      } finally {
+        quiet.reset();
+      }
+    }
+    lab.write("docs/_meta/registry.yaml", withoutTopLevelKey(registry, "labs"));
+    const keyless = await quiet.check();
+    assert.notEqual(keyless.code, 0, "rule 1 holds on a run that proposes nothing");
+    assert.ok(keyless.stderr.includes("missing the top-level key 'labs'"), keyless.stderr);
+    assert.equal(keyless.stderr.includes("audit-report.md"), false, "and the report is still not asked for");
+    quiet.reset();
+    lab.write(".github/workflows/stand-in.lock.yml", "name: recompiled\n");
+    const recompiled = await quiet.check();
+    assert.notEqual(recompiled.code, 0, "and so does rule 4");
+    assert.match(recompiled.stderr, /\.github\/workflows\/stand-in\.lock\.yml differs from the base commit/);
+  } finally {
+    quiet.cleanup();
+  }
+});
+
+test("AC23: anything that a pull request could be made of brings the report back: a commit on HEAD, a branch ahead of the base, a patch and a HEAD that left the base", async () => {
+  const quiet = quietLab(withoutReports());
+  const { lab } = quiet;
+  const places = {
     "a commit on HEAD": () => {
       lab.write("labs/notes.md", "# notes\n");
       lab.commitAll("notes");
@@ -325,8 +341,9 @@ test("AC23: anything that a pull request could be made of brings the report back
       }
     }
     lab.write("labs/notes.md", "# notes\n");
+    lab.commitAll("notes");
     const selfImprove = await quiet.check(["--self-improve"]);
-    assert.notEqual(selfImprove.code, 0, "a self-improve run that leaves something is asked for its report too");
+    assert.notEqual(selfImprove.code, 0, "a self-improve run that commits is asked for its report too");
     assert.match(selfImprove.stderr, /self-improvement-report\.md is missing/);
   } finally {
     quiet.cleanup();
@@ -343,6 +360,10 @@ test("AC23: the rendered post-step of drift-self-improving-agents passes on a la
   try {
     const passed = await gate.runSteps([step]);
     assert.equal(passed.code, 0, passed.log);
+    // a run that commits a change proposes a pull request, and then its working tree is held to the self-improvement report
+    gate.write("labs/proposed-change.md", "# a change that the run committed\n");
+    gate.git("add", "labs/proposed-change.md");
+    gate.git("commit", "-q", "-m", "the run's change");
     gate.remove("docs/_meta/self-improvement-report.md");
     const failed = await gate.runSteps([step]);
     assert.equal(failed.code, 1);
