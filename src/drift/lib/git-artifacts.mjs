@@ -272,7 +272,7 @@ export function indexPaths(scratch, baseSha, fs) {
 /**
  * The text of a file as the index of the checkout holds it (the stage-0 entry of `relative`), read as data the way `indexPaths` reads it: null when the
  * index has no such entry or the object that it names cannot be read. A change that is staged and then put back in the working tree shows in neither
- * HEAD nor the working tree, and a pull request can still be made of the index, so a value that matters is read here and not taken from either.
+ * HEAD nor the working tree, and the next commit would still carry it, so a value that matters is read here and not taken from either.
  */
 export function indexFileText(scratch, relative) {
   try {

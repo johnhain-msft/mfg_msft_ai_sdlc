@@ -219,7 +219,7 @@ test("AC23: a self-improve run still holds the registry, the self-improvement re
 
 // Issue #14 (run 43716421196): an audit agent that found nothing to change filed its report as the drift report issue and wrote nothing in the checkout.
 // The post-step failed on the missing audit report, so the job failed and the issue was never filed. gh-aw makes a pull request only of commits, through
-// the patch or bundle that create_pull_request writes (SPEC-02 OQ37), so a run that commits nothing (HEAD is the base commit and no commit is ahead of it)
+// the patch or bundle that create_pull_request writes (SPEC-02 F67), so a run that commits nothing (HEAD is the base commit and no commit is ahead of it)
 // and writes no patch or bundle has nothing that a pull request could be made of: its report file is not asked for, whatever it leaves uncommitted,
 // whether it is an audit or a self-improve run. A run that commits, or calls create_pull_request, is held to the report as before (the second test).
 function quietLab(files) {
@@ -259,7 +259,7 @@ test("AC23: a run that commits nothing and writes no patch or bundle passes with
   const quiet = quietLab(withoutReports());
   const { lab } = quiet;
   const registry = lab.read("docs/_meta/registry.yaml");
-  // gh-aw makes a pull request only of commits (SPEC-02 OQ37): what a run leaves uncommitted cannot be published, so it asks for no report either
+  // gh-aw makes a pull request only of commits (SPEC-02 F67): what a run leaves uncommitted cannot be published, so it asks for no report either
   const uncommitted = {
     "nothing at all": () => undefined,
     "an untracked file": () => lab.write("labs/notes.md", "# notes\n"),
@@ -326,7 +326,8 @@ test("AC23: anything that a pull request could be made of brings the report back
     },
     "HEAD moved off the base commit to one with the same tree": () => lab.git("switch", "-q", "--detach", "HEAD~1"),
   };
-  // the working tree itself is held to the report (the line that names no place), not only the tip of a commit, a branch or a patch
+  // the working tree itself is held to the report (the line that names no place), not only the tip of a commit, a branch or a patch; a HEAD that left
+  // the base without a commit ahead of it carries nothing a pull request could be made of, and is counted as proposing anyway, out of caution
   const workingTreeLine = "validate-copilot-lab-audit: docs/_meta/audit-report.md is missing";
   try {
     for (const [place, leave] of Object.entries(places)) {

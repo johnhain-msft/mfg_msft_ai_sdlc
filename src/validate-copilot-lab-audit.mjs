@@ -10,18 +10,18 @@
 //  3. for a self-improve run (--self-improve): self-improvement-report.md has its four required sections, in order. That run does not
 //     check the audit report: the weekly audit generates it in its own pull request, so the default branch of the lab holds only the
 //     template, and a self-improve run neither writes nor needs it;
-//  4. nothing that a pull request could be made of differs from the base commit in `gh_aw_schema_version` or in any file under
-//     .github/workflows/ (the version and the compiled workflows are report-only). "Anything that a pull request could be made of" is the
-//     HEAD commit, the index and the working tree, every other commit that is not reachable from the base commit but is reachable from a
-//     ref, and every patch (aw-*.patch) and bundle (aw-*.bundle) file next to the artifact directory, which are what `create_pull_request`
-//     wrote during the agent step and what the safe_outputs job applies later (see drift/lib/git-artifacts.mjs). The base commit is
+//  4. nothing that a pull request could be made of, nor the index or the working tree, differs from the base commit in `gh_aw_schema_version` or
+//     in any file under .github/workflows/ (the version and the compiled workflows are report-only). "Anything that a pull request could be made of"
+//     is the HEAD commit, every other commit that is not reachable from the base commit but is reachable from a ref, and every patch (aw-*.patch)
+//     and bundle (aw-*.bundle) file next to the artifact directory, which are what `create_pull_request` wrote during the agent step and what the
+//     safe_outputs job applies later (see drift/lib/git-artifacts.mjs); rule 4 reads the index and the working tree as well. The base commit is
 //     --base-sha, else SDLC_BASE_SHA, which prepare-run appended to GITHUB_ENV in the first step of the job, so that the runner and not a
 //     file that the agent can edit supplies it.
 // Rules 1 to 3 are checked on the working tree and on the tip of everything that a pull request could be made of (HEAD when it is ahead of the
 // base commit, every other local branch that is ahead of it, the last message of each patch, every tip of each bundle), so that the agent
 // cannot commit a registry or a report that is wrong, call `create_pull_request` and leave a working tree that is right.
 // Rules 2 and 3 ask the working tree for the report of a run that proposes a pull request. gh-aw makes a pull request only of commits, through the
-// patch or bundle that create_pull_request writes (SPEC-02 OQ37), so a run whose HEAD is the base commit, with no commit ahead of it and no patch or
+// patch or bundle that create_pull_request writes (SPEC-02 F67), so a run whose HEAD is the base commit, with no commit ahead of it and no patch or
 // bundle file, has nothing that a pull request could be made of, whatever it leaves uncommitted, and its report file is not asked for (issue #14, where
 // an agent that wrote none failed the job, and the drift report issue that it had queued was never filed). Rule 1 and rule 4 hold on every run.
 // Anything else exits 1 and names each missing key or section, or the changed value or path, and where it is, on stderr. A patch or a bundle
@@ -322,16 +322,16 @@ function describeCommit(commit, headSha, refs) {
 }
 
 /**
- * Rule 4 on everything that a pull request could be made of (see the header and drift/lib/git-artifacts.mjs): the HEAD commit, every other
- * commit that is not reachable from the base commit but is reachable from a ref, the index and the working tree, and each message of every
- * aw-*.patch file and each commit of every aw-*.bundle file in `artifactDirectory`. For each commit, patch message and bundle commit the changed paths and the
+ * Rule 4 on everything that a pull request could be made of (see the header and drift/lib/git-artifacts.mjs), and on the index and the working tree as
+ * well: the HEAD commit, every other commit that is not reachable from the base commit but is reachable from a ref, the index and the working tree, and
+ * each message of every aw-*.patch file and each commit of every aw-*.bundle file in `artifactDirectory`. For each commit, patch message and bundle commit the changed paths and the
  * value of the pinned key are read from git objects; the index adds its own changed paths and its own value of the pinned key, the working tree its changed paths
  * (its value is the caller's, `headRegistry`). A path under .github/workflows/ that differs from the base commit, and a pinned value that differs from the
  * base commit's, are problems, and so is a file that cannot be read.
  * @returns {{ problems: string[], subjects: { place: string, read: (relative: string) => string | null }[], counts: { commits: number, patches: number, bundles: number }, proposed: boolean }}
  *   `subjects` are the tips, whose files rules 1 to 3 are applied to as well. `proposed` is false only when all of these were read and hold nothing that a
  *   pull request could be made of: HEAD is the base commit, no commit is ahead of it, and there is no patch or bundle file. gh-aw makes a pull request only
- *   of commits, through the patch or bundle that create_pull_request writes (SPEC-02 OQ37), so what the index and the working tree hold beyond the base
+ *   of commits, through the patch or bundle that create_pull_request writes (SPEC-02 F67), so what the index and the working tree hold beyond the base
  *   commit does not count here; rule 4 reads both all the same.
  */
 function reportOnlyScan({ checkout, baseSha, headRegistry, io, artifactDirectory }) {
@@ -426,7 +426,7 @@ function reportOnlyScan({ checkout, baseSha, headRegistry, io, artifactDirectory
     try {
       for (const entry of indexPaths(scratch, baseSha, io.fs)) if (isProtectedPath(entry)) flag(entry, "the index");
       // The registry as the index holds it: a bump that is staged and then put back in the working tree leaves HEAD and the working tree at the base's
-      // value, and a pull request can still be made of the index (a missing entry, or an object that cannot be read, is an absent value, as for a commit).
+      // value, and the next commit would still carry it (a missing entry, or an object that cannot be read, is an absent value, as for a commit).
       const staged = indexFileText(scratch, REGISTRY_FILE);
       observed.push(["the index", staged === null ? null : pinnedValueOf(staged)]);
     } catch (error) {
