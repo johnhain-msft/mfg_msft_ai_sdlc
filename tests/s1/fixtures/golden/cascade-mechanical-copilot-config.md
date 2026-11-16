@@ -138,8 +138,8 @@ post-steps:
   - name: aiam validate
     run: aiam validate
     working-directory: ai_asset_management
-  - name: pytest -q
-    run: pytest -q
+  - name: python -m pytest -q
+    run: python -m pytest -q
     working-directory: ai_asset_management
   - name: aiam release build --out /tmp/aiam-verify-dist
     run: aiam release build --out /tmp/aiam-verify-dist
@@ -179,9 +179,14 @@ safe-outputs:
     exclude-lock-yml: true
     protected-files:
       policy: blocked
-      exclude: []
+      exclude:
+        - /.github/CODEOWNERS
+        - /assets/skills/ai-landing-zone-design/DESIGN.md
+        - /assets/skills/slide-review/scripts/requirements.txt
+        - README.md
     max: 1
     max-patch-size: 10240
+    max-patch-files: 1000
 tools:
   bash:
     - aiam

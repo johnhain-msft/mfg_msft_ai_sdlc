@@ -891,9 +891,10 @@ dependencyEdges:
     preflightCommands: []
     acceptCommands: []
     buildCommands: []
+    # `python -m pytest`, as the repository's own CI runs it: its tests import the top-level demo module, which the bare `pytest` script leaves off sys.path.
     verifyCommands:
       - aiam validate
-      - pytest -q
+      - python -m pytest -q
       - aiam release build --out /tmp/aiam-verify-dist
     adaptationInstructions: ""
     allowedFiles:
@@ -901,7 +902,18 @@ dependencyEdges:
       - governance/upstream-provenance.json
       - governance/cowork-preferences-source.md
       - .github/CODEOWNERS
-    protectedFilesExclude: []
+    # The importer writes files with protected names, which the blocking policy refuses whatever allowedFiles says. It regenerates .github/CODEOWNERS
+    # and adds or deletes README.md files as skills change (the first import deletes 12 with retired skills and adds 1), so README.md is released by
+    # name. The catalog's other protected names, one DESIGN.md and one requirements.txt, are released by exact path, so those names stay protected at
+    # every other path. allowedFiles still confines all of them to the paths above. A protected name that a later skill brings fails the cascade closed
+    # until its path is added here.
+    protectedFilesExclude:
+      - /.github/CODEOWNERS
+      - /assets/skills/ai-landing-zone-design/DESIGN.md
+      - /assets/skills/slide-review/scripts/requirements.txt
+      - README.md
+    # A catch-up import rewrites much of the catalog (170 files for the first one, about 500 if every asset changed); the handler's own limit is 100.
+    maxPatchFiles: 1000
     autoMerge: false
     immutableGates:
       zeroDiffPaths: []

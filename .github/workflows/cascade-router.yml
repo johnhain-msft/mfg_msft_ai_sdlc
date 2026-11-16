@@ -330,7 +330,7 @@ jobs:
             buildCommands: []
             verifyCommands:
               - aiam validate
-              - pytest -q
+              - python -m pytest -q
               - aiam release build --out /tmp/aiam-verify-dist
     concurrency:
       group: sdlc-state-${{ matrix.upstreamKey }}
