@@ -129,6 +129,7 @@ tools:
     - cat
     - cd
     - curl
+    - cut
     - date
     - find
     - git
@@ -136,6 +137,7 @@ tools:
     - head
     - ls
     - node
+    - sed
     - tail
     - wc
   edit: {}

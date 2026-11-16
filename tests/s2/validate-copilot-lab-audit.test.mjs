@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test, { after, before } from "node:test";
 import { AUDIT_SECTIONS, REGISTRY_KEYS, run, scalarOf, scanTopLevelKeys, SELF_IMPROVEMENT_SECTIONS, secondLevelHeadings, sectionProblems } from "../../src/validate-copilot-lab-audit.mjs";
-import { driftWorkflow, driftPreset, presetManifest, projectOf, tempDir, script } from "./helpers/fixtures.mjs";
+import { driftWorkflow, driftPreset, forceRemove, presetManifest, projectOf, tempDir, script } from "./helpers/fixtures.mjs";
 import { BASH_SKIP, createGateWorkspace } from "./helpers/gate-harness.mjs";
 import { createRepo } from "./helpers/git-fixture.mjs";
 import { labFiles, withoutSection, withoutTopLevelKey, withSectionOrder } from "./helpers/lab-fixture.mjs";
@@ -211,6 +211,126 @@ test("AC23: a self-improve run still holds the registry, the self-improvement re
   });
   assert.notEqual(workflows.code, 0);
   assert.match(workflows.stderr, /\.github\/workflows\/stand-in\.lock\.yml differs from the base commit/);
+});
+
+// Issue #14 (run 43716421196): an audit agent that found nothing to change filed its report as the drift report issue and wrote nothing in the checkout.
+// The post-step failed on the missing audit report, so the job failed and the issue was never filed. A run whose checkout is still the base commit and
+// that wrote no patch or bundle has nothing that a pull request could be made of, so its report is not asked for, whether it is an audit or a
+// self-improve run. Anything that the run leaves behind is held to the report as before (the next test).
+function quietLab(files) {
+  const lab = createRepo(files);
+  // the base commit has a parent with the same tree, so that HEAD can leave the base commit without changing a file
+  lab.git("commit", "-q", "--allow-empty", "-m", "base of the run");
+  const branch = lab.git("rev-parse", "--abbrev-ref", "HEAD");
+  const root = tempDir("sdlc-s2-quiet-");
+  const agent = path.join(root, "agent");
+  fs.mkdirSync(agent);
+  const labBase = lab.head();
+  return {
+    lab,
+    root,
+    base: labBase,
+    check: (args = []) => invoke(run, ["--checkout", lab.dir, "--out", agent, "--base-sha", labBase, ...args], { cwd: agent }),
+    reset() {
+      lab.git("switch", "-q", "--discard-changes", "-C", branch, labBase);
+      lab.git("clean", "-fdq");
+      for (const name of fs.readdirSync(root)) if (name !== "agent") fs.rmSync(path.join(root, name), { recursive: true, force: true });
+    },
+    cleanup() {
+      lab.cleanup();
+      forceRemove(root);
+    },
+  };
+}
+
+const withoutReports = () => {
+  const files = labFiles();
+  delete files["docs/_meta/audit-report.md"];
+  delete files["docs/_meta/self-improvement-report.md"];
+  return files;
+};
+
+test("AC23: a run that leaves the lab checkout at the base commit and proposes nothing passes without its report, which its drift report issue carries", async () => {
+  const quiet = quietLab(withoutReports());
+  try {
+    const audit = await quiet.check();
+    assert.equal(audit.code, 0, audit.stderr);
+    assert.equal(audit.stderr, "");
+    assert.match(audit.stdout, /ok \(11 registry keys, the audit report not asked for, because the checkout is the base commit and there is no patch or bundle/);
+    assert.match(audit.stdout, new RegExp(`unchanged since ${quiet.base.slice(0, 12)}`));
+    const selfImprove = await quiet.check(["--self-improve"]);
+    assert.equal(selfImprove.code, 0, selfImprove.stderr);
+    assert.match(selfImprove.stdout, /the self-improvement report not asked for/);
+  } finally {
+    quiet.cleanup();
+  }
+  const files = withoutReports();
+  files["docs/_meta/registry.yaml"] = withoutTopLevelKey(files["docs/_meta/registry.yaml"], "labs");
+  const broken = quietLab(files);
+  try {
+    const result = await broken.check();
+    assert.notEqual(result.code, 0, "the registry rule holds on a run that proposes nothing");
+    assert.ok(result.stderr.includes("missing the top-level key 'labs'"), result.stderr);
+    assert.equal(result.stderr.includes("audit-report.md"), false, "and the report is still not asked for");
+  } finally {
+    broken.cleanup();
+  }
+});
+
+test("AC23: anything that a pull request could be made of brings the report back: a changed, untracked or staged file, a commit, a branch, a patch and a moved HEAD", async () => {
+  const quiet = quietLab(withoutReports());
+  const { lab } = quiet;
+  const registry = lab.read("docs/_meta/registry.yaml");
+  const places = {
+    "an untracked file": () => lab.write("labs/notes.md", "# notes\n"),
+    "a changed file": () => lab.write("docs/_meta/registry.yaml", `${registry}# reviewed\n`),
+    "a staged change that the working tree put back": () => {
+      lab.write("docs/_meta/registry.yaml", `${registry}# reviewed\n`);
+      lab.git("add", "docs/_meta/registry.yaml");
+      lab.write("docs/_meta/registry.yaml", registry);
+    },
+    "a commit on HEAD": () => {
+      lab.write("labs/notes.md", "# notes\n");
+      lab.commitAll("notes");
+    },
+    "a branch ahead of the base with HEAD back on it": () => {
+      lab.git("switch", "-q", "-c", "sdlc/x");
+      lab.write("labs/notes.md", "# notes\n");
+      lab.commitAll("notes");
+      lab.git("switch", "-q", "-");
+    },
+    "a patch that create_pull_request wrote, its branch deleted": () => {
+      lab.git("switch", "-q", "-c", "sdlc/x");
+      lab.write("labs/notes.md", "# notes\n");
+      lab.commitAll("notes");
+      const [first, ...rest] = `${lab.git("format-patch", `${quiet.base}..sdlc/x`, "--stdout")}\n`.split("\n");
+      fs.writeFileSync(path.join(quiet.root, "aw-sdlc-x.patch"), [first, `X-GH-AW-Base-Commit: ${quiet.base}`, ...rest].join("\n"));
+      lab.git("switch", "-q", "-");
+      lab.git("branch", "-q", "-D", "sdlc/x");
+    },
+    "HEAD moved off the base commit to one with the same tree": () => lab.git("switch", "-q", "--detach", "HEAD~1"),
+  };
+  // the working tree itself is held to the report (the line that names no place), not only the tip of a commit, a branch or a patch
+  const workingTreeLine = "validate-copilot-lab-audit: docs/_meta/audit-report.md is missing";
+  try {
+    for (const [place, leave] of Object.entries(places)) {
+      leave();
+      try {
+        const result = await quiet.check();
+        assert.notEqual(result.code, 0, place);
+        assert.ok(result.stderr.split(/\r?\n/).includes(workingTreeLine), `${place}: ${result.stderr}`);
+      } finally {
+        quiet.reset();
+        if (lab.git("branch", "--list", "sdlc/x") !== "") lab.git("branch", "-q", "-D", "sdlc/x");
+      }
+    }
+    lab.write("labs/notes.md", "# notes\n");
+    const selfImprove = await quiet.check(["--self-improve"]);
+    assert.notEqual(selfImprove.code, 0, "a self-improve run that leaves something is asked for its report too");
+    assert.match(selfImprove.stderr, /self-improvement-report\.md is missing/);
+  } finally {
+    quiet.cleanup();
+  }
 });
 
 test("AC23: the rendered post-step of drift-self-improving-agents passes on a lab tree that has the audit template and no audit report, as the default branch of the lab does", { skip: BASH_SKIP }, async () => {
