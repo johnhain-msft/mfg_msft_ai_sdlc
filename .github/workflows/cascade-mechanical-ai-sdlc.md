@@ -201,6 +201,7 @@ tools:
   bash:
     - cat
     - cd
+    - command
     - date
     - echo
     - find

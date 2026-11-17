@@ -192,6 +192,7 @@ tools:
     - aiam
     - cat
     - cd
+    - command
     - date
     - echo
     - find

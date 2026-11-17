@@ -311,9 +311,20 @@ test("OQ43", async (t) => {
     const outputs = parseWorkflow(rendered.files.get(name)).frontmatter["safe-outputs"];
     const { repositories, ...credentials } = outputs["github-app"];
     assert.deepEqual(credentials, APP, name);
-    // The handler writes to its target repository, so its token reaches that one and the central repository; the onboarding workflow writes to the central one only.
+    // The token of a safe-outputs handler has one owner, which the compiler takes from the checkout entries, and every name is resolved under it (AC69). The handlers of a drift
+    // or implementation workflow all take its project's repository as their target-repo, so its token names that one and never the central repository, which another owner does
+    // not have (run 43926158616; the writes that this gives up in the conclusion job are recorded in AC69); a cascade workflow's token has the orchestrator's owner and names the
+    // central repository and the downstream one; the onboarding workflow writes to the central repository, the compiler's default scope, and names none.
+    const file = name.split("/").pop();
     const target = outputs["create-pull-request"]["target-repo"];
-    assert.deepEqual(repositories, target === undefined ? undefined : ["${{ github.event.repository.name }}", target.split("/")[1]], name);
+    if (/^(?:drift|implement)-/.test(file)) {
+      assert.deepEqual(repositories, [target.split("/")[1]], name);
+    } else if (/^cascade-/.test(file)) {
+      assert.deepEqual(repositories, ["${{ github.event.repository.name }}", target.split("/")[1]], name);
+    } else {
+      assert.equal(file, "sdlc-onboard.md", `${name}: the only other workflow is the onboarding one`);
+      assert.equal(repositories, undefined, name);
+    }
     assert.equal("github-token" in outputs, false, name);
     for (const handler of Object.values(outputs)) if (handler && typeof handler === "object") assert.equal("github-token" in handler, false, name);
   }
