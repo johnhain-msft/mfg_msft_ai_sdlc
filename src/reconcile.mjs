@@ -56,12 +56,6 @@ const ALL_SYNC_SCOPES = ["both", "workshop-only", "studio-only", "showcase-runs"
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const APP_SLUG = /^[A-Za-z0-9-]+$/;
 
-// Local development convenience: the isolated gh-aw v1.0.1 installation used on the
-// maintainer's workstation, where the globally installed extension is an older release.
-// It applies only when XDG_DATA_HOME is unset and the directory exists.
-const LOCAL_GH_AW_DATA_HOME =
-  "C:\\Users\\johnhain\\.copilot\\session-state\\8759f150-2dae-4daf-82cd-f6b566c113e9\\files\\xdg-data-gh-aw-v101";
-
 // ---------------------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------------------
@@ -2906,10 +2900,15 @@ function stripUngrantedPermissions(cwd, workflows) {
 // Running the compiler
 // ---------------------------------------------------------------------------------------
 
-/** Environment for the real gh-aw CLI; honours an explicit XDG_DATA_HOME and the local isolated install. */
+/**
+ * Environment for the real gh-aw CLI; honours an explicit XDG_DATA_HOME and, when that is unset, the isolated gh-aw installation that SDLC_GH_AW_DATA_HOME names (for a
+ * machine whose globally installed extension is an older release) if the directory exists. No directory is built in. This module is self-contained (SPEC-01 AC59), so it
+ * keeps its own copy of the rule that ghEnvironment of bin/lib/gh-runner.mjs applies; one test drives both.
+ */
 export function ghAwEnvironment(env = process.env) {
   const merged = { ...env };
-  if (!merged.XDG_DATA_HOME && fs.existsSync(LOCAL_GH_AW_DATA_HOME)) merged.XDG_DATA_HOME = LOCAL_GH_AW_DATA_HOME;
+  const dataHome = merged.SDLC_GH_AW_DATA_HOME;
+  if (!merged.XDG_DATA_HOME && dataHome && fs.existsSync(dataHome)) merged.XDG_DATA_HOME = dataHome;
   return merged;
 }
 

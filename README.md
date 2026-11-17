@@ -92,6 +92,7 @@ document (`schemas/bootstrap-summary-report.schema.json`) on stdout and exits no
 | `GH_TOKEN` / `GITHUB_TOKEN` | The REST credential for variables and secrets (default: `gh auth token`). It needs the `Variables` and `Secrets` repository permissions (write). |
 | `GITHUB_API_URL` | API base URL (default `https://api.github.com`; plain `http` only for loopback addresses). |
 | `SDLC_BOOTSTRAP_NO_OPEN_BROWSER` | Do not open a browser; print the URLs. |
+| `SDLC_GH_AW_DATA_HOME` | Directory used as `XDG_DATA_HOME` for `gh` when `XDG_DATA_HOME` is unset and the directory exists: an isolated gh-aw install, for a machine whose global `gh aw` is older than the required version. An explicit `XDG_DATA_HOME` wins. |
 
 ## Onboard
 

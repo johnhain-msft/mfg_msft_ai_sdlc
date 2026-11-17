@@ -4,16 +4,15 @@
 //   * GH_AW_BIN names the executable that replaces `gh` for `aw` subcommands. A file called
 //     gh-aw[.exe] is the extension binary itself and takes the subcommand directly; anything else is
 //     run as `<GH_AW_BIN> aw ...`.
-//   * XDG_DATA_HOME defaults to the isolated gh-aw v1.0.1 installation of the maintainer's
-//     workstation (where the globally installed extension is an older release) when it is unset and
-//     the directory exists. An explicit XDG_DATA_HOME, a PATH shim or GH_AW_BIN always win.
+//   * XDG_DATA_HOME defaults to the directory that SDLC_GH_AW_DATA_HOME names (an isolated gh-aw
+//     installation, for a machine whose globally installed extension is an older release) when
+//     XDG_DATA_HOME is unset and that directory exists. No directory is built in. An explicit
+//     XDG_DATA_HOME, a PATH shim or GH_AW_BIN always win. (src/reconcile.mjs is self-contained and
+//     keeps its own copy of this rule, ghAwEnvironment; one test drives both.)
 
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-
-export const LOCAL_GH_AW_DATA_HOME =
-  "C:\\Users\\johnhain\\.copilot\\session-state\\8759f150-2dae-4daf-82cd-f6b566c113e9\\files\\xdg-data-gh-aw-v101";
 
 const DEFAULT_TIMEOUT_MS = 600000;
 const SAFE_SHELL_ARGUMENT = /^[A-Za-z0-9_./:@=+,-]+$/;
@@ -22,10 +21,11 @@ const SAFE_SHELL_ARGUMENT = /^[A-Za-z0-9_./:@=+,-]+$/;
 const realSetTimeout = globalThis.setTimeout;
 const realClearTimeout = globalThis.clearTimeout;
 
-/** Environment for a gh invocation: the given one plus the local XDG_DATA_HOME default. */
+/** Environment for a gh invocation: the given one plus the XDG_DATA_HOME default that SDLC_GH_AW_DATA_HOME names. */
 export function ghEnvironment(env = process.env, exists = fs.existsSync) {
   const merged = { ...env };
-  if (!merged.XDG_DATA_HOME && exists(LOCAL_GH_AW_DATA_HOME)) merged.XDG_DATA_HOME = LOCAL_GH_AW_DATA_HOME;
+  const dataHome = merged.SDLC_GH_AW_DATA_HOME;
+  if (!merged.XDG_DATA_HOME && dataHome && exists(dataHome)) merged.XDG_DATA_HOME = dataHome;
   return merged;
 }
 

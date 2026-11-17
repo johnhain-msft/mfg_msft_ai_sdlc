@@ -56,7 +56,7 @@ test("the spawn timeout of the bash helper of the S1 suite is not shorter than t
 
 test("a child of this suite does not inherit the XDG_DATA_HOME of the shell that runs it, and a value that a test gives it still reaches it", () => {
   const earlier = process.env.XDG_DATA_HOME;
-  process.env.XDG_DATA_HOME = "C:\\ambient\\xdg-data-gh-aw-v101";
+  process.env.XDG_DATA_HOME = "C:\\ambient\\xdg-data";
   const shims = createShims();
   try {
     assert.equal("XDG_DATA_HOME" in cleanEnv(), false, "cleanEnv");

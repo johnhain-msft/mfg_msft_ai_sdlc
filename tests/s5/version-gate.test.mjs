@@ -6,8 +6,9 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { assertGhAwVersion, compareVersions, isAcceptableVersion, parseVersion } from "../../bin/lib/ghaw-version.mjs";
-import { LOCAL_GH_AW_DATA_HOME, createGhRunner, ghEnvironment } from "../../bin/lib/gh-runner.mjs";
+import { createGhRunner, ghEnvironment } from "../../bin/lib/gh-runner.mjs";
 import { buildReconcileRequest } from "../../bin/lib/reconcile-client.mjs";
+import { ghAwEnvironment } from "../../src/reconcile.mjs";
 import { createScenario, runCli } from "./helpers/harness.mjs";
 import { installFakeGh } from "./helpers/fake-gh.mjs";
 
@@ -192,9 +193,50 @@ test("AC6: a GH_AW_BIN named gh-aw is the extension binary itself and receives t
   }
 });
 
-test("XDG_DATA_HOME defaults to the isolated gh-aw v1.0.1 installation only when it is unset and the directory exists", () => {
-  assert.equal(ghEnvironment({}, () => true).XDG_DATA_HOME, LOCAL_GH_AW_DATA_HOME);
-  assert.equal(ghEnvironment({}, () => false).XDG_DATA_HOME, undefined);
-  assert.equal(ghEnvironment({ XDG_DATA_HOME: "C:\\elsewhere" }, () => true).XDG_DATA_HOME, "C:\\elsewhere");
-  assert.equal(ghEnvironment({ PATH: "x" }, () => true).PATH, "x", "the rest of the environment is kept");
+// SDLC_GH_AW_DATA_HOME names the directory of an isolated gh-aw installation, for a machine whose globally installed gh aw is older than 1.0.1. It becomes the XDG_DATA_HOME of a gh
+// invocation only when XDG_DATA_HOME is unset and that directory exists; no directory is built in. Two functions apply the rule, because src/reconcile.mjs is self-contained
+// (SPEC-01 AC59) and cannot import bin/lib/gh-runner.mjs, so one table of cases drives both and the two copies cannot drift apart.
+const DATA_HOME_RULE = [
+  ["ghEnvironment of bin/lib/gh-runner.mjs", ghEnvironment],
+  ["ghAwEnvironment of src/reconcile.mjs", ghAwEnvironment],
+];
+
+for (const [label, environmentOf] of DATA_HOME_RULE) {
+  test(`${label}: SDLC_GH_AW_DATA_HOME becomes XDG_DATA_HOME only when XDG_DATA_HOME is unset and the directory exists`, () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "sdlc-s5-data-home-"));
+    try {
+      const given = { SDLC_GH_AW_DATA_HOME: directory };
+      assert.equal(environmentOf(given).XDG_DATA_HOME, directory);
+      assert.deepEqual(given, { SDLC_GH_AW_DATA_HOME: directory }, "the environment that was given is not changed");
+      assert.equal(environmentOf({ SDLC_GH_AW_DATA_HOME: directory, XDG_DATA_HOME: "" }).XDG_DATA_HOME, directory, "an empty XDG_DATA_HOME is unset");
+      assert.equal(environmentOf({ SDLC_GH_AW_DATA_HOME: path.join(directory, "missing") }).XDG_DATA_HOME, undefined, "a directory that does not exist is no default");
+      assert.equal(environmentOf({ SDLC_GH_AW_DATA_HOME: "" }).XDG_DATA_HOME, undefined, "an empty SDLC_GH_AW_DATA_HOME is unset");
+      assert.equal(environmentOf({ SDLC_GH_AW_DATA_HOME: directory, XDG_DATA_HOME: "C:\\elsewhere" }).XDG_DATA_HOME, "C:\\elsewhere", "an explicit XDG_DATA_HOME wins");
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  test(`${label}: with SDLC_GH_AW_DATA_HOME unset there is no XDG_DATA_HOME default, the rest of the environment is kept and the given one is not changed`, () => {
+    const given = { PATH: "x", GH_TOKEN: "t" };
+    const merged = environmentOf(given);
+    assert.equal(merged.XDG_DATA_HOME, undefined, "no directory is built in");
+    assert.deepEqual(merged, { PATH: "x", GH_TOKEN: "t" });
+    assert.deepEqual(given, { PATH: "x", GH_TOKEN: "t" });
+  });
+}
+
+test("ghEnvironment asks about the directory that SDLC_GH_AW_DATA_HOME names and has no default of its own, whatever exists", () => {
+  const asked = [];
+  const exists = (directory) => {
+    asked.push(directory);
+    return true;
+  };
+  assert.equal(ghEnvironment({}, exists).XDG_DATA_HOME, undefined, "no directory is built in, even where everything exists");
+  assert.deepEqual(asked, [], "and none is looked up");
+  assert.equal(ghEnvironment({ SDLC_GH_AW_DATA_HOME: "isolated-gh-aw" }, exists).XDG_DATA_HOME, "isolated-gh-aw");
+  assert.deepEqual(asked, ["isolated-gh-aw"]);
+  assert.equal(ghEnvironment({ SDLC_GH_AW_DATA_HOME: "" }, exists).XDG_DATA_HOME, undefined, "an empty value names no directory");
+  assert.deepEqual(asked, ["isolated-gh-aw"], "and none is looked up for it");
+  assert.equal(ghEnvironment({ SDLC_GH_AW_DATA_HOME: "isolated-gh-aw" }, () => false).XDG_DATA_HOME, undefined);
 });
