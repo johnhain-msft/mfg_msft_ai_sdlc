@@ -685,17 +685,17 @@ const YAML_OPTIONS = { lineWidth: 0, indent: 2, aliasDuplicateObjects: false, mi
 const BASE_BASH = ["cat", "date", "find", "git", "grep", "head", "ls", "tail", "wc"];
 /**
  * What the agent of a mechanical cascade may run besides the executables of its import commands. Its prompt opens with `cd` into the downstream
- * checkout, which the base list does not allow, and a live run showed that the agent also inspects the result with `echo` and `node`. Run 43933185358
+ * checkout, which the base list does not allow, and a live run showed that the agent also inspects the result with `echo` and `node`. Another live run
  * showed it looking for the importer with `command -v <importer>`: Copilot runs with --no-ask-user and refused both of the agent's first two shell
  * calls, because `command` was not on the list, and the agent called report_incomplete without running the import.
  */
 const MECHANICAL_BASH = ["cd", "command", "echo", "git", "node"];
 /**
  * What the agent of a drift workflow may run besides the base list, the first words of its build commands and its `agentSandbox.bashCommands`.
- * Dry runs of drift-copilot-lab (43497657653 and, on main, 43499249738) showed the agent opening with `cd` into the artifact directory and into
+ * Dry runs of drift-copilot-lab, one on a branch and one on main, showed the agent opening with `cd` into the artifact directory and into
  * its checkout; the allowlist refused the whole command and the agent gave up the shell, so it wrote no audit report and failed its validator.
  * `curl` is how the agent reads a source page: gh-aw v1.0.1 runs Copilot offline behind the firewall's API proxy, where the native `web_fetch`
- * tool does not exist (the agent of dry run 43631574930 said so), and the renderer pairs `curl` with Copilot URL permission for exactly the hosts
+ * tool does not exist (the agent of another dry run said so), and the renderer pairs `curl` with Copilot URL permission for exactly the hosts
  * of `network.allowed`, the only hosts that the firewall lets it reach (agentEngine, SPEC-02 AC13).
  */
 const DRIFT_BASH = ["cd", "curl", "git", "node"];
@@ -769,7 +769,7 @@ function appBlock(ctx, repositories) {
  * compiled with `owner: ${{ github.repository_owner }}`, because the workflow has two checkouts, so it reaches the central repository and the downstream
  * repository, which has the same owner (SPEC-05 AC19). The `safe-outputs` token of a drift or an implementation workflow is compiled with the owner of its
  * one checkout, the target's, so it reaches `[checkoutPath]` alone: under another owner this name is a repository that does not exist, and the token step
- * failed with a 404 (run 43926158616 of drift-copilot-lab, issue #17). The cost is that the central repository is given up in every such workflow, a target
+ * failed with a 404 (seen in a live run of drift-copilot-lab). The cost is that the central repository is given up in every such workflow, a target
  * of the central owner included: the handlers that the renderer configures all take the target as their `target-repo`, but the `conclusion` job also hands the
  * same token to gh-aw scripts that address the central repository, and of those only the `[aw] Detection Runs` record of `handle_detection_runs.cjs` can happen
  * under these settings. It fails soft, and a detection problem fails the detection job, so `escalate_failure` still reports it there with the token of its

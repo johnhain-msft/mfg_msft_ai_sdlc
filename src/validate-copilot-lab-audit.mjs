@@ -22,7 +22,7 @@
 // cannot commit a registry or a report that is wrong, call `create_pull_request` and leave a working tree that is right.
 // Rules 2 and 3 ask the working tree for the report of a run that proposes a pull request. gh-aw makes a pull request only of commits, through the
 // patch or bundle that create_pull_request writes (SPEC-02 F67), so a run whose HEAD is the base commit, with no commit ahead of it and no patch or
-// bundle file, has nothing that a pull request could be made of, whatever it leaves uncommitted, and its report file is not asked for (issue #14, where
+// bundle file, has nothing that a pull request could be made of, whatever it leaves uncommitted, and its report file is not asked for (a live run in which
 // an agent that wrote none failed the job, and the drift report issue that it had queued was never filed). Rule 1 and rule 4 hold on every run.
 // Anything else exits 1 and names each missing key or section, or the changed value or path, and where it is, on stderr. A patch or a bundle
 // that cannot be read, or that does not apply to the base commit, exits 1 as well: a file that cannot be inspected is not a file that is fine.
@@ -552,7 +552,7 @@ export async function run(argv, ioInput = {}) {
       if (parts.length > 0) inspected = `; ${parts.map(([count, noun]) => `${count} ${noun}${count === 1 ? "" : "s"}`).join(", ")} of what a pull request could be made of also inspected`;
     }
     // A run that proposes no pull request (HEAD is the base commit, no commit is ahead of it, and create_pull_request wrote no patch or bundle) has
-    // nothing that a pull request could be made of, so the report file is not asked for (issue #14). Every other run is held to it.
+    // nothing that a pull request could be made of, so the report file is not asked for. Every other run is held to it.
     if (proposed) problems.splice(reportAt, 0, ...workingTree.reportProblems);
 
     if (problems.length > 0) {
