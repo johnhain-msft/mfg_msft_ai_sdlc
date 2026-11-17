@@ -66,7 +66,7 @@ function assertContract(frontmatter, project) {
     "close-older-issues": false,
     max: 1,
   }, "no report closes an earlier one: its items are in the next run's baseline, so only the pull request that implements it, or a human, may (AC44)");
-  assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", checkout.path] }, "the token of the safe outputs reaches the central repository and the target repository");
+  assert.deepEqual(outputs["github-app"], { ...APP, repositories: [checkout.path] }, "the token of the safe outputs, like that of the checkout, is scoped to the target repository alone (AC69)");
   assert.equal(outputs["report-failure-as-issue"], false);
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
   const handler = outputs["create-pull-request"];

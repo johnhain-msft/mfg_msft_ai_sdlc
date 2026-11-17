@@ -685,9 +685,11 @@ const YAML_OPTIONS = { lineWidth: 0, indent: 2, aliasDuplicateObjects: false, mi
 const BASE_BASH = ["cat", "date", "find", "git", "grep", "head", "ls", "tail", "wc"];
 /**
  * What the agent of a mechanical cascade may run besides the executables of its import commands. Its prompt opens with `cd` into the downstream
- * checkout, which the base list does not allow, and a live run showed that the agent also inspects the result with `echo` and `node`.
+ * checkout, which the base list does not allow, and a live run showed that the agent also inspects the result with `echo` and `node`. Run 43933185358
+ * showed it looking for the importer with `command -v <importer>`: Copilot runs with --no-ask-user and refused both of the agent's first two shell
+ * calls, because `command` was not on the list, and the agent called report_incomplete without running the import.
  */
-const MECHANICAL_BASH = ["cd", "echo", "git", "node"];
+const MECHANICAL_BASH = ["cd", "command", "echo", "git", "node"];
 /**
  * What the agent of a drift workflow may run besides the base list, the first words of its build commands and its `agentSandbox.bashCommands`.
  * Dry runs of drift-copilot-lab (43497657653 and, on main, 43499249738) showed the agent opening with `cd` into the artifact directory and into
@@ -753,7 +755,8 @@ function makeContext(request, manifest, instructionFiles, strategyFragments) {
 /**
  * The credentials of the GitHub App. `repositories` names the repositories (by name, without the owner) that the token is minted for; a checkout
  * or a safe-outputs handler that reaches a repository other than the central one has to name it, because the compiler's default scope is the
- * central repository only. Without `repositories` the block is the bare credentials.
+ * central repository only. The token has one owner, which the compiler sets, and every name is resolved under it, so a name that the owner does not
+ * have fails the token step with a 404. Without `repositories` the block is the bare credentials.
  */
 function appBlock(ctx, repositories) {
   const block = clone(ctx.githubApp);
@@ -761,7 +764,17 @@ function appBlock(ctx, repositories) {
   return block;
 }
 
-/** The repository whose workflow runs (the central one): the token of a safe-outputs handler reaches it and the repository that it writes to. */
+/**
+ * The repository whose workflow runs (the central one), as a name for the `repositories` of a token. The `safe-outputs` token of a cascade workflow is
+ * compiled with `owner: ${{ github.repository_owner }}`, because the workflow has two checkouts, so it reaches the central repository and the downstream
+ * repository, which has the same owner (SPEC-05 AC19). The `safe-outputs` token of a drift or an implementation workflow is compiled with the owner of its
+ * one checkout, the target's, so it reaches `[checkoutPath]` alone: under another owner this name is a repository that does not exist, and the token step
+ * failed with a 404 (run 43926158616 of drift-copilot-lab, issue #17). The cost is that the central repository is given up in every such workflow, a target
+ * of the central owner included: the handlers that the renderer configures all take the target as their `target-repo`, but the `conclusion` job also hands the
+ * same token to gh-aw scripts that address the central repository, and of those only the `[aw] Detection Runs` record of `handle_detection_runs.cjs` can happen
+ * under these settings. It fails soft, and a detection problem fails the detection job, so `escalate_failure` still reports it there with the token of its
+ * own job. Keeping the name where the owners match would need the central owner as an input, which the renderer lacks (SPEC-01 AC69).
+ */
 const CENTRAL_REPOSITORY = expr("github.event.repository.name");
 
 function permissionsSection(ctx) {
@@ -1277,7 +1290,9 @@ function renderDrift(ctx, project) {
     "pre-agent-steps": driftPreAgentSteps(ctx, project),
     "post-steps": audit.verifyCommands.map((command) => verifyStep(command, checkoutPath)),
     "safe-outputs": {
-      "github-app": appBlock(ctx, [CENTRAL_REPOSITORY, checkoutPath]),
+      // the token has the owner of the one checkout above, the target's, so it names that repository alone: the central repository cannot be listed for a target of another owner,
+      // and the writes that the conclusion job makes there with this token (the `[aw] Detection Runs` record) are given up in every drift and implementation workflow (SPEC-01 AC69)
+      "github-app": appBlock(ctx, [checkoutPath]),
       "report-failure-as-issue": false,
       "threat-detection": { "continue-on-error": false },
       "create-pull-request": {

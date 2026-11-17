@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { renderFleet } from "../../src/reconcile.mjs";
-import { abs, customJobsOf, edgeOf, fixture, mutate, parseWorkflow, presetManifest, readText, readWorkflow, referenceRequest, toYaml } from "./helpers/fixtures.mjs";
+import { abs, customJobsOf, edgeOf, fixture, minimalManifest, mutate, parseWorkflow, presetManifest, readText, readWorkflow, referenceRequest, toYaml, withRequest } from "./helpers/fixtures.mjs";
 import { createWorkspace } from "./helpers/workspace.mjs";
 
 const NAME = "cascade-mechanical-ghec-admin.md";
@@ -264,8 +264,47 @@ test("AC73: an edge's maxPatchFiles becomes its handler's max-patch-files, mecha
   }
 });
 
-test("AC32: the agent may cd into the downstream checkout, as the prompt tells it to, and run echo, git, node and the first word of every import and build command", () => {
-  assert.deepEqual(frontmatter.tools.bash, ["cat", "cd", "date", "echo", "find", "git", "grep", "head", "ls", "node", "npm", "tail", "wc"]);
+test("AC32: the agent may cd into the downstream checkout, as the prompt tells it to, and run command, echo, git, node and the first word of every import and build command", () => {
+  assert.deepEqual(frontmatter.tools.bash, ["cat", "cd", "command", "date", "echo", "find", "git", "grep", "head", "ls", "node", "npm", "tail", "wc"]);
   assert.ok(committed.body.includes('cd "$GITHUB_WORKSPACE/portfolio"'), "the prompt begins with the cd that the allowlist has to permit");
+  // run 43933185358 of cascade-mechanical-copilot-config: the agent ended its first two shell calls with `command -v aiam`, the allowlist refused both, and it called
+  // report_incomplete without importing anything
+  assert.ok(frontmatter.tools.bash.includes("command"), "the committed workflow lets the agent run command -v");
+  assert.ok(fresh.frontmatter.tools.bash.includes("command"), "and so does a fresh render");
   for (const tool of ["gh", "curl", "wget"]) assert.equal(frontmatter.tools.bash.includes(tool), false, tool);
+});
+
+test("AC32 QA: command is a mechanical default for every allowlist-capable engine, without widening sibling drift tools or replacing the Codex wildcard contract", () => {
+  for (const [mode, secret, engine] of [
+    ["copilot-pat", null, "copilot"],
+    ["copilot-requests", null, "copilot"],
+    ["api-key", "ANTHROPIC_API_KEY", "claude"],
+    ["api-key", "GOOGLE_API_KEY", "gemini"],
+    ["api-key", "OPENAI_API_KEY", "codex"],
+  ]) {
+    const manifest = minimalManifest();
+    if (secret) manifest.engineApiKeySecret = secret;
+    const workspace = createWorkspace({ manifestText: toYaml(manifest) });
+    try {
+      const result = renderFleet(withRequest({ engineAuthMode: mode }), { cwd: workspace.dir });
+      const label = `${mode}/${secret ?? engine}`;
+      assert.ok(result.ok, `${label}: ${JSON.stringify(result.result)}`);
+      const { frontmatter } = parseWorkflow(result.files.get(`${W}/cascade-mechanical-alpha-to-beta.md`));
+      assert.equal(frontmatter.engine.id, engine, label);
+      if (engine === "codex") {
+        assert.deepEqual(frontmatter.tools.bash, ["*"], `${label}: the compiler's non-allowlist engine contract is preserved`);
+      } else {
+        const commands = frontmatter.tools.bash;
+        assert.equal(commands.filter((word) => word === "command").length, 1, `${label}: command needs no manifest opt-in and appears once`);
+        assert.deepEqual(commands, [...new Set(commands)].sort(), `${label}: the command list remains sorted and deduplicated`);
+        for (const word of ["*", "gh", "curl", "wget"]) assert.equal(commands.includes(word), false, `${label}: no new ${word} grant`);
+        for (const kind of ["drift", "implement"]) {
+          const sibling = parseWorkflow(result.files.get(`${W}/${kind}-alpha-service.md`)).frontmatter;
+          assert.equal(sibling.tools.bash.includes("command"), false, `${label} ${kind}: this mechanical default does not widen the sibling's allowlist`);
+        }
+      }
+    } finally {
+      workspace.cleanup();
+    }
+  }
 });

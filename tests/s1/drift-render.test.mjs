@@ -120,7 +120,7 @@ function assertContract(frontmatter, project) {
     max: 1,
   }, "at most one drift report per run, in the target repository, and no report closes an earlier one (SPEC-02 AC44)");
   assert.equal("noop" in outputs, false, "no explicit noop: an opt-in would make the compiler expect a maintenance workflow that the fleet does not keep");
-  assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["${{ github.event.repository.name }}", repoName] });
+  assert.deepEqual(outputs["github-app"], { ...APP, repositories: [repoName] }, "the token of the safe outputs reaches the target repository alone: its owner is the target's, so the central repository's name would be a 404 for another owner (AC69)");
   assert.equal(outputs["report-failure-as-issue"], false);
   assert.deepEqual(outputs["threat-detection"], { "continue-on-error": false });
   const handler = outputs["create-pull-request"];
@@ -197,6 +197,31 @@ test("AC23: the values are rendered from the manifest: group, key, checkout, rev
   assert.equal(improving["safe-outputs"]["create-pull-request"].draft, true);
   assert.equal(improving["safe-outputs"]["create-pull-request"]["close-older-key"], "sdlc-drift-self-improving-agents");
   assert.deepEqual(generated("gh-admin-msft").frontmatter["safe-outputs"]["create-pull-request"].reviewers, ["johnhain-msft"]);
+});
+
+test("AC69 QA: renaming a target, within the central owner or across owners, scopes both drift and implementation publishing to its repository name rather than its project key", () => {
+  for (const repo of ["johnhain-msft/renamed-target", "external-owner/renamed-target"]) {
+    const manifest = mutate(minimalManifest(), (copy) => {
+      projectOf(copy, "alpha-service").repo = repo;
+      copy.dependencyEdges[0].upstreamRepo = repo;
+    });
+    const workspace = createWorkspace({ manifestText: toYaml(manifest) });
+    try {
+      const result = renderFleet(request, { cwd: workspace.dir });
+      assert.ok(result.ok, `${repo}: ${JSON.stringify(result.result)}`);
+      for (const kind of ["drift", "implement"]) {
+        const { frontmatter } = parseWorkflow(result.files.get(`${W}/${kind}-alpha-service.md`));
+        const outputs = frontmatter["safe-outputs"];
+        assert.deepEqual(outputs["github-app"], { ...APP, repositories: ["renamed-target"] }, `${repo} ${kind}: no central repository or project key in the token scope`);
+        assert.deepEqual(frontmatter.checkout[0]["github-app"], outputs["github-app"], `${repo} ${kind}: checkout and publishing reach the same target`);
+        assert.equal(outputs["create-pull-request"]["target-repo"], repo);
+        assert.equal(outputs[kind === "drift" ? "create-issue" : "add-comment"]["target-repo"], repo);
+        assert.equal(outputs["report-failure-as-issue"], false, "gh-aw's own failure issue is off, so handle_agent_failure.cjs writes nothing to the central repository that the token cannot reach (AC69)");
+      }
+    } finally {
+      workspace.cleanup();
+    }
+  }
 });
 
 test("AC23: the golden files equal the generated files byte for byte, freshly rendered and as committed", () => {

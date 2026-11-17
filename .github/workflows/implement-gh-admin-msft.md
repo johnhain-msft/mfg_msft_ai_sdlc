@@ -95,7 +95,6 @@ safe-outputs:
     client-id: ${{ vars.APP_CLIENT_ID }}
     private-key: ${{ secrets.APP_PRIVATE_KEY }}
     repositories:
-      - ${{ github.event.repository.name }}
       - gh-admin-msft
   report-failure-as-issue: false
   threat-detection:
