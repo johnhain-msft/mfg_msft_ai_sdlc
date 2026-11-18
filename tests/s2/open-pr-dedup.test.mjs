@@ -1,281 +1,78 @@
-// AC10: contract C5 request, deduplication. The second pre-agent step lists the open pull requests of the target repository and
-// records those that could duplicate an upkeep: a head branch of automation/weekly-audit-*, automation/self-improve-* or sdlc/*,
-// or the label content-audit or self-improving-agents. The tests run it in-process against a fake `fetch` (no socket), once as a
-// command against a stub server on 127.0.0.1, and check the prompt that tells the agent to read the result.
+// AC10 and the equivalence of design E3. Open pull request deduplication (the second pre-agent step of every drift workflow, the third of every implementation
+// workflow) used to carry this fleet's own conventions inside the script: the branch prefixes automation/weekly-audit-* and automation/self-improve-* (and the
+// orchestrator's sdlc/*), the labels content-audit and self-improving-agents, the upkeep that each stands for, and which upkeep each strategy does. The script is the
+// engine's now, and the conventions are the `dedupe` block of sdlc.yaml, which the step reads through `--project <projectKey>`.
+//
+// The engine's own tests prove the script on a neutral block (tests/dedupe-config of the package). What only this repository can prove is here, in three parts:
+//   1. the data: the block says what the script used to say, and the committed steps hand the project key to the script;
+//   2. the table (E3): for every pull request that the old script could have matched, under every kind of workflow and every strategy, the decisions of the engine
+//      with THIS block equal those of the old script, kept below verbatim as the reference; the one reading that the data cannot carry over is pinned by name;
+//   3. the script run as a command against a fake GitHub on the real manifest: the records that AC10 requires (the reasons, whose pull request it is, what the
+//      workflow does about it), for each of the three drift projects.
 import assert from "node:assert/strict";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { belongsToWorkflow, decide, matchReasons, normalizeCloseOlderKey, run, UPKEEP_OF_STRATEGY, upkeepOf } from "../../src/drift/dedupe-open-prs.mjs";
-import { abs, DRIFT_KEYS, driftPreset, driftWorkflow, listTree, readText, script, tempDir } from "./helpers/fixtures.mjs";
-import { invoke, isUnder, leftovers, recordingFs } from "./helpers/run-script.mjs";
-import { cleanEnv, createClock, createFakeFetch, json, runNode, startStubServer } from "./helpers/stub-server.mjs";
+import { importEngine, INSTANCE_ROOT } from "../helpers/instance.mjs";
+import { abs, DRIFT_KEYS, driftPreset, driftWorkflow, implementWorkflow, listTree, presetManifest, tempDir } from "./helpers/fixtures.mjs";
+import { invoke } from "./helpers/run-script.mjs";
+import { cleanEnv, createFakeFetch, json } from "./helpers/stub-server.mjs";
 
-const OWNER = "example-owner";
-const REPO = "example-target";
-const PULLS_PATH = `/repos/${OWNER}/${REPO}/pulls`;
-const QUERY = "?state=open&per_page=30";
-const TOKEN = "ghs_installationtokenfixture";
-const pull = (number, ref, labels = []) => ({ number, html_url: `https://github.example/${OWNER}/${REPO}/pull/${number}`, head: { ref }, labels: labels.map((name) => ({ name })), draft: false });
-const OPEN = [
-  pull(11, "automation/weekly-audit-2026-11-01"),
-  pull(12, "automation/self-improve-2026-11-02"),
-  pull(13, "sdlc/weekly-audit-2026-11-01"),
-  pull(14, "feature/audited", ["content-audit", "automated"]),
-  pull(15, "feature/agents", ["self-improving-agents"]),
-  pull(16, "feature/x"),
-  pull(17, "docs/automation/weekly-audit-x"),
-  pull(18, "sdlc"),
-  pull(19, "SDLC/Upper", ["other"]),
-];
+// the script and the manifest reader of the installed engine: deep imports, so that a change of either is noticed here
+const { belongsToWorkflow, decide, matchReasons, normalizeCloseOlderKey, run, upkeepOf, upkeepOfStrategy } = await importEngine("src/drift/dedupe-open-prs.mjs");
+const { readProjectDedupe } = await importEngine("src/drift/lib/manifest.mjs");
 
-const listing = (list = OPEN) => createFakeFetch((entry) => (entry.pathAndSearch === `${PULLS_PATH}${QUERY}` ? json(200, list) : json(404, { message: "Not Found" })));
-const env = (extra = {}) => cleanEnv({ CONFIGURED_TARGET_REPO: `${OWNER}/${REPO}`, GH_APP_INSTALLATION_TOKEN: TOKEN, ...extra });
-const out = () => path.join(tempDir("sdlc-s2-dedupe-"), "agent");
-const report = (directory, name = "open-pr-dedup.json") => JSON.parse(fs.readFileSync(path.join(directory, name), "utf8"));
-const rsa = () => crypto.generateKeyPairSync("rsa", { modulusLength: 2048, privateKeyEncoding: { type: "pkcs8", format: "pem" }, publicKeyEncoding: { type: "spki", format: "pem" } });
+/** What the engine hands to the script for this fleet: the block of sdlc.yaml as the reader behind `--project` returns it. The table of part 2 runs on this, not on a copy of it. */
+const BLOCK = await readProjectDedupe({ manifestPath: abs("sdlc.yaml"), projectKey: "copilot-lab" });
 
-test("AC10: the first request is GET /repos/<owner>/<repo>/pulls?state=open&per_page=30 with the installation token", async () => {
-  const fake = listing();
-  const directory = out();
-  const result = await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`], { env: env(), fetch: fake });
-  assert.equal(result.code, 0, result.stderr);
-  assert.equal(fake.requests.length, 1, "one request");
-  const [first] = fake.requests;
-  assert.equal(first.method, "GET");
-  assert.equal(first.pathAndSearch, `${PULLS_PATH}${QUERY}`);
-  assert.equal(first.host, "api.github.com", "the default API address");
-  assert.equal(first.headers.authorization, `Bearer ${TOKEN}`);
-  assert.equal(first.headers.accept, "application/vnd.github+json");
-  assert.equal(first.headers["x-github-api-version"], "2022-11-28");
-  assert.equal(first.body, null, "a read has no body");
+// ---- 1. the data -----------------------------------------------------------------------------------------------------------------------------
+
+/** What the old script said, as data: two upkeeps of the target's own schedules (the branch families of each: the lab's own and the orchestrator's), and the strategy of each. */
+const CONVENTIONS = {
+  upkeeps: [
+    { id: "weekly-audit", branchPrefixes: ["automation/weekly-audit-", "sdlc/weekly-audit-"], labels: ["content-audit"] },
+    { id: "self-improve", branchPrefixes: ["automation/self-improve-", "sdlc/self-improve-"], labels: ["self-improving-agents"] },
+  ],
+  strategyUpkeep: { "content-and-docs-sync": "weekly-audit", "code-quality-and-improvement-scan": "self-improve" },
+};
+const IMPLEMENT_KEYS = ["gh-admin-msft", "copilot-lab", "self-improving-agents"];
+const STEP = "Deduplicate open pull requests";
+
+test("E3: sdlc.yaml carries the conventions once, at the top level of the fleet, and no project overrides them", () => {
+  const manifest = presetManifest();
+  assert.deepEqual(manifest.dedupe, CONVENTIONS);
+  for (const project of manifest.projects) assert.equal("dedupe" in project.driftAudit, false, `${project.projectKey} has no block of its own, so the fleet's applies`);
 });
 
-test("AC10: the heads automation/weekly-audit-*, automation/self-improve-* and sdlc/* and the two labels are recorded, feature/x is not", async () => {
-  const directory = out();
-  const result = await invoke(run, ["--out", directory], { env: env(), fetch: listing() });
-  assert.equal(result.code, 0, result.stderr);
-  const recorded = report(directory);
-  assert.deepEqual(recorded.matches.map((match) => [match.number, match.headRef]), [
-    [11, "automation/weekly-audit-2026-11-01"],
-    [12, "automation/self-improve-2026-11-02"],
-    [13, "sdlc/weekly-audit-2026-11-01"],
-    [14, "feature/audited"],
-    [15, "feature/agents"],
-  ]);
-  assert.deepEqual(recorded.matches.map((match) => match.url), [11, 12, 13, 14, 15].map((number) => `https://github.example/${OWNER}/${REPO}/pull/${number}`), "number, head ref and URL");
-  assert.equal(recorded.matches.some((match) => match.headRef === "feature/x"), false);
-  assert.deepEqual(recorded.matches.map((match) => match.reasons), [
-    ["head branch matches automation/weekly-audit-*"],
-    ["head branch matches automation/self-improve-*"],
-    ["head branch matches sdlc/*"],
-    ["carries the label content-audit"],
-    ["carries the label self-improving-agents"],
-  ]);
-  assert.deepEqual({ repository: recorded.repository, inspected: recorded.inspected, truncated: recorded.truncated, duplicate: recorded.duplicate }, { repository: `${OWNER}/${REPO}`, inspected: 9, truncated: false, duplicate: true });
-  assert.equal(recorded.query, `GET ${PULLS_PATH}${QUERY}`);
-  assert.deepEqual(listTree(directory), ["open-pr-dedup.json", "open-prs.json"]);
-  assert.equal(fs.readFileSync(path.join(directory, "open-prs.json"), "utf8"), fs.readFileSync(path.join(directory, "open-pr-dedup.json"), "utf8"), "the same record is also written as open-prs.json");
+test("E3: the engine's reader gives every drift project that block, which is what the dedupe step reads through --project", async () => {
+  for (const key of DRIFT_KEYS) assert.deepEqual(await readProjectDedupe({ manifestPath: abs("sdlc.yaml"), projectKey: key }), CONVENTIONS, key);
 });
 
-test("AC10: a branch has to start with the prefix, in this case, and a pull request that matches in two ways lists both reasons", () => {
-  assert.deepEqual(matchReasons(pull(1, "docs/sdlc/x")), []);
-  assert.deepEqual(matchReasons(pull(1, "SDLC/x")), []);
-  assert.deepEqual(matchReasons(pull(1, "automation/weekly-audit")), [], "the prefix ends with a dash");
-  assert.deepEqual(matchReasons(pull(1, "automation/weekly-audit-")), ["head branch matches automation/weekly-audit-*"]);
-  assert.deepEqual(matchReasons(pull(1, "sdlc/a/b")), ["head branch matches sdlc/*"]);
-  assert.deepEqual(matchReasons(pull(1, "sdlc/x", ["content-audit"])), ["head branch matches sdlc/*", "carries the label content-audit"]);
-  assert.deepEqual(matchReasons(pull(1, "x", ["Content-Audit"])), [], "labels are matched exactly");
-  assert.deepEqual(matchReasons({}), []);
-  assert.deepEqual(matchReasons({ head: { ref: "sdlc/x" }, labels: null }), ["head branch matches sdlc/*"]);
-});
-
-test("AC10: with nothing that could be a duplicate the record says so, and the checkout is not needed", async () => {
-  const directory = out();
-  const result = await invoke(run, ["--out", directory], { env: env(), fetch: listing([pull(1, "feature/x"), pull(2, "fix/y", ["bug"])]) });
-  assert.equal(result.code, 0, result.stderr);
-  assert.deepEqual({ duplicate: report(directory).duplicate, matches: report(directory).matches, inspected: report(directory).inspected }, { duplicate: false, matches: [], inspected: 2 });
-  const empty = out();
-  assert.equal((await invoke(run, ["--out", empty], { env: env(), fetch: listing([]) })).code, 0);
-  assert.equal(report(empty).inspected, 0);
-});
-
-test("AC10: more open pull requests than one page are all read, and a repository beyond the page limit is marked truncated", async () => {
-  const first = Array.from({ length: 30 }, (_, index) => pull(100 + index, `feature/${index}`));
-  const second = [pull(200, "sdlc/late-2026-11-03")];
-  const pages = createFakeFetch((entry) => {
-    if (entry.pathAndSearch === `${PULLS_PATH}${QUERY}`) return json(200, first, { link: `<https://api.github.com/repositories/42/pulls?state=open&per_page=30&page=2>; rel="next", <https://api.github.com/repositories/42/pulls?state=open&per_page=30&page=2>; rel="last"` });
-    if (entry.path === "/repositories/42/pulls" && entry.search.includes("page=2")) return json(200, second);
-    return json(404, {});
+for (const key of DRIFT_KEYS) {
+  test(`AC10: the rendered deduplication step of drift-${key} names the workflow, the strategy of the manifest and the project that holds the conventions; no credential is on the command line`, () => {
+    const { frontmatter } = driftWorkflow(key);
+    const step = frontmatter["pre-agent-steps"].find((candidate) => candidate.name === STEP);
+    const handlerKey = frontmatter["safe-outputs"]["create-pull-request"]["close-older-key"];
+    assert.equal(handlerKey, `sdlc-drift-${key}`);
+    assert.match(step.run, /^node "\$GITHUB_WORKSPACE\/node_modules\/ai-sdlc-factory\/src\/drift\/dedupe-open-prs\.mjs" --out \/tmp\/gh-aw\/agent --target-repo "\$CONFIGURED_TARGET_REPO" /);
+    assert.ok(step.run.endsWith(` --close-older-key ${handlerKey} --upkeep-strategy ${driftPreset(key).driftAudit.upkeepStrategy} --project ${key}`), "the key of the safe output, the strategy of the manifest, and the project");
+    assert.equal(/APP_PRIVATE_KEY|ghs_|github_pat/.test(step.run), false, "and no credential on the command line");
   });
-  const directory = out();
-  assert.equal((await invoke(run, ["--out", directory], { env: env(), fetch: pages })).code, 0);
-  assert.equal(pages.requests.length, 2);
-  assert.deepEqual(report(directory).matches.map((match) => match.number), [200]);
-  assert.equal(report(directory).inspected, 31);
-  assert.equal(report(directory).truncated, false);
-  const endless = createFakeFetch(() => json(200, [pull(1, "feature/a")], { link: '<https://api.github.com/repositories/42/pulls?state=open&per_page=30&page=2>; rel="next"' }));
-  const capped = out();
-  const result = await invoke(run, ["--out", capped], { env: env(), fetch: endless });
-  assert.equal(result.code, 0, result.stderr);
-  assert.equal(endless.requests.length, 10, "ten pages at most");
-  assert.equal(report(capped).truncated, true);
-  const foreign = createFakeFetch(() => json(200, [pull(1, "feature/a")], { link: '<https://evil.example/pulls?page=2>; rel="next"' }));
-  const refused = await invoke(run, ["--out", out()], { env: env(), fetch: foreign });
-  assert.equal(refused.code, 1, "a next link to another origin is not followed with the credential");
-  assert.equal(foreign.requests.length, 1);
-});
+}
 
-test("AC10: with a GitHub App credential the script mints an installation token for the target repository only, then reads", async () => {
-  const { privateKey, publicKey } = rsa();
-  const claims = [];
-  const fake = createFakeFetch((entry) => {
-    const bearer = String(entry.headers.authorization ?? "").replace(/^Bearer /, "");
-    if (entry.path.startsWith("/app/")) {
-      const [header, payload, signature] = bearer.split(".");
-      assert.equal(crypto.verify("RSA-SHA256", Buffer.from(`${header}.${payload}`), publicKey, Buffer.from(signature, "base64url")), true, "the App JWT is signed with the private key");
-      const parsed = { header: JSON.parse(Buffer.from(header, "base64url")), payload: JSON.parse(Buffer.from(payload, "base64url")) };
-      claims.push(parsed);
-    }
-    if (entry.pathAndSearch === "/app/installations?per_page=100") return json(200, [{ id: 5, account: { login: "someone-else" } }, { id: 77, account: { login: OWNER.toUpperCase() } }]);
-    if (entry.method === "POST" && entry.path === "/app/installations/77/access_tokens") return json(201, { token: "ghs_minted", expires_at: "2026-11-06T13:00:00Z" });
-    if (entry.pathAndSearch === `${PULLS_PATH}${QUERY}`) return entry.headers.authorization === "Bearer ghs_minted" ? json(200, OPEN) : json(401, { message: "Bad credentials" });
-    return json(404, {});
+for (const key of IMPLEMENT_KEYS) {
+  test(`AC10 and AC45: the rendered deduplication step of implement-${key} is the implementation form, with the project`, () => {
+    const step = implementWorkflow(key).frontmatter["pre-agent-steps"].find((candidate) => candidate.name === STEP);
+    assert.ok(step.run.endsWith(` --upkeep-strategy ${driftPreset(key).driftAudit.upkeepStrategy} --implementation --project ${key}`), step.run);
+    assert.equal(step.run.includes("--close-older-key"), false, "--implementation and --close-older-key name two different workflows");
   });
-  const directory = out();
-  const clock = createClock();
-  const result = await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`], { env: cleanEnv({ APP_CLIENT_ID: "Iv1.fixtureclient", APP_PRIVATE_KEY: privateKey }), fetch: fake, now: clock.now, sleep: clock.sleep });
-  assert.equal(result.code, 0, result.stderr);
-  assert.deepEqual(fake.requests.map((request) => `${request.method} ${request.pathAndSearch}`), ["GET /app/installations?per_page=100", "POST /app/installations/77/access_tokens", `GET ${PULLS_PATH}${QUERY}`]);
-  assert.deepEqual(JSON.parse(fake.requests[1].body), { repositories: [REPO], permissions: { pull_requests: "read" } }, "limited to the one repository and to read access to its pull requests");
-  assert.equal(claims.length, 2);
-  for (const { header, payload } of claims) {
-    assert.deepEqual(header, { alg: "RS256", typ: "JWT" });
-    assert.equal(payload.iss, "Iv1.fixtureclient", "the issuer is the client ID");
-    assert.ok(payload.exp - payload.iat <= 600 && payload.exp > payload.iat, "valid for at most ten minutes");
-    assert.ok(Math.abs(payload.iat - clock.now() / 1000) <= 120);
-  }
-  assert.equal(report(directory).duplicate, true);
-  for (const text of [result.stdout, result.stderr, ...listTree(directory).map((file) => fs.readFileSync(path.join(directory, file), "utf8"))]) {
-    assert.equal(text.includes("PRIVATE KEY"), false, "the private key is never printed or written");
-    assert.equal(text.includes("ghs_minted"), false, "and neither is the minted token");
-  }
-});
+}
 
-test("AC10: an App that is not installed on the owner, a key that is not a key and a refused token exchange each exit 1 and write nothing", async () => {
-  const { privateKey } = rsa();
-  const answer = (installations, exchange = 201) =>
-    createFakeFetch((entry) => {
-      if (entry.path === "/app/installations") return json(200, installations);
-      if (entry.method === "POST") return exchange === 201 ? json(201, { token: "ghs_x" }) : json(exchange, { message: "Resource not accessible by integration" });
-      return json(200, []);
-    });
-  const credentials = (extra = {}) => cleanEnv({ APP_CLIENT_ID: "Iv1.fixture", APP_PRIVATE_KEY: privateKey, ...extra });
-  const cases = [
-    ["not installed", answer([{ id: 1, account: { login: "other" } }]), credentials(), /not installed on 'example-owner'/],
-    ["bad key", answer([]), credentials({ APP_PRIVATE_KEY: "not a pem" }), /not a valid PEM private key/],
-    ["refused exchange", answer([{ id: 1, account: { login: OWNER } }], 403), credentials(), /returned HTTP 403: Resource not accessible/],
-    ["no credential", answer([]), cleanEnv(), /no GitHub App credential/],
-  ];
-  for (const [name, fake, environment, message] of cases) {
-    const directory = out();
-    const result = await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`], { env: environment, fetch: fake });
-    assert.equal(result.code, 1, name);
-    assert.match(result.stderr, message, name);
-    assert.equal(fs.existsSync(directory), false, `${name}: nothing is written`);
-    assert.equal(fake.requests.filter((request) => request.path.includes("/pulls")).length, 0, `${name}: the pull requests are not read`);
-  }
-});
-
-test("AC9 and AC10: a personal access token, an OAuth token or a user access token of an App is refused before any request, and nothing is written", async () => {
-  for (const token of ["ghp_personalaccesstoken", "github_pat_11ABCDEFG_fixture", "gho_oauthtoken", "ghu_appusertokenfixture"]) {
-    const fake = listing();
-    const directory = out();
-    const result = await invoke(run, ["--out", directory], { env: env({ GH_APP_INSTALLATION_TOKEN: token }), fetch: fake });
-    assert.equal(result.code, 1, token);
-    assert.match(result.stderr, /installation token is required/);
-    assert.equal(fake.requests.length, 0, "no request carries the credential");
-    assert.equal(result.stderr.includes(token), false, "the token is not echoed");
-    assert.equal(fs.existsSync(directory), false);
-  }
-  const noEnvToken = listing();
-  assert.equal((await invoke(run, ["--out", out()], { env: cleanEnv({ CONFIGURED_TARGET_REPO: `${OWNER}/${REPO}`, GH_TOKEN: "ghs_jobtoken", GITHUB_TOKEN: "ghs_jobtoken" }), fetch: noEnvToken })).code, 1, "GH_TOKEN and GITHUB_TOKEN are not used: only an App installation token for the target is");
-  assert.equal(noEnvToken.requests.length, 0);
-});
-
-test("AC10: a failed read exits 1 and writes nothing: an unknown state is never 'no duplicate'", async () => {
-  const cases = [
-    [json(401, { message: "Bad credentials" }), /HTTP 401: Bad credentials/],
-    [json(403, { message: "Resource not accessible by integration" }), /HTTP 403: Resource not accessible/],
-    [json(404, { message: "Not Found" }), /HTTP 404: Not Found/],
-    [json(200, { not: "a list" }), /did not return a list/],
-    [{ status: 200, body: "<html>proxy error</html>" }, /did not return a list/],
-  ];
-  for (const [reply, message] of cases) {
-    const directory = out();
-    const result = await invoke(run, ["--out", directory], { env: env(), fetch: createFakeFetch(() => reply) });
-    assert.equal(result.code, 1, JSON.stringify(reply).slice(0, 60));
-    assert.match(result.stderr, message);
-    assert.equal(fs.existsSync(directory), false);
-  }
-  const failing = createFakeFetch(() => {
-    throw new TypeError("fetch failed", { cause: new Error("getaddrinfo ENOTFOUND api.github.com") });
-  });
-  const clock = createClock();
-  const down = await invoke(run, ["--out", out()], { env: env(), fetch: failing, sleep: clock.sleep, now: clock.now });
-  assert.equal(down.code, 1);
-  assert.match(down.stderr, /could not be sent: fetch failed.*ENOTFOUND/);
-  assert.equal(failing.requests.length, 3, "a read is tried three times when the network fails");
-  assert.deepEqual(clock.waits, [1000, 2000]);
-});
-
-test("AC10: the API address must be https, except for a loopback address, so that a token is never sent in the clear", async () => {
-  for (const url of ["http://api.example.test", "ftp://api.example.test", "not a url"]) {
-    const fake = listing();
-    const result = await invoke(run, ["--out", out(), "--api-url", url], { env: env(), fetch: fake });
-    assert.equal(result.code, 1, url);
-    assert.match(result.stderr, /GITHUB_API_URL/);
-    assert.equal(fake.requests.length, 0);
-  }
-  const loopback = createFakeFetch((entry) => json(200, entry.host === "127.0.0.1:4567" ? [] : [pull(1, "sdlc/x")]));
-  assert.equal((await invoke(run, ["--out", out()], { env: env({ GITHUB_API_URL: "http://127.0.0.1:4567" }), fetch: loopback })).code, 0);
-  assert.equal(loopback.requests[0].url, `http://127.0.0.1:4567${PULLS_PATH}${QUERY}`);
-  const enterprise = createFakeFetch(() => json(200, []));
-  assert.equal((await invoke(run, ["--out", out()], { env: env({ GITHUB_API_URL: "https://ghe.example.test/api/v3/" }), fetch: enterprise })).code, 0);
-  assert.equal(enterprise.requests[0].url, `https://ghe.example.test/api/v3${PULLS_PATH}${QUERY}`, "an enterprise API prefix is kept");
-});
-
-test("AC10: a missing or malformed target repository is a usage error before any request", async () => {
-  const fake = listing();
-  assert.equal((await invoke(run, ["--out", out()], { env: cleanEnv({ GH_APP_INSTALLATION_TOKEN: TOKEN }), fetch: fake })).code, 2, "no target");
-  assert.equal((await invoke(run, ["--out", out(), "--target-repo", "not-a-slug"], { env: env(), fetch: fake })).code, 2);
-  assert.equal((await invoke(run, ["--out", out(), "--bogus", "x"], { env: env(), fetch: fake })).code, 2);
-  assert.equal(fake.requests.length, 0);
-});
-
-test("AC10: the script writes only under --out and leaves nothing temporary behind", async () => {
-  const directory = out();
-  const spy = recordingFs();
-  const result = await invoke(run, ["--out", directory], { env: env(), fetch: listing(), fs: spy.fs });
-  assert.equal(result.code, 0, result.stderr);
-  assert.ok(spy.writes.length > 0);
-  for (const target of spy.writes) assert.ok(isUnder(target, directory) || isUnder(target, path.dirname(directory)), `${target} is under --out`);
-  assert.deepEqual(leftovers(path.dirname(directory)), []);
-});
-
-test("AC10: the command, run as a process against a stub server on 127.0.0.1, sends GET pulls?state=open&per_page=30 first", async () => {
-  const server = await startStubServer((entry) => (entry.pathAndSearch === `${PULLS_PATH}${QUERY}` ? json(200, OPEN) : json(404, { message: "Not Found" })));
-  const directory = out();
-  try {
-    const result = await runNode(script("drift", "dedupe-open-prs.mjs"), ["--out", directory, "--target-repo", `${OWNER}/${REPO}`], { env: env({ GITHUB_API_URL: server.url }) });
-    assert.equal(result.code, 0, result.stderr);
-    assert.deepEqual(server.requests.map((request) => `${request.method} ${request.pathAndSearch}`), [`GET ${PULLS_PATH}${QUERY}`]);
-    assert.equal(server.requests[0].headers.authorization, `Bearer ${TOKEN}`);
-    assert.deepEqual(report(directory).matches.map((match) => match.number), [11, 12, 13, 14, 15]);
-  } finally {
-    await server.close();
-  }
+test("AC10: the preset's two lab workflows are told apart by the strategy, and the strategies map to the upkeeps of the lab's own schedules", () => {
+  assert.equal(driftPreset("copilot-lab").driftAudit.upkeepStrategy, "content-and-docs-sync");
+  assert.equal(driftPreset("self-improving-agents").driftAudit.upkeepStrategy, "code-quality-and-improvement-scan");
+  assert.equal(upkeepOfStrategy(BLOCK, driftPreset("copilot-lab").driftAudit.upkeepStrategy), "weekly-audit");
+  assert.equal(upkeepOfStrategy(BLOCK, driftPreset("self-improving-agents").driftAudit.upkeepStrategy), "self-improve");
 });
 
 for (const key of DRIFT_KEYS) {
@@ -287,16 +84,239 @@ for (const key of DRIFT_KEYS) {
   });
 }
 
+// ---- 2. the table (E3) -----------------------------------------------------------------------------------------------------------------------
+
+/**
+ * The decisions of the dedupe script as they were before the conventions became data: src/drift/dedupe-open-prs.mjs of 3d1b52b (matchReasons, upkeepOf and decide, with the
+ * constants that were compiled into it), kept verbatim as the reference of the table. It is frozen: it is the old behaviour, and the table holds the manifest to it.
+ */
+const legacy = (() => {
+  const BRANCH_PREFIXES = ["automation/weekly-audit-", "automation/self-improve-", "sdlc/"];
+  const BRANCH_PATTERNS = BRANCH_PREFIXES.map((prefix) => `${prefix}*`);
+  const LABELS = ["content-audit", "self-improving-agents"];
+  const UPKEEP_OF_LABEL = { "content-audit": "weekly-audit", "self-improving-agents": "self-improve" };
+  const UPKEEP_OF_STEM = [
+    ["weekly-audit-", "weekly-audit"],
+    ["self-improve-", "self-improve"],
+  ];
+  const UPKEEP_OF_STRATEGY = { "content-and-docs-sync": "weekly-audit", "code-quality-and-improvement-scan": "self-improve" };
+  const IMPLEMENTATION_HEAD = /^sdlc\/implement-report-[1-9][0-9]*$/;
+  const matchReasonsOld = (pull) => {
+    const reasons = [];
+    const ref = String(pull?.head?.ref ?? "");
+    BRANCH_PREFIXES.forEach((prefix, position) => {
+      if (ref.startsWith(prefix)) reasons.push(`head branch matches ${BRANCH_PATTERNS[position]}`);
+    });
+    const labels = (Array.isArray(pull?.labels) ? pull.labels : []).map((label) => String(label?.name ?? ""));
+    for (const label of LABELS) if (labels.includes(label)) reasons.push(`carries the label ${label}`);
+    return reasons;
+  };
+  const belongsOld = (pull, closeOlderKey) => {
+    const key = normalizeCloseOlderKey(closeOlderKey);
+    return key !== "" && String(pull?.body ?? "").includes(`<!-- gh-aw-close-key: ${key} -->`);
+  };
+  const upkeepOfOld = (pull) => {
+    const stem = String(pull?.head?.ref ?? "").replace(/^(?:automation|sdlc)\//, "");
+    const found = new Set(UPKEEP_OF_STEM.filter(([prefix]) => stem.startsWith(prefix)).map(([, upkeep]) => upkeep));
+    for (const label of Array.isArray(pull?.labels) ? pull.labels : []) {
+      const upkeep = Object.hasOwn(UPKEEP_OF_LABEL, String(label?.name ?? "")) ? UPKEEP_OF_LABEL[String(label.name)] : undefined;
+      if (upkeep !== undefined) found.add(upkeep);
+    }
+    return found.size === 1 ? [...found][0] : null;
+  };
+  const decideOld = (pull, workflow) => {
+    const upkeep = upkeepOfOld(pull);
+    if (workflow.closeOlderKey !== null && belongsOld(pull, workflow.closeOlderKey)) return { belongsTo: "current-workflow", upkeep, decision: "ignore" };
+    const head = String(pull?.head?.ref ?? "");
+    const known = workflow.closeOlderKey !== null || workflow.implementation === true;
+    if (known && IMPLEMENTATION_HEAD.test(head)) return { belongsTo: "implementation", upkeep, decision: "ignore" };
+    if (workflow.implementation === true && head.startsWith("sdlc/")) return { belongsTo: "another-workflow-or-schedule", upkeep, decision: "ignore" };
+    const other = workflow.upkeep !== null && upkeep !== null && upkeep !== workflow.upkeep;
+    return { belongsTo: "another-workflow-or-schedule", upkeep, decision: other ? "ignore" : "skip" };
+  };
+  const upkeepOfStrategyOld = (strategy) => (Object.hasOwn(UPKEEP_OF_STRATEGY, strategy) ? UPKEEP_OF_STRATEGY[strategy] : null);
+  return { matchReasons: matchReasonsOld, upkeepOf: upkeepOfOld, decide: decideOld, upkeepOfStrategy: upkeepOfStrategyOld };
+})();
+
+const pull = (number, ref, labels = [], body = undefined) => ({ number, html_url: `https://github.example/example-owner/example-target/pull/${number}`, head: { ref }, labels: labels.map((name) => ({ name })), draft: false, ...(body === undefined ? {} : { body }) });
+
+/** A head branch that the table does not take from the bare stems below is one that a schedule or the orchestrator could name, or one that they could not. */
+const REFS = [
+  "automation/weekly-audit-2026-11-01", "automation/self-improve-2026-11-02", "automation/weekly-audit-", "automation/weekly-audit", "automation/self-improve-", "automation/other-1",
+  "sdlc/weekly-audit-2026-11-01", "sdlc/self-improve-2026-11-02", "sdlc/weekly-audit-", "sdlc/x", "sdlc/a/b", "sdlc/implement-report-7", "sdlc/implement-report-0", "sdlc/implement-report-7x", "sdlc",
+  "SDLC/x", "feature/x", "feature/audited", "docs/automation/weekly-audit-x", "docs/sdlc/weekly-audit-x", "automation/automation/weekly-audit-x", "release/1.0", "main", "",
+];
+// a head branch without its namespace: the old code read the stem of any branch, so `weekly-audit-x` was an upkeep of its own (see the last test of this part)
+const BARE_REFS = ["weekly-audit-x", "self-improve-x"];
+const LABEL_SETS = [[], ["content-audit"], ["self-improving-agents"], ["content-audit", "self-improving-agents"], ["other"], ["Content-Audit"], ["content-audit", "other"], ["automated", "sdlc-drift", "needs-review"]];
+const KEY = "sdlc-drift-copilot-lab";
+const BODIES = [undefined, `Proposed changes.\n\n<!-- gh-aw-close-key: ${KEY} -->\n`, "<!-- gh-aw-close-key: some-other-key -->"];
+const STRATEGIES = ["content-and-docs-sync", "code-quality-and-improvement-scan", "dependency-and-pattern-modernization", "custom", ""];
+const KINDS = [
+  { name: "a drift workflow", closeOlderKey: KEY, implementation: false },
+  { name: "an implementation workflow", closeOlderKey: null, implementation: true },
+  { name: "a workflow that nothing is known about", closeOlderKey: null, implementation: false },
+];
+
+/** The candidates of the table: every head branch and label set, with the head of a bare stem told apart. */
+function* pulls(refs = REFS) {
+  for (const ref of refs) for (const labels of LABEL_SETS) for (const body of BODIES) yield { ref, labels, body, candidate: pull(1, ref, labels, body) };
+}
+
+test("E3 table: the reasons that a pull request is a possible duplicate, in their order, are the old ones for every head branch and label set", () => {
+  let compared = 0;
+  for (const { ref, labels, candidate } of pulls([...REFS, ...BARE_REFS])) {
+    assert.deepEqual(matchReasons(candidate, BLOCK), legacy.matchReasons(candidate), `reasons of ${JSON.stringify([ref, labels])}`);
+    compared += 1;
+  }
+  assert.ok(compared > 500, `${compared} pull requests compared`);
+  assert.deepEqual(matchReasons(pull(1, "automation/weekly-audit-x", ["self-improving-agents"]), BLOCK), ["head branch matches automation/weekly-audit-*", "carries the label self-improving-agents"], "the text of a reason is unchanged");
+});
+
+test("E3 table: the upkeep of each strategy is the old one, for the four strategies of the schema and for none", () => {
+  for (const strategy of STRATEGIES) assert.equal(upkeepOfStrategy(BLOCK, strategy), legacy.upkeepOfStrategy(strategy), `the upkeep of '${strategy}'`);
+  assert.equal(upkeepOfStrategy(BLOCK, "toString"), null, "and a name of Object.prototype is no strategy");
+});
+
+test("E3 table: the upkeep of a pull request, and what a drift workflow, an implementation workflow and an unknown workflow do about it, equal the old decisions for every pull request that the old script could match", () => {
+  let compared = 0;
+  for (const { ref, labels, body, candidate } of pulls()) {
+    if (legacy.matchReasons(candidate).length === 0) continue; // the script decides about the candidates only
+    assert.equal(upkeepOf(candidate, BLOCK), legacy.upkeepOf(candidate), `upkeep of ${JSON.stringify([ref, labels])}`);
+    for (const kind of KINDS) {
+      for (const strategy of STRATEGIES) {
+        const workflow = { closeOlderKey: kind.closeOlderKey, implementation: kind.implementation, upkeep: legacy.upkeepOfStrategy(strategy) };
+        assert.deepEqual(decide(candidate, { ...workflow, upkeep: upkeepOfStrategy(BLOCK, strategy), config: BLOCK }), legacy.decide(candidate, workflow), `${kind.name}, strategy '${strategy}', ${JSON.stringify([ref, labels, body])}`);
+        compared += 1;
+      }
+    }
+  }
+  assert.ok(compared > 5000, `${compared} decisions compared`);
+});
+
+test("E3 table: whose pull request it is follows from gh-aw's marker for the close-older key, as before", () => {
+  const own = pull(1, "sdlc/weekly-audit-2026-11-01", [], `x\n<!-- gh-aw-close-key: ${KEY} -->\n`);
+  assert.equal(belongsToWorkflow(own, KEY), true);
+  assert.equal(belongsToWorkflow(own, "  SDLC-Drift-Copilot-Lab "), true, "the key is normalized as gh-aw does: lower case, runs of other characters are one dash");
+  assert.equal(belongsToWorkflow(own, "sdlc-drift-copilot"), false, "a key that is a prefix of the marker's is another key");
+  assert.equal(belongsToWorkflow(own, "sdlc-drift-self-improving-agents"), false);
+  assert.equal(belongsToWorkflow(pull(1, "sdlc/weekly-audit-2026-11-01", [], null), KEY), false, "no body, no marker");
+  assert.equal(belongsToWorkflow(pull(1, "sdlc/weekly-audit-2026-11-01", ["sdlc-drift"]), KEY), false, "neither a head branch under sdlc/ nor the labels of the fleet make a pull request this workflow's");
+  assert.equal(normalizeCloseOlderKey("My Key!"), "my-key");
+});
+
+test("E3 table: the one reading that the data does not carry over is a head branch without its namespace (weekly-audit-x), and it shows only for a label of the other upkeep", () => {
+  // The old code removed `automation/` or `sdlc/` from the head and then read the stem, so a bare `weekly-audit-x` was an upkeep of its own. A declared prefix is a whole
+  // prefix (`automation/weekly-audit-`, `sdlc/weekly-audit-`), so a bare branch is no upkeep of its head any more. A bare branch is no candidate by its head either way (no
+  // prefix of the old list matches it), so the reading can differ only for a pull request that is a candidate through a label, and then only when that label is the other
+  // upkeep's: with the label of its own upkeep both readings say the same, and with both labels both say none.
+  const different = [];
+  for (const { ref, labels, candidate } of pulls([...REFS, ...BARE_REFS])) {
+    if (legacy.matchReasons(candidate).length === 0) continue;
+    if (upkeepOf(candidate, BLOCK) !== legacy.upkeepOf(candidate)) different.push(JSON.stringify([ref, labels]));
+  }
+  assert.deepEqual([...new Set(different)].sort(), [
+    JSON.stringify(["self-improve-x", ["content-audit"]]),
+    JSON.stringify(["self-improve-x", ["content-audit", "other"]]),
+    JSON.stringify(["weekly-audit-x", ["self-improving-agents"]]),
+  ].sort());
+  const bare = pull(1, "weekly-audit-x", ["self-improving-agents"]);
+  assert.equal(legacy.upkeepOf(bare), null, "old: the head says weekly-audit and the label says self-improve, so neither");
+  assert.equal(upkeepOf(bare, BLOCK), "self-improve", "new: the head is no declared prefix, so the label alone says");
+  const alone = pull(2, "weekly-audit-x");
+  assert.deepEqual(legacy.matchReasons(alone), [], "a bare branch alone is no candidate in either reading");
+  assert.deepEqual(matchReasons(alone, BLOCK), []);
+  assert.equal(legacy.upkeepOf(alone), "weekly-audit");
+  assert.equal(upkeepOf(alone, BLOCK), null);
+  // what that changes for a workflow: the weekly audit used to skip for such a pull request (an upkeep that is none counts as its own) and now ignores it (it is the other upkeep's)
+  const weekly = { closeOlderKey: KEY, implementation: false };
+  assert.equal(legacy.decide(bare, { ...weekly, upkeep: "weekly-audit" }).decision, "skip");
+  assert.equal(decide(bare, { ...weekly, upkeep: "weekly-audit", config: BLOCK }).decision, "ignore");
+});
+
+// ---- 3. the script, run on the real manifest ---------------------------------------------------------------------------------------------------
+
+const OWNER = "example-owner";
+const REPO = "example-target";
+const PULLS_PATH = `/repos/${OWNER}/${REPO}/pulls`;
+const QUERY = "?state=open&per_page=30";
+const TOKEN = "ghs_installationtokenfixture";
+const OPEN = [
+  pull(11, "automation/weekly-audit-2026-11-01"),
+  pull(12, "automation/self-improve-2026-11-02"),
+  pull(13, "sdlc/weekly-audit-2026-11-01"),
+  pull(14, "feature/audited", ["content-audit", "automated"]),
+  pull(15, "feature/agents", ["self-improving-agents"]),
+  pull(16, "feature/x"),
+  pull(17, "docs/automation/weekly-audit-x"),
+  pull(18, "sdlc"),
+  pull(19, "SDLC/Upper", ["other"]),
+];
+const listing = (list = OPEN) => createFakeFetch((entry) => (entry.pathAndSearch === `${PULLS_PATH}${QUERY}` ? json(200, list) : json(404, { message: "Not Found" })));
+/** The environment of the step: the orchestrator workspace is this repository, so the manifest that the script reads is the real sdlc.yaml. */
+const env = (extra = {}) => cleanEnv({ GITHUB_WORKSPACE: INSTANCE_ROOT, CONFIGURED_TARGET_REPO: `${OWNER}/${REPO}`, GH_APP_INSTALLATION_TOKEN: TOKEN, SDLC_MANIFEST: "", ...extra });
+const out = () => path.join(tempDir("sdlc-s2-dedupe-"), "agent");
+const report = (directory, name = "open-pr-dedup.json") => JSON.parse(fs.readFileSync(path.join(directory, name), "utf8"));
+const base = (key) => ["--target-repo", `${OWNER}/${REPO}`, "--project", key];
+
+for (const key of DRIFT_KEYS) {
+  test(`AC10: with --project ${key} the heads automation/weekly-audit-*, automation/self-improve-* and sdlc/* and the two labels are recorded, feature/x is not`, async () => {
+    const directory = out();
+    const fake = listing();
+    const result = await invoke(run, ["--out", directory, ...base(key)], { env: env(), fetch: fake });
+    assert.equal(result.code, 0, result.stderr);
+    assert.deepEqual(fake.requests.map((request) => `${request.method} ${request.pathAndSearch}`), [`GET ${PULLS_PATH}${QUERY}`]);
+    const recorded = report(directory);
+    assert.deepEqual(recorded.matches.map((match) => [match.number, match.headRef]), [
+      [11, "automation/weekly-audit-2026-11-01"],
+      [12, "automation/self-improve-2026-11-02"],
+      [13, "sdlc/weekly-audit-2026-11-01"],
+      [14, "feature/audited"],
+      [15, "feature/agents"],
+    ]);
+    assert.deepEqual(recorded.matches.map((match) => match.url), [11, 12, 13, 14, 15].map((number) => `https://github.example/${OWNER}/${REPO}/pull/${number}`), "number, head ref and URL");
+    assert.deepEqual(recorded.matches.map((match) => match.reasons), [
+      ["head branch matches automation/weekly-audit-*"],
+      ["head branch matches automation/self-improve-*"],
+      ["head branch matches sdlc/*"],
+      ["carries the label content-audit"],
+      ["carries the label self-improving-agents"],
+    ]);
+    assert.deepEqual({ repository: recorded.repository, inspected: recorded.inspected, truncated: recorded.truncated, duplicate: recorded.duplicate }, { repository: `${OWNER}/${REPO}`, inspected: 9, truncated: false, duplicate: true });
+    assert.deepEqual(listTree(directory), ["open-pr-dedup.json", "open-prs.json"]);
+    assert.equal(fs.readFileSync(path.join(directory, "open-prs.json"), "utf8"), fs.readFileSync(path.join(directory, "open-pr-dedup.json"), "utf8"), "the same record is also written as open-prs.json");
+  });
+}
+
+test("AC10: without --project nothing is known of the fleet's schedules, so only the sdlc/ branches of the orchestrator are candidates (the committed steps always pass the project)", async () => {
+  const directory = out();
+  const result = await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`], { env: env(), fetch: listing() });
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(report(directory).matches.map((match) => match.number), [13], "sdlc/weekly-audit-2026-11-01 only: the lab's own branches and labels are not known, and the bare `sdlc` and the other heads are no candidate");
+});
+
+test("AC10: a project that the manifest does not have, and a manifest that cannot be read, stop the step with nothing written: an unknown state is never 'no duplicate'", async () => {
+  const unknown = out();
+  const result = await invoke(run, ["--out", unknown, ...base("no-such-project")], { env: env(), fetch: listing() });
+  assert.equal(result.code, 1);
+  assert.equal(fs.existsSync(unknown), false, "nothing is written");
+  const elsewhere = tempDir("sdlc-s2-dedupe-workspace-");
+  const missing = out();
+  const noManifest = await invoke(run, ["--out", missing, ...base("copilot-lab")], { env: env({ GITHUB_WORKSPACE: elsewhere }), fetch: listing(), cwd: elsewhere });
+  assert.equal(noManifest.code, 1);
+  assert.equal(fs.existsSync(missing), false, "nothing is written");
+});
+
 // --- whose pull request it is: the current workflow's own earlier one stays open, another workflow's is not a duplicate --------------------------
 //
 // `sdlc/*` is the head of every pull request of the orchestrator, so with the three preset workflows the self-improvement draft of
 // drift-self-improving-agents matched the weekly audit of drift-copilot-lab, and the other way round: each open pull request of one stopped the other,
 // and a workflow's own earlier pull request stopped it too. Since SPEC-02 AC25 keeps that earlier pull request open (its items are in the next run's
-// baseline), it is no reason to skip either. The record now says, for each match, whose it is
-// (belongsTo), which upkeep it is for (upkeep) and what the workflow does about it (decision).
+// baseline), it is no reason to skip either. The record says, for each match, whose it is (belongsTo), which upkeep it is for (upkeep) and what the
+// workflow does about it (decision).
 
-const WEEKLY = { closeOlderKey: "sdlc-drift-copilot-lab", strategy: "content-and-docs-sync", upkeep: "weekly-audit" };
-const IMPROVE = { closeOlderKey: "sdlc-drift-self-improving-agents", strategy: "code-quality-and-improvement-scan", upkeep: "self-improve" };
+const WEEKLY = { closeOlderKey: "sdlc-drift-copilot-lab", strategy: "content-and-docs-sync", upkeep: "weekly-audit", project: "copilot-lab" };
+const IMPROVE = { closeOlderKey: "sdlc-drift-self-improving-agents", strategy: "code-quality-and-improvement-scan", upkeep: "self-improve", project: "self-improving-agents" };
 const marked = (key) => `Proposed changes.\n\n<!-- gh-aw-close-key: ${key} -->\n`;
 const owned = (number, ref, key, labels = []) => ({ ...pull(number, ref, labels), body: marked(key) });
 const FLEET = [
@@ -307,7 +327,7 @@ const FLEET = [
   pull(25, "sdlc/x"),
   pull(26, "feature/x"),
 ];
-const flags = (workflow) => ["--close-older-key", workflow.closeOlderKey, "--upkeep-strategy", workflow.strategy];
+const flags = (workflow) => ["--close-older-key", workflow.closeOlderKey, "--upkeep-strategy", workflow.strategy, "--project", workflow.project];
 const decisions = (directory) => Object.fromEntries(report(directory).matches.map((match) => [match.number, `${match.belongsTo === "current-workflow" ? "own" : "other"}:${match.decision}`]));
 
 test("AC10: for the weekly audit, its own earlier pull request is no reason to skip, the self-improvement draft of the other workflow and the lab's own self-improvement pull request are of another upkeep, and the lab's own audit and a pull request of unknown upkeep are to be skipped for", async () => {
@@ -347,14 +367,14 @@ test("AC10: an open pull request of the workflow itself, or of another workflow 
   assert.equal(report(directory).duplicate, true, "with the lab's own audit open as well, it is");
 });
 
-test("AC10: without --close-older-key and --upkeep-strategy nothing is known of the workflow, so every match is to be skipped for, as before", async () => {
+test("AC10: with the project but without --close-older-key and --upkeep-strategy nothing is known of the workflow, so every match is to be skipped for, as before", async () => {
   const directory = out();
-  const result = await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`], { env: env(), fetch: listing(FLEET) });
+  const result = await invoke(run, ["--out", directory, ...base("copilot-lab")], { env: env(), fetch: listing(FLEET) });
   assert.equal(result.code, 0, result.stderr);
   assert.deepEqual(decisions(directory), { 21: "other:skip", 22: "other:skip", 23: "other:skip", 24: "other:skip", 25: "other:skip" });
   assert.deepEqual({ duplicate: report(directory).duplicate, closeOlderKey: report(directory).closeOlderKey, upkeep: report(directory).upkeep }, { duplicate: true, closeOlderKey: null, upkeep: null });
   const onlyStrategy = out();
-  await invoke(run, ["--out", onlyStrategy, "--target-repo", `${OWNER}/${REPO}`, "--upkeep-strategy", "content-and-docs-sync"], { env: env(), fetch: listing(FLEET) });
+  await invoke(run, ["--out", onlyStrategy, ...base("copilot-lab"), "--upkeep-strategy", "content-and-docs-sync"], { env: env(), fetch: listing(FLEET) });
   assert.deepEqual(decisions(onlyStrategy), { 21: "other:skip", 22: "other:ignore", 23: "other:skip", 24: "other:ignore", 25: "other:skip" }, "with the upkeep alone the other upkeep is told apart, and its own pull request cannot be");
   const unknownStrategy = out();
   await invoke(run, ["--out", unknownStrategy, "--target-repo", `${OWNER}/${REPO}`, ...flags({ ...WEEKLY, strategy: "custom" })], { env: env(), fetch: listing(FLEET) });
@@ -362,25 +382,10 @@ test("AC10: without --close-older-key and --upkeep-strategy nothing is known of 
   assert.equal(report(unknownStrategy).upkeep, null);
 });
 
-test("AC10: whose a pull request is follows from the marker that gh-aw writes for the close-older key, and from nothing that the pull request merely claims", () => {
-  const own = { body: `x\n<!-- gh-aw-close-key: ${WEEKLY.closeOlderKey} -->\n`, head: { ref: "sdlc/weekly-audit-2026-11-01" }, labels: [] };
-  assert.equal(belongsToWorkflow(own, WEEKLY.closeOlderKey), true);
-  assert.equal(belongsToWorkflow(own, "  SDLC-Drift-Copilot-Lab "), true, "the key is normalized as gh-aw does: lower case, runs of other characters are one dash");
-  assert.equal(belongsToWorkflow(own, "sdlc-drift-copilot"), false, "a key that is a prefix of the marker's is another key");
-  assert.equal(belongsToWorkflow(own, IMPROVE.closeOlderKey), false);
-  assert.equal(belongsToWorkflow({ ...own, body: null }, WEEKLY.closeOlderKey), false, "no body, no marker");
-  assert.equal(belongsToWorkflow({ ...own, body: `gh-aw-close-key: ${WEEKLY.closeOlderKey}` }, WEEKLY.closeOlderKey), false, "the text of the marker without its comment wrapper is not the marker");
-  assert.equal(belongsToWorkflow({ head: { ref: "sdlc/weekly-audit-2026-11-01" }, labels: [{ name: "sdlc-drift" }] }, WEEKLY.closeOlderKey), false, "neither a head branch under sdlc/ nor the labels of the fleet make a pull request this workflow's");
-  assert.equal(belongsToWorkflow(own, ""), false, "and without a key nothing is its own");
-  assert.equal(normalizeCloseOlderKey("My Key!"), "my-key");
-  assert.equal(normalizeCloseOlderKey("__a--b__"), "a-b");
-  assert.equal(normalizeCloseOlderKey("!!!"), "");
-});
-
 test("AC10 and AC45: with --implementation every pull request of the fleet is no reason to skip, and only the target's own schedule of the same upkeep is", async () => {
-  const implementationRun = (strategy, list) => {
+  const implementationRun = (strategy, list, project = "copilot-lab") => {
     const directory = out();
-    return invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`, "--upkeep-strategy", strategy, "--implementation"], { env: env(), fetch: listing(list) }).then((result) => ({ result, directory }));
+    return invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`, "--upkeep-strategy", strategy, "--implementation", "--project", project], { env: env(), fetch: listing(list) }).then((result) => ({ result, directory }));
   };
   const fleet = [...FLEET, pull(27, "sdlc/implement-report-41", ["automated", "sdlc-implement", "needs-review"])];
   const weekly = await implementationRun("content-and-docs-sync", fleet);
@@ -388,15 +393,11 @@ test("AC10 and AC45: with --implementation every pull request of the fleet is no
   assert.deepEqual(decisions(weekly.directory), { 21: "other:ignore", 22: "other:ignore", 23: "other:skip", 24: "other:ignore", 25: "other:ignore", 27: "other:ignore" }, "the lab's own audit is the one duplicate of an audit report's implementation");
   assert.equal(report(weekly.directory).matches.find((match) => match.number === 27).belongsTo, "implementation");
   assert.deepEqual({ duplicate: report(weekly.directory).duplicate, implementation: report(weekly.directory).implementation, closeOlderKey: report(weekly.directory).closeOlderKey }, { duplicate: true, implementation: true, closeOlderKey: null });
-  const improve = await implementationRun("code-quality-and-improvement-scan", fleet);
+  const improve = await implementationRun("code-quality-and-improvement-scan", fleet, "self-improving-agents");
   assert.deepEqual(decisions(improve.directory), { 21: "other:ignore", 22: "other:ignore", 23: "other:ignore", 24: "other:skip", 25: "other:ignore", 27: "other:ignore" });
   const onlyFleet = await implementationRun("content-and-docs-sync", [FLEET[0], FLEET[1], FLEET[4], fleet.at(-1)]);
   assert.equal(report(onlyFleet.directory).duplicate, false, "drift pull requests, other implementations and other sdlc/ pull requests never stop an implementation");
-  const plain = out();
-  await invoke(run, ["--out", plain, "--target-repo", `${OWNER}/${REPO}`, "--upkeep-strategy", "content-and-docs-sync"], { env: env(), fetch: listing(fleet) });
-  assert.equal(report(plain).implementation, false);
-  assert.equal(decisions(plain)[25], "other:skip", "the control: without --implementation an sdlc/ pull request of unknown upkeep is skipped for");
-  const both = await invoke(run, ["--out", out(), "--target-repo", `${OWNER}/${REPO}`, "--close-older-key", "sdlc-drift-x", "--implementation"], { env: env(), fetch: listing(fleet) });
+  const both = await invoke(run, ["--out", out(), ...base("copilot-lab"), "--close-older-key", "sdlc-drift-x", "--implementation"], { env: env(), fetch: listing(fleet) });
   assert.equal(both.code, 2, "the key of a drift workflow and --implementation name two different workflows");
 });
 
@@ -414,40 +415,8 @@ test("AC10 and AC45: the implementation pull request of an earlier drift report 
     assert.equal(report(alone).duplicate, false, `${workflow.strategy}: an open implementation pull request alone stops nothing`);
   }
   const unknown = out();
-  await invoke(run, ["--out", unknown, "--target-repo", `${OWNER}/${REPO}`], { env: env(), fetch: listing([implementation]) });
+  await invoke(run, ["--out", unknown, ...base("copilot-lab")], { env: env(), fetch: listing([implementation]) });
   assert.deepEqual(report(unknown).matches.map((match) => [match.belongsTo, match.decision]), [["another-workflow-or-schedule", "skip"]], "nothing is known of the workflow");
-  for (const ref of ["sdlc/implement-report-", "sdlc/implement-report-41-x", "sdlc/implement-report-4a", "automation/implement-report-41", "sdlc/implement-reports-41"]) {
-    assert.notEqual(decide(pull(1, ref), { closeOlderKey: WEEKLY.closeOlderKey, upkeep: "weekly-audit" }).belongsTo, "implementation", ref);
-  }
-});
-
-test("AC10: the upkeep of a pull request is read from its head branch after automation/ or sdlc/ and from the two labels, and a pull request that says two upkeeps says none", () => {
-  assert.equal(upkeepOf(pull(1, "automation/weekly-audit-2026-11-01")), "weekly-audit");
-  assert.equal(upkeepOf(pull(1, "sdlc/weekly-audit-2026-11-01")), "weekly-audit");
-  assert.equal(upkeepOf(pull(1, "automation/self-improve-2026-11-02")), "self-improve");
-  assert.equal(upkeepOf(pull(1, "sdlc/self-improve-2026-11-02")), "self-improve");
-  assert.equal(upkeepOf(pull(1, "feature/x", ["content-audit"])), "weekly-audit");
-  assert.equal(upkeepOf(pull(1, "feature/x", ["self-improving-agents"])), "self-improve");
-  assert.equal(upkeepOf(pull(1, "sdlc/weekly-audit-x", ["content-audit"])), "weekly-audit", "the head and the label agree");
-  assert.equal(upkeepOf(pull(1, "sdlc/weekly-audit-x", ["self-improving-agents"])), null, "the head and the label disagree");
-  assert.equal(upkeepOf(pull(1, "sdlc/x")), null);
-  assert.equal(upkeepOf(pull(1, "weekly-audit-2026-11-01")), "weekly-audit", "a working branch without a prefix is read the same way");
-  assert.equal(upkeepOf(pull(1, "docs/sdlc/weekly-audit-x")), null, "a prefix has to be at the start");
-  assert.equal(upkeepOf({}), null);
-  assert.deepEqual(UPKEEP_OF_STRATEGY, { "content-and-docs-sync": "weekly-audit", "code-quality-and-improvement-scan": "self-improve" });
-  assert.deepEqual(decide(pull(1, "sdlc/x"), { closeOlderKey: null, upkeep: "weekly-audit" }), { belongsTo: "another-workflow-or-schedule", upkeep: null, decision: "skip" });
-  assert.equal(decide(pull(1, "sdlc/self-improve-x"), { closeOlderKey: null, upkeep: "weekly-audit" }).decision, "ignore");
-});
-
-test("AC10: a close-older key that contains nothing to match is a usage error before any request, and an unknown strategy is only a strategy with no upkeep", async () => {
-  const fake = listing(FLEET);
-  const refused = await invoke(run, ["--out", out(), "--target-repo", `${OWNER}/${REPO}`, "--close-older-key", "!!!"], { env: env(), fetch: fake });
-  assert.equal(refused.code, 2);
-  assert.match(refused.stderr, /--close-older-key must contain a letter or a digit/);
-  assert.equal(fake.requests.length, 0);
-  const blank = out();
-  assert.equal((await invoke(run, ["--out", blank, "--target-repo", `${OWNER}/${REPO}`, "--close-older-key", "  ", "--upkeep-strategy", "no-such-strategy"], { env: env(), fetch: listing(FLEET) })).code, 0, "a blank key is no key");
-  assert.equal(report(blank).closeOlderKey, null);
 });
 
 test("AC10: the record of a run with the flags is as deterministic as before: the same pull requests give the same bytes", async () => {
@@ -456,51 +425,4 @@ test("AC10: the record of a run with the flags is as deterministic as before: th
   for (const directory of [first, second]) await invoke(run, ["--out", directory, "--target-repo", `${OWNER}/${REPO}`, ...flags(WEEKLY)], { env: env(), fetch: listing([...FLEET].reverse()) });
   assert.equal(fs.readFileSync(path.join(first, "open-pr-dedup.json"), "utf8"), fs.readFileSync(path.join(second, "open-pr-dedup.json"), "utf8"));
   assert.deepEqual(report(first).matches.map((match) => match.number), [21, 22, 23, 24, 25], "ordered by pull request number, whatever the order of the list");
-});
-
-for (const key of DRIFT_KEYS) {
-  test(`AC10: the rendered deduplication step of drift-${key} names the workflow: its close-older key, which is the key that its pull requests carry, and its upkeep strategy`, () => {
-    const { frontmatter } = driftWorkflow(key);
-    const step = frontmatter["pre-agent-steps"].find((candidate) => String(candidate.run).includes("dedupe-open-prs.mjs"));
-    const handlerKey = frontmatter["safe-outputs"]["create-pull-request"]["close-older-key"];
-    assert.equal(handlerKey, `sdlc-drift-${key}`);
-    assert.match(step.run, new RegExp(` --close-older-key ${handlerKey} --upkeep-strategy ${driftPreset(key).driftAudit.upkeepStrategy}$`), "the key of the safe output, and the strategy of the manifest");
-    assert.equal(/APP_PRIVATE_KEY|ghs_|github_pat/.test(step.run), false, "and no credential on the command line");
-  });
-}
-
-test("AC10: the preset's two lab workflows are told apart by the strategy, and the strategies map to the upkeeps of the lab's own schedules", () => {
-  assert.equal(driftPreset("copilot-lab").driftAudit.upkeepStrategy, "content-and-docs-sync");
-  assert.equal(driftPreset("self-improving-agents").driftAudit.upkeepStrategy, "code-quality-and-improvement-scan");
-  assert.equal(UPKEEP_OF_STRATEGY[driftPreset("copilot-lab").driftAudit.upkeepStrategy], "weekly-audit");
-  assert.equal(UPKEEP_OF_STRATEGY[driftPreset("self-improving-agents").driftAudit.upkeepStrategy], "self-improve");
-  assert.match(readText(abs("instructions", "copilot-lab.md")), /Name the working branch `weekly-audit-YYYY-MM-DD`/, "the working branch that the lab's audit names starts with the stem that its upkeep is read from");
-  assert.match(readText(abs("instructions", "self-improving-agents.md")), /Name the working branch `self-improve-YYYY-MM-DD`/);
-});
-
-const DEDUP_RULE = /^- Read `\/tmp\/gh-aw\/agent\/open-pr-dedup\.json` before you call `create_pull_request`.*$/m;
-
-for (const key of DRIFT_KEYS) {
-  test(`AC10: the prompt of drift-${key} states the deduplication rule once, with its decisions, and no instruction contradicts it`, () => {
-    const { body } = driftWorkflow(key);
-    const rules = body.slice(body.indexOf("## Operating rules"));
-    const rule = DEDUP_RULE.exec(rules)?.[0];
-    assert.ok(rule, "the rule is among the operating rules");
-    for (const word of ["`duplicate`", "`decision`", "`skip`", "`ignore`", "an earlier pull request of this same workflow, which stays open and carries other items", "Never open a duplicate."]) assert.ok(rule.includes(word), `the rule says ${word}`);
-    assert.equal(/supersede|close-older-pull-requests: true/.test(rule), false, "nothing is superseded any more: an earlier pull request stays open (AC25)");
-    assert.match(rule, /skip the pull request when it lists a matching open pull request that you must not duplicate \(`duplicate` is `true`: a match whose `decision` is `skip`\), and list what you would have changed under `## Recommended` of the drift report instead\./, "a duplicate stops the pull request and never the report (AC44)");
-    assert.match(rule, /A match whose `decision` is `ignore` is an earlier pull request of this same workflow, which stays open and carries other items, the pull request of another upkeep or the implementation of an earlier report: none is a reason to skip\./);
-    assert.equal(body.split("\n").filter((line) => DEDUP_RULE.test(line)).length, 1, "and it is stated once");
-    assert.equal(/skip the upkeep or let your own earlier pull request be superseded/.test(body), false, "no instruction offers the choice between skipping and superseding that the rule decides");
-    assert.equal(/skip(?: the upkeep)? when it lists a matching open pull request\./.test(body), false, "nor says that any match is a reason to skip");
-    for (const line of body.split("\n").filter((candidate) => candidate.includes("open-pr-dedup.json") && !DEDUP_RULE.test(candidate))) {
-      assert.match(line, /operating rules/i, "any other mention of the file points at the rule");
-    }
-  });
-}
-
-test("AC10: the rule is the same sentence in every preset workflow, because it is written by the renderer and not by the instructions", () => {
-  const rules = DRIFT_KEYS.map((key) => DEDUP_RULE.exec(driftWorkflow(key).body.slice(driftWorkflow(key).body.indexOf("## Operating rules")))[0]);
-  assert.equal(new Set(rules).size, 1);
-  for (const file of listTree(abs("instructions"))) assert.equal(DEDUP_RULE.test(readText(abs("instructions", file))), false, `instructions/${file} does not restate the rule`);
 });
