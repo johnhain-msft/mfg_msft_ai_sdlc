@@ -25,7 +25,20 @@ Open `dist/index.html`. The deck remembers the theme, the agenda time zone and t
 | `F` | present fullscreen · `B` or `.` blank the screen · `T` light/dark · `P` print to PDF |
 | `A` · `G` · `?` | agenda · overview grid · shortcut help (each closes with its own key) |
 
-`#/7`, `#/s3-event-router` and `#/speaker` are deep links. The decision tree on slide 8 and the knowledge check on slide 11 are clickable; `Space` and `Enter` activate a focused button instead of advancing.
+`#/7`, `#/s3-event-router` and `#/speaker` are deep links. The decision tree on slide 8 and the knowledge check on slide 11 are clickable. `Space` and `Enter` press whichever button, link or tab has focus instead of changing slide (in the deck and in the speaker window); with the slides themselves focused, `Space` advances. The *Skip to slides* link moves focus to the slides without changing the slide or the address (in `#/speaker` it reads *Skip to speaker notes* and lands on the notes).
+
+### Phones and tablets
+
+Under 900px wide, under 520px tall, or in a portrait window up to 1199px wide, the deck stops scaling the 1920×1080 stage and lays each slide out as a page: one column (two or three where there is room), the slide scrolls on its own, and the toolbar becomes 44px icon buttons. The stylesheet records its choice in `--layout` (`canvas` or `flow`) and `app.js` reads it, so the breakpoint is written once, in the `@media` block of `src/styles.css`. Above it, the stage and the speaker window are exactly as before.
+
+| Gesture | Does |
+|---|---|
+| swipe left / right | next / previous slide. A vertical drag scrolls the slide, a sideways drag inside a wide diagram pans it, and the quiz, decision tree, pilot stepper, links and buttons keep their own taps |
+| tap the arrows | previous / next slide; in fullscreen, the right and left halves of the screen do the same |
+| **Notes** button or `S` | this slide's speaker notes in a bottom sheet, so no pop-up is needed (a blocked speaker window falls back to it too); `←` `→` still change slide while it is open |
+| `↑` `↓` `Space` | read down a tall slide first, then change slide at its end |
+
+Diagrams are drawn for a wide stage, so on a narrow screen they keep a readable size and pan sideways; while one overflows it takes focus and the arrow keys. `#/speaker` is one column at these sizes: the slide preview, the notes, and a Prev / Next row pinned below. At 400% browser zoom a laptop window is about 320×180 CSS pixels, so with a mouse (not a touch screen) the bottom bar folds into a single 28px row and the slide keeps the room. On a window that short, nothing stays pinned: the speaker page, and the notes sheet (under about 280px tall), scroll as one page, with Prev / Next directly under the speaker header and the sheet's Close button held at its top. Overlays keep their body in its own scrolling region above the Close button, so a focused control is never behind it. The speaker window's previews are inert pictures: no tab stops, hidden from assistive technology (the *Next* label carries the next slide's title).
 
 ## Authoring
 
@@ -45,8 +58,8 @@ Containers open with `:::name` and close with `:::`. `:::diagram`, `:::spec` and
 
 | Container | Use |
 |---|---|
-| `:::cols 1fr 1fr` + `:::col Title` | columns; the argument is the grid template |
-| `:::cards 3` + `:::card [icon=key] Title` | cards; the bracket takes an `icon=` and an optional tone (`good`, `warn`, `bad`, `purple`, `muted`). This deck uses no tones: one accent colour |
+| `:::cols 1fr 1fr` + `:::col Title` | columns; the argument is the grid template; the title renders as an `h2` under the slide's `h1` |
+| `:::cards 3` + `:::card [icon=key] Title` | cards; the bracket takes an `icon=` and an optional tone (`good`, `warn`, `bad`, `purple`, `muted`). This deck uses no tones: one accent colour. The title renders as an `h2` |
 | `:::callout kind Title` | `note`, `tip` or `warn` |
 | `:::stats` / `:::kv` / `:::ledger` | rows `value \| label \| note`, `key \| value`, `key \| value` |
 | `:::timeline` | rows `label \| text \| state`; state `poll` renders the dashed scheduled step |
@@ -58,7 +71,7 @@ Containers open with `:::name` and close with `:::`. `:::diagram`, `:::spec` and
 
 ### Diagrams: `content/diagrams/`
 
-Inline SVG or HTML fragments styled with the `d-*` classes in `src/styles.css`, so they follow the theme. Every SVG `<text>` is at least 22px (the build checks it) so labels stay near 18px on screen. Elements with `data-hl="group"` highlight together on hover or focus. `cascade-decision.html` holds the `[data-decision]` tree as an embedded JSON object.
+Inline SVG or HTML fragments styled with the `d-*` classes in `src/styles.css`, so they follow the theme. Every SVG `<text>` is at least 22px (the build checks it) so labels stay near 18px on screen. Elements with `data-hl="group"` highlight together on hover or focus: give the group's main box the `d-panel` class and it takes a heavier outline while the other groups stay at full strength (text is never faded below 5:1). A heading inside a diagram follows the slide's `h1` as an `h2`, as `cascade-decision.html` does, so the outline never skips a level. `cascade-decision.html` holds the `[data-decision]` tree as an embedded JSON object.
 
 `live-pipeline-demo.html` embeds `docs/media/gh-admin-sdlc-pipeline-demo.svg` as a data URI with `{{data-uri:path|transform}}`. The `legible-captions` transform runs on a build-time copy: it enlarges the 16–17px captions to 22px and moves the step-pager bars below the caption line. Frames, timing and wording are untouched, and the file in `docs/media/` is never modified.
 
@@ -102,6 +115,8 @@ python "$env:USERPROFILE\.copilot\skills\slide-review\scripts\review.py" --headl
 ```
 
 `slide-review` writes screenshots and `report.json` to `presentation/dist/review/`. These are review artifacts, not deliverables: view them, then delete the folder.
+
+After a change to `src/styles.css`, `src/app.js` or `src/shell.html`, also open the deck at 320×568, 390×844, 844×390 and 768×1024 (and at 1440×900, which must look exactly as before): no horizontal scrollbar, no clipped or overlapping text, every control at least 44px on the compact layout.
 
 ## Portfolio import
 

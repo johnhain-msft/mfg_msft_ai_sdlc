@@ -412,7 +412,8 @@ function renderBlocks(lines, ctx) {
         case 'cols': {
           const cols = splitMarkers(inner, 'col');
           const style = rest ? ` style="grid-template-columns:${attr(rest)}"` : '';
-          out.push(`<div class="cols"${style}>${cols.map((c) => `<div class="col">${c.title ? `<h3>${renderInline(c.title)}</h3>` : ''}${renderBlocks(c.lines, ctx)}</div>`).join('')}</div>`);
+          // a column or card title is the slide's first subheading, so it is an h2 (the slide title is the h1); styles.css sizes it
+          out.push(`<div class="cols"${style}>${cols.map((c) => `<div class="col">${c.title ? `<h2>${renderInline(c.title)}</h2>` : ''}${renderBlocks(c.lines, ctx)}</div>`).join('')}</div>`);
           break;
         }
         case 'cards': {
@@ -425,7 +426,7 @@ function renderBlocks(lines, ctx) {
             const icon = (flags.find((f) => f.startsWith('icon=')) || '').slice(5);
             if (icon && !ICONS[icon]) problems.push(`Unknown card icon "${icon}" in slide ${ctx.slideId}`);
             const title = m ? m[2] : c.title;
-            return `<div class="card${tone ? ` card-${tone}` : ''}${ctx.steps ? ' fragment' : ''}" data-i="${k + 1}">${icon && ICONS[icon] ? svgIcon(icon, 'card-icon') : ''}${title ? `<h3>${renderInline(title)}</h3>` : ''}${renderBlocks(c.lines, ctx)}</div>`;
+            return `<div class="card${tone ? ` card-${tone}` : ''}${ctx.steps ? ' fragment' : ''}" data-i="${k + 1}">${icon && ICONS[icon] ? svgIcon(icon, 'card-icon') : ''}${title ? `<h2>${renderInline(title)}</h2>` : ''}${renderBlocks(c.lines, ctx)}</div>`;
           }).join('')}</div>`);
           break;
         }
@@ -464,9 +465,11 @@ function renderBlocks(lines, ctx) {
           break;
         }
         case 'ledger': {
+          // a real list of real buttons: the <li> stays a list item for assistive technology, the <button> inside it is the step
+          // control (native focus, Enter and Space)
           const rows = inner.filter((l) => l.trim()).map((l, idx) => {
             const at = l.indexOf('|');
-            return `<li class="ledger-row${idx === 0 ? ' is-active' : ''}" data-pilot-step="${idx}" tabindex="0" role="button"><div class="ledger-k">${renderInline(l.slice(0, at).trim())}</div><div class="ledger-v">${renderInline(l.slice(at + 1).trim())}</div></li>`;
+            return `<li class="ledger-item"><button type="button" class="ledger-row${idx === 0 ? ' is-active' : ''}" data-pilot-step="${idx}" aria-pressed="${idx === 0 ? 'true' : 'false'}"><div class="ledger-k">${renderInline(l.slice(0, at).trim())}</div><div class="ledger-v">${renderInline(l.slice(at + 1).trim())}</div></button></li>`;
           });
           out.push(`<ol class="ledger">${rows.join('')}</ol>`);
           break;
@@ -689,6 +692,7 @@ function lintLinks(s) {
     if (/^(https?:|mailto:|#|\/)/i.test(href)) continue;
     s.links.push(href);
   }
+  if (!existsSync(join(ROOT, '.git'))) return;
   for (const link of new Set(s.links)) {
     const path = link.split('#')[0];
     const target = resolve(ROOT, path);

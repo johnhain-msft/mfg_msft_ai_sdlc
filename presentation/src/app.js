@@ -29,6 +29,18 @@
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const pad = (n) => String(n).padStart(2, '0');
   const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // The stylesheet chooses between the scaled 1920×1080 canvas and the scrolling "flow" layout of phones, tablets and small
+  // windows (see --layout in styles.css). Reading it here keeps the breakpoint in one place.
+  const isFlow = () => getComputedStyle(document.documentElement).getPropertyValue('--layout').trim() === 'flow';
+  // "212 words · ~1 min spoken · budget 2 min": how long the script runs against the time the slide is given
+  const notesMeta = (s) => (s.words ? `${s.words} words · ~${Math.max(1, Math.round(s.words / 150))} min spoken · budget ${s.minutes || '—'} min` : '');
+  // Elements a tap, click or swipe must leave to themselves: they do their own thing with the gesture. (A slide that scrolls takes
+  // tabindex="0" so the keyboard can reach it, hence the :not(.slide).)
+  const OWN_GESTURE = 'button, a, input, select, textarea, summary, label, [role="button"], [role="tab"], [tabindex="0"]:not(.slide), .quiz, [data-decision], [data-pilot], [data-pilot-step], [data-hl], dialog';
+  // Controls that own Space and Enter. The deck's shortcuts step aside while one has focus, so a focused button is pressed
+  // instead of being skipped past (Space on Agenda opens the agenda; it does not change slide).
+  const NATIVE_KEYS = 'button, a[href], summary, input, select, textarea, [role="button"], [role="tab"]';
+  const ownsActivationKey = (e) => (e.key === ' ' || e.key === 'Enter') && e.target instanceof Element && Boolean(e.target.closest(NATIVE_KEYS));
 
   // ---------------------------------------------------------------- theme
   function applyTheme(t) {
@@ -90,7 +102,9 @@
   function route() {
     const h = decodeURIComponent(window.location.hash || '');
     const m = h.match(/^#\/([^/]+)(?:\/(\d+))?/);
-    if (!m) return { kind: 'slide', id: SLIDES[0]?.id, frag: 0 };
+    // A plain in-page anchor such as #deck (the skip link's target) names no slide. It is flagged so that a hash change to it is
+    // never mistaken for "an unknown slide" and sent back to slide 1.
+    if (!m) return { kind: 'slide', id: SLIDES[0]?.id, frag: 0, anchor: h.length > 1 };
     if (m[1] === 'speaker') return { kind: 'speaker' };
     if (byId.has(m[1])) return { kind: 'slide', id: m[1], frag: Number(m[2] || 0) };
     const n = Number(m[1]);
@@ -140,12 +154,20 @@
     inner.push(`<div class="slide-body">${s.html}</div>`);
     el.innerHTML = inner.join('');
     resolveRepoLinks(el);
+    // a preview is a picture of a slide, not a slide: nothing in it is a tab stop
+    if (preview) $$('a, [tabindex]', el).forEach((n) => n.setAttribute('tabindex', '-1'));
     if (preview) el.classList.add('active');
     return el;
   }
 
   // ---------------------------------------------------------------- interactions inside slides
   function mountInteractions(root, { interactive = true } = {}) {
+    // diagrams are drawn for a wide canvas: give the stylesheet each one's natural width, so a narrow screen can keep it
+    // at a readable size and let it pan sideways instead of shrinking it to nothing
+    $$('.diagram svg', root).forEach((svg) => {
+      const vb = svg.viewBox && svg.viewBox.baseVal;
+      if (vb && vb.width) svg.style.setProperty('--vb-w', String(vb.width));
+    });
     // quiz
     $$('.quiz', root).forEach((q) => {
       const answer = q.dataset.answer;
@@ -163,7 +185,7 @@
     // highlight groups in diagrams: hover or focus a node and its group stays lit
     $$('.diagram', root).forEach((fig) => {
       const nodes = $$('[data-hl]', fig);
-      if (!nodes.length) return;
+      if (!nodes.length || !interactive) return; // a preview is a picture: its groups are neither tab stops nor hover targets
       const clear = () => { fig.classList.remove('has-focus'); nodes.forEach((n) => n.classList.remove('is-hl')); };
       nodes.forEach((n) => {
         n.setAttribute('tabindex', '0');
@@ -231,12 +253,8 @@
         if (announceStep) announce(`Step ${idx + 1} of ${panels.length}`);
       };
       if (interactive) {
-        rows.forEach((r, i) => {
-          r.addEventListener('click', () => setStep(i, { announceStep: true }));
-          r.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(i, { announceStep: true }); }
-          });
-        });
+        // the ledger rows are native buttons: Enter and Space press them, so only the click needs handling here
+        rows.forEach((r, i) => r.addEventListener('click', () => setStep(i, { announceStep: true })));
         const onStepKey = (delta) => (e) => {
           if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setStep(idx + delta, { announceStep: true }); }
         };
@@ -245,8 +263,9 @@
         nextBtn?.addEventListener('click', () => setStep(idx + 1, { announceStep: true }));
         nextBtn?.addEventListener('keydown', onStepKey(1));
       } else {
-        if (prevBtn) prevBtn.disabled = true;
-        if (nextBtn) nextBtn.disabled = true;
+        // a preview: these are pictures of controls, so they are neither focusable nor pressable
+        rows.forEach((r) => { r.disabled = true; r.setAttribute('tabindex', '-1'); });
+        [prevBtn, nextBtn].forEach((b) => { if (b) { b.setAttribute('tabindex', '-1'); b.setAttribute('aria-disabled', 'true'); } });
       }
       setStep(0);
     });
@@ -291,6 +310,7 @@
         if (currentId) els.get(currentId)?.classList.remove('active');
         currentId = id;
         els.get(id).classList.add('active');
+        els.get(id).scrollTop = 0; // a tall slide on a small screen is read from its top
       }
       applyFragments(id, frag);
       $('#kicker-section').textContent = s.section || '';
@@ -303,6 +323,8 @@
       const hash = `#/${id}${frag ? '/' + frag : ''}`;
       if (push && window.location.hash !== hash) history.replaceState(null, '', hash);
       if (announceIt) announce(`Slide ${s.n} of ${SLIDES.length}: ${s.title || s.id}`);
+      if (dlgNotes.open) renderNotes();
+      syncScrollers(); // the slide that just appeared may be taller than the screen
       broadcastState();
     }
     function broadcastState() {
@@ -324,11 +346,29 @@
       if (SLIDES[i]) show(SLIDES[i].id, fragmentsOf(SLIDES[i].id).length);
     }
 
-    // scale the stage to the deck area
+    // scale the stage to the deck area (canvas layout) and keep wide figures reachable (flow layout)
     function fit() {
       const r = deck.getBoundingClientRect();
       const scale = Math.min(r.width / 1920, r.height / 1080);
       stage.style.setProperty('--scale', String(scale));
+      syncScrollers();
+    }
+    // On a narrow screen a figure keeps a readable size and pans sideways, and a tall slide scrolls. A scroll area has to work
+    // without a pointer too: while one overflows it takes focus (and, for a figure, a name), so the keyboard can reach it.
+    function syncScrollers() {
+      const flow = isFlow();
+      $$('.slide', stage).forEach((s) => {
+        if (flow && s.scrollHeight > s.clientHeight + 1) s.setAttribute('tabindex', '0'); else s.removeAttribute('tabindex');
+      });
+      $$('.diagram', stage).forEach((fig) => {
+        if (flow && fig.scrollWidth > fig.clientWidth + 1) {
+          fig.setAttribute('tabindex', '0');
+          fig.setAttribute('aria-label', `${$('svg title', fig)?.textContent || 'Diagram'}. Scrolls sideways.`);
+        } else {
+          fig.removeAttribute('tabindex');
+          fig.removeAttribute('aria-label');
+        }
+      });
     }
     new ResizeObserver(fit).observe(deck);
     fit();
@@ -337,6 +377,13 @@
     const dlgHelp = $('#dlg-help');
     const dlgGrid = $('#dlg-grid');
     const dlgAgenda = $('#dlg-agenda');
+    const dlgNotes = $('#dlg-notes');
+    // a tap on the dimmed backdrop closes an overlay (the backdrop belongs to the <dialog>, so that is the click target)
+    [dlgHelp, dlgGrid, dlgAgenda, dlgNotes].forEach((d) => d.addEventListener('click', (e) => {
+      if (e.target !== d) return;
+      const b = d.getBoundingClientRect();
+      if (e.clientX < b.left || e.clientX > b.right || e.clientY < b.top || e.clientY > b.bottom) d.close();
+    }));
     function openGrid() {
       const grid = $('#grid');
       grid.innerHTML = SLIDES.map((s) => `<button type="button" class="grid-item${s.id === currentId ? ' is-current' : ''}" data-go="${s.id}"><span class="gi-n">${s.n} · ${s.minutes} min</span><span class="gi-t">${escapeHtml(s.title || s.id)}</span><span class="gi-s">${escapeHtml(s.section || '')}</span></button>`).join('');
@@ -350,14 +397,47 @@
       // focus the day tab, not the time-zone select, so the key that opened the dialog cannot type-ahead into it
       $('#agenda-tabs button[aria-selected="true"]')?.focus();
     }
-    function closeDialogs() { [dlgHelp, dlgGrid, dlgAgenda].forEach((d) => d.open && d.close()); }
+    function closeDialogs() { [dlgHelp, dlgGrid, dlgAgenda, dlgNotes].forEach((d) => d.open && d.close()); }
+
+    // speaker notes in the page, for where a second window is awkward or blocked (phones, small tablets)
+    const notesBody = $('#notes-body');
+    let notesSize = 18;
+    try { notesSize = Number(localStorage.getItem(LS_NOTES)) || 18; } catch {}
+    const paintNotesSize = () => notesBody.style.setProperty('--notes-size', `${notesSize}px`);
+    const stepNotesSize = (d) => { notesSize = clamp(notesSize + d, 14, 40); paintNotesSize(); try { localStorage.setItem(LS_NOTES, String(notesSize)); } catch {} };
+    paintNotesSize();
+    function renderNotes() {
+      const s = byId.get(currentId);
+      $('#notes-slide').textContent = `${s.n}. ${s.title || s.id}`;
+      $('#notes-meta').textContent = notesMeta(s);
+      notesBody.innerHTML = s.notes || '<p class="empty">No notes for this slide.</p>';
+      notesBody.scrollTop = 0;
+      // aria-disabled, not disabled: a button that disables itself under the finger would drop focus out of the sheet
+      $('#notes-prev').setAttribute('aria-disabled', String(s.n <= 1 && frag === 0));
+      $('#notes-next').setAttribute('aria-disabled', String(s.n >= SLIDES.length && frag >= fragmentsOf(currentId).length));
+    }
+    function openNotes() {
+      renderNotes();
+      if (!dlgNotes.open) dlgNotes.showModal();
+    }
+    $('#notes-close').addEventListener('click', () => dlgNotes.close());
+    $('#notes-prev').addEventListener('click', prev);
+    $('#notes-next').addEventListener('click', next);
+    $('#notes-font-dec').addEventListener('click', () => stepNotesSize(-2));
+    $('#notes-font-inc').addEventListener('click', () => stepNotesSize(2));
 
     // speaker window
     let speakerWin = null;
     function openSpeaker() {
+      // a second window is awkward on a phone or a small tablet, so the notes open in the page there
+      if (isFlow()) { openNotes(); return; }
       const url = window.location.href.split('#')[0] + '#/speaker';
       speakerWin = window.open(url, 'ai-sdlc-deck-speaker', 'width=1280,height=800');
-      if (!speakerWin) { announce('The browser blocked the speaker window. Allow pop-ups for this page and press S again.'); return; }
+      if (!speakerWin) {
+        announce('The browser blocked the speaker window, so the notes opened in the page. Allow pop-ups for this page to use the speaker window.');
+        openNotes();
+        return;
+      }
       peer = speakerWin;
       setTimeout(broadcastState, 400);
       setTimeout(broadcastState, 1200);
@@ -370,28 +450,53 @@
       } catch { announce('Fullscreen is not available here. Use the browser\'s own fullscreen (F11).'); }
     }
     document.addEventListener('fullscreenchange', () => { document.body.classList.toggle('presenting', !!document.fullscreenElement); fit(); });
+    // a browser that cannot fullscreen a page (iPhone) gets no button that cannot work
+    if (!document.documentElement.requestFullscreen && !document.documentElement.webkitRequestFullscreen) $('#btn-fullscreen').hidden = true;
     // blackout
     const blackout = $('#blackout');
     const toggleBlackout = () => { blackout.hidden = !blackout.hidden; };
+
+    // On a small screen a tall slide scrolls: the down and up keys read through it before they change slide, and the left and
+    // right keys pan a wide figure that has focus. Both fall through to the slide change when there is nothing left to scroll.
+    function readOn(dir, page) {
+      const s = isFlow() ? els.get(currentId) : null;
+      if (!s || (dir > 0 ? s.scrollHeight - s.clientHeight - s.scrollTop : s.scrollTop) < 2) return false;
+      s.scrollBy({ top: dir * (page ? s.clientHeight * 0.85 : 64) });
+      return true;
+    }
+    function panFigure(el, dir) {
+      const fig = isFlow() && el && el.closest ? el.closest('.diagram') : null;
+      if (!fig || fig.scrollWidth <= fig.clientWidth + 1) return false;
+      if ((dir > 0 ? fig.scrollWidth - fig.clientWidth - fig.scrollLeft : fig.scrollLeft) < 2) return false;
+      fig.scrollBy({ left: dir * 80 });
+      return true;
+    }
 
     // keyboard
     document.addEventListener('keydown', (e) => {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const tag = (e.target && e.target.tagName) || '';
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(tag)) return;
-      const anyOpen = [dlgHelp, dlgGrid, dlgAgenda].some((d) => d.open);
+      const anyOpen = [dlgHelp, dlgGrid, dlgAgenda, dlgNotes].some((d) => d.open);
       if (anyOpen) {
         // the key that opened an overlay closes it again, so a presenter never needs Esc (Esc also leaves fullscreen in every browser)
         const k = e.key.toLowerCase();
-        if (e.key === 'Escape' || (k === 'g' && dlgGrid.open) || (k === 'a' && dlgAgenda.open) || ((e.key === '?' || e.key === '/') && dlgHelp.open)) { e.preventDefault(); closeDialogs(); }
+        if (e.key === 'Escape' || (k === 'g' && dlgGrid.open) || (k === 'a' && dlgAgenda.open) || (k === 's' && dlgNotes.open) || ((e.key === '?' || e.key === '/') && dlgHelp.open)) { e.preventDefault(); closeDialogs(); }
+        // the notes follow the slide: left and right still change it while the notes are open
+        else if (dlgNotes.open && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) { e.preventDefault(); if (e.key === 'ArrowRight') next(); else prev(); }
         return;
       }
-      // Enter and Space activate a focused quiz, decision, or pilot-stepper control instead of changing slide
+      // Enter and Space press a focused control (button, link, tab, quiz option, decision answer, pilot step) instead of changing slide
       if (e.defaultPrevented) return;
+      // ...except that a slide number typed on the keyboard is finished by Enter, even when a button kept focus from an earlier click
+      if (e.key === 'Enter' && typed) { e.preventDefault(); const n = Number(typed); typed = ''; if (SLIDES[n - 1]) show(SLIDES[n - 1].id, 0); return; }
+      if (ownsActivationKey(e)) return;
       if (e.target && e.target.closest && e.target.closest('.quiz, [data-decision], [data-pilot], [data-pilot-step]') && ['Enter', ' '].includes(e.key)) return;
       switch (e.key) {
-        case 'ArrowRight': case ' ': case 'PageDown': case 'ArrowDown': e.preventDefault(); next(); break;
-        case 'ArrowLeft': case 'PageUp': case 'ArrowUp': e.preventDefault(); prev(); break;
+        case 'ArrowRight': e.preventDefault(); if (!panFigure(e.target, 1)) next(); break;
+        case 'ArrowLeft': e.preventDefault(); if (!panFigure(e.target, -1)) prev(); break;
+        case ' ': case 'PageDown': case 'ArrowDown': e.preventDefault(); if (!readOn(1, e.key !== 'ArrowDown')) next(); break;
+        case 'PageUp': case 'ArrowUp': e.preventDefault(); if (!readOn(-1, e.key !== 'ArrowUp')) prev(); break;
         case 'Home': e.preventDefault(); show(SLIDES[0].id, 0); break;
         case 'End': e.preventDefault(); show(SLIDES[SLIDES.length - 1].id, 0); break;
         case 'g': case 'G': openGrid(); break;
@@ -403,7 +508,6 @@
         case 'p': case 'P': window.print(); break;
         case '?': case '/': dlgHelp.showModal(); break;
         case 'Escape': if (!blackout.hidden) toggleBlackout(); break;
-        case 'Enter': if (typed) { const n = Number(typed); typed = ''; if (SLIDES[n - 1]) show(SLIDES[n - 1].id, 0); } break;
         default:
           if (/^\d$/.test(e.key)) { typed = (typed + e.key).slice(-3); setTimeout(() => { typed = ''; }, 2500); }
       }
@@ -416,13 +520,51 @@
     $('#btn-theme').addEventListener('click', toggleTheme);
     $('#btn-fullscreen').addEventListener('click', present);
     $('#btn-help').addEventListener('click', () => dlgHelp.showModal());
-    // click right/left halves of the stage to advance when presenting (touch friendly)
+    // click right/left halves of the stage to advance when presenting (touch friendly); controls keep their own taps
     deck.addEventListener('click', (e) => {
       if (!document.fullscreenElement) return;
-      if (e.target.closest('button, a, .quiz, [data-decision], [data-hl]')) return;
+      if (e.target.closest(OWN_GESTURE)) return;
       const r = deck.getBoundingClientRect();
       if (e.clientX - r.left > r.width * 0.5) next(); else prev();
     });
+
+    // Touch: swipe left for the next slide, right for the previous one. A vertical drag belongs to the slide (it scrolls), a
+    // sideways drag inside a wide figure belongs to the figure, and the quiz, decision tree, pilot stepper, diagram highlights,
+    // links and buttons keep their own taps. Touch events and pointer events describe the same finger: whichever ends the gesture
+    // first handles it and clears the state, so one swipe never changes two slides.
+    const SWIPE = { minX: 56, ratio: 1.6, maxMs: 900 };
+    let gesture = null;
+    const panArea = (el) => {
+      for (let n = el; n && n !== root; n = n.parentElement) {
+        const ox = getComputedStyle(n).overflowX;
+        if ((ox === 'auto' || ox === 'scroll') && n.scrollWidth > n.clientWidth + 1) return true;
+      }
+      return false;
+    };
+    const swipeBegin = (x, y, target) => {
+      gesture = null;
+      if (!(target instanceof Element) || target.closest(`${OWN_GESTURE}, .chrome`) || panArea(target)) return;
+      gesture = { x, y, dy: 0, t: performance.now(), selected: String(window.getSelection()) };
+    };
+    const swipeMove = (y) => { if (gesture) gesture.dy = Math.max(gesture.dy, Math.abs(y - gesture.y)); };
+    const swipeEnd = (x, y) => {
+      const g = gesture;
+      gesture = null;
+      if (!g) return;
+      const dx = x - g.x;
+      const dy = Math.max(g.dy, Math.abs(y - g.y));
+      if (Math.abs(dx) < SWIPE.minX || Math.abs(dx) < dy * SWIPE.ratio || performance.now() - g.t > SWIPE.maxMs) return;
+      if (window.visualViewport && window.visualViewport.scale > 1.02) return; // pinch-zoomed: the finger is panning the page
+      if (String(window.getSelection()) !== g.selected) return;                 // it was selecting text
+      if (dx < 0) next(); else prev();
+    };
+    root.addEventListener('touchstart', (e) => { if (e.touches.length === 1) swipeBegin(e.touches[0].clientX, e.touches[0].clientY, e.target); else gesture = null; }, { passive: true });
+    root.addEventListener('touchmove', (e) => { if (e.touches.length === 1) swipeMove(e.touches[0].clientY); else gesture = null; }, { passive: true });
+    root.addEventListener('touchend', (e) => { const t = e.changedTouches[0]; if (t) swipeEnd(t.clientX, t.clientY); }, { passive: true });
+    root.addEventListener('touchcancel', () => { gesture = null; }, { passive: true });
+    root.addEventListener('pointerdown', (e) => { if (e.pointerType === 'mouse') return; if (e.isPrimary) swipeBegin(e.clientX, e.clientY, e.target); else gesture = null; }, { passive: true });
+    root.addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse') swipeMove(e.clientY); }, { passive: true });
+    root.addEventListener('pointerup', (e) => { if (e.pointerType !== 'mouse') swipeEnd(e.clientX, e.clientY); }, { passive: true });
     // messages from the speaker window
     onMessage((m) => {
       if (m.type === 'hello') broadcastState();
@@ -432,9 +574,12 @@
     });
     window.addEventListener('hashchange', () => {
       const r = route();
+      if (r.anchor) return; // an in-page anchor (the skip link's #deck) is not a slide, so it never resets the current one
       if (r.kind === 'speaker') { window.location.reload(); return; }
       if (r.id !== currentId || r.frag !== frag) show(r.id, r.frag, { push: false });
     });
+    // The skip link moves focus to the slides without touching the address. Left alone, its #deck would be read as a slide id.
+    $('.skip-link').addEventListener('click', (e) => { e.preventDefault(); deck.focus(); });
     // print mode: reveal everything
     window.addEventListener('beforeprint', () => document.body.classList.add('print'));
     window.addEventListener('afterprint', () => document.body.classList.remove('print'));
@@ -494,7 +639,7 @@
         const first = (b.slides || [])[0];
         return `<tr class="${cur ? 'is-current ' : ''}ag-${b.type}"><td class="ag-time">${convertWall(b.start, d.date, ag.baseTz, tzNow)}</td><td>${b.minutes} min</td><td>${icon} ${escapeHtml(b.title)}${b.detail ? `<div class="muted">${escapeHtml(b.detail)}</div>` : ''}</td><td>${first ? `<button type="button" class="ag-go" data-go="${first}">go</button>` : ''}</td></tr>`;
       }).join('');
-      $('#agenda-body').innerHTML = `<p class="muted">${escapeHtml(d.title || '')}${d.date ? ` · ${d.date}` : ''} · times shown in ${escapeHtml(sel.options[sel.selectedIndex]?.textContent || tzNow)}</p><table class="agenda-table"><thead><tr><th>Start</th><th>Length</th><th>Block</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+      $('#agenda-body').innerHTML = `<p class="muted">${escapeHtml(d.title || '')}${d.date ? ` · ${d.date}` : ''} · times shown in ${escapeHtml(sel.options[sel.selectedIndex]?.textContent || tzNow)}</p><table class="agenda-table"><thead><tr><th>Start</th><th>Length</th><th>Block</th><th><span class="visually-hidden">Jump to slide</span></th></tr></thead><tbody>${rows}</tbody></table>`;
       $$('.ag-go', $('#agenda-body')).forEach((b) => b.addEventListener('click', () => onGo && onGo(b.dataset.go)));
     }
     draw(tz);
@@ -511,11 +656,19 @@
     const nextWrap = $('#sp-next-preview');
     const notes = $('#sp-notes');
     const status = $('#sp-status');
+    // The previews are pictures of the slides, not slides: nothing in them can take focus or be read out as a control. (inert does
+    // both; the attributes are set as well for a browser that predates the property.)
+    $$('.sp-preview-wrap', root).forEach((w) => { w.inert = true; w.setAttribute('inert', ''); w.setAttribute('aria-hidden', 'true'); });
+    // The skip link names this surface's own content: the notes. It moves focus there without touching the address.
+    const skip = $('.skip-link');
+    skip.textContent = 'Skip to speaker notes';
+    skip.setAttribute('href', '#sp-notes');
+    skip.addEventListener('click', (e) => { e.preventDefault(); notes.focus(); });
     if (window.opener && window.opener !== window) peer = window.opener;
     let state = null;
     try { state = JSON.parse(localStorage.getItem(LS_STATE) || 'null'); } catch {}
-    let notesSize = 22;
-    try { notesSize = Number(localStorage.getItem(LS_NOTES)) || 22; } catch {}
+    let notesSize = isFlow() ? 18 : 22;
+    try { notesSize = Number(localStorage.getItem(LS_NOTES)) || notesSize; } catch {}
     const applyNotesSize = () => { notes.style.setProperty('--notes-size', `${notesSize}px`); try { localStorage.setItem(LS_NOTES, String(notesSize)); } catch {} };
     applyNotesSize();
 
@@ -532,6 +685,7 @@
     }
     function render(st) {
       if (!st || !byId.has(st.id)) { notes.innerHTML = '<p class="empty">Waiting for the deck. Open the deck in another window, or press Next here to start it.</p>'; return; }
+      const changed = !state || state.id !== st.id;
       state = st;
       const s = byId.get(st.id);
       const nextS = SLIDES[s.n];
@@ -540,11 +694,15 @@
       mountInteractions(cur, { interactive: false });
       nextWrap.replaceChildren(nextS ? slideElement(nextS, { preview: true }) : Object.assign(document.createElement('div'), { className: 'muted', textContent: 'End of deck' }));
       if (nextS) mountInteractions(nextWrap, { interactive: false });
+      // the next-slide preview is hidden from assistive technology, so its label carries the title
+      $('#sp-next-title').textContent = nextS ? `: ${nextS.n}. ${nextS.title || nextS.id}` : ': end of the deck';
       $('#sp-slide-title').textContent = `${s.n}. ${s.title || s.id}`;
       $('#sp-counter').textContent = `${s.n} / ${SLIDES.length}${st.fragTotal ? ` · step ${st.frag}/${st.fragTotal}` : ''}`;
-      $('#sp-words').textContent = s.words ? `${s.words} words · ~${Math.max(1, Math.round(s.words / 150))} min spoken · budget ${s.minutes || '—'} min` : '';
+      $('#sp-words').textContent = notesMeta(s);
       notes.innerHTML = s.notes || '<p class="empty">No notes for this slide.</p>';
       notes.scrollTop = 0;
+      // on a small screen the page (not the notes panel) is what scrolls: a new slide's notes are read from the top
+      if (changed) { root.scrollTop = 0; $('.sp-body').scrollTop = 0; }
       const bf = blockFor(s.id);
       $('#sp-budget').textContent = bf ? `${bf.day.label || 'Day ' + bf.day.day} · ${bf.block.title} · ${bf.block.start} · ${bf.block.minutes} min block` : '';
       fitPreview();
@@ -583,6 +741,7 @@
     });
     document.addEventListener('keydown', (e) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (ownsActivationKey(e)) return; // Space on a focused Start / Prev / Next presses it; it does not also move the deck
       if (['ArrowRight', ' ', 'PageDown'].includes(e.key)) { e.preventDefault(); send({ type: 'next' }); }
       else if (['ArrowLeft', 'PageUp'].includes(e.key)) { e.preventDefault(); send({ type: 'prev' }); }
       else if (e.key === 't' || e.key === 'T') toggleTheme();

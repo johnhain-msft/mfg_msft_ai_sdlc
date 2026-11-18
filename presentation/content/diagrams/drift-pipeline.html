@@ -3,7 +3,7 @@
 
 <g data-hl="pre" role="img" aria-label="Before the agent: four deterministic pre-agent steps">
 <text class="d-label" x="16" y="38" font-size="22">Before the agent</text>
-<rect class="d-box" x="16" y="62" width="392" height="310" rx="18"/>
+<rect class="d-box d-panel" x="16" y="62" width="392" height="310" rx="18"/>
 <text class="d-text" x="40" y="110" font-size="26">Pre-Agent Steps</text>
 <text class="d-small d-mono" x="40" y="164" font-size="22">prepare-run.mjs</text>
 <text class="d-small d-mono" x="40" y="208" font-size="22">dedupe-open-prs.mjs</text>
@@ -15,7 +15,7 @@
 <g data-hl="agent" role="img" aria-label="The agent: the dot-github-sdlc three-agent harness inside the AWF firewall sandbox, with read-only job permissions">
 <path class="d-line" d="M408 217H424"/><path class="d-arrow" d="M436 217l-12-9v18z"/>
 <text class="d-label-purple" x="436" y="38" font-size="22">The agent</text>
-<rect class="d-box-purple d-dashed" x="436" y="62" width="330" height="310" rx="18"/>
+<rect class="d-box-purple d-dashed d-panel" x="436" y="62" width="330" height="310" rx="18"/>
 <text class="d-text" x="460" y="110" font-size="26">AWF Firewall Sandbox</text>
 <text class="d-sub d-mono" x="460" y="148" font-size="22">.github/sdlc/</text>
 <rect class="d-box" x="453" y="168" width="296" height="52" rx="12"/><circle class="d-box-accent" cx="479" cy="194" r="17"/><text class="d-text" x="479" y="202" font-size="22" text-anchor="middle">1</text><text class="d-small d-mono" x="505" y="202" font-size="22">source-verifier</text>
@@ -27,19 +27,19 @@
 <g data-hl="post" role="img" aria-label="After the agent: seven project verifyCommands in sdlc.yaml order, the first failure stops the run">
 <path class="d-line" d="M766 217H782"/><path class="d-arrow" d="M794 217l-12-9v18z"/>
 <text class="d-label" x="794" y="38" font-size="22">After the agent</text>
-<rect class="d-box" x="794" y="62" width="340" height="310" rx="18"/>
+<rect class="d-box d-panel" x="794" y="62" width="340" height="310" rx="18"/>
 <text class="d-text" x="818" y="110" font-size="26">Immutable Post-Steps</text>
 <text class="d-sub" x="818" y="150" font-size="22">7 project verifyCommands:</text>
 <text class="d-small d-mono" x="818" y="204" font-size="22">npm ci · build.mjs</text>
 <text class="d-small d-mono" x="818" y="248" font-size="22">git status --porcelain</text>
-<text class="d-small d-mono" x="818" y="292" font-size="22">unit · freshness · deck · suites</text>
+<text class="d-small d-mono" x="818" y="292" font-size="22"><tspan x="818">unit · freshness</tspan><tspan x="818" dy="44">deck · suites</tspan></text>
 <text class="d-sub" x="818" y="412" font-size="22">First failure stops the run</text>
 </g>
 
 <g data-hl="out" role="img" aria-label="The only writer: safe_outputs creates one pull request, auto-merge false, protected files blocked">
 <path class="d-line-accent" d="M1134 217H1150"/><path class="d-arrow-accent" d="M1162 217l-12-9v18z"/>
 <text class="d-label" x="1162" y="38" font-size="22">The only writer</text>
-<rect class="d-box-accent" x="1162" y="62" width="380" height="310" rx="18"/>
+<rect class="d-box-accent d-panel" x="1162" y="62" width="380" height="310" rx="18"/>
 <text class="d-text" x="1186" y="110" font-size="26">safe_outputs</text>
 <text class="d-small d-mono" x="1186" y="164" font-size="22">create-pull-request</text>
 <text class="d-small d-mono" x="1186" y="208" font-size="22">auto-merge: false</text>

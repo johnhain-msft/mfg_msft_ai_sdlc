@@ -10,6 +10,10 @@
   --font-text: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: "Cascadia Code", "Cascadia Mono", Consolas, "SF Mono", Menlo, monospace;
   --scale: 1;
+  /* Which layout the stylesheet has chosen: "canvas" (the scaled 1920×1080 stage) or "flow" (a page that scrolls,
+     for phones, tablets and small windows; see the compact block near the end). app.js reads this, so the
+     breakpoint lives in one place. */
+  --layout: canvas;
 
   --bg: #0e1522;
   --bg-deep: #080c14;
@@ -92,6 +96,9 @@ button.btn, .btn {
   outline: 3px solid var(--accent); outline-offset: 2px;
 }
 .btn kbd { font-size: 11px; }
+/* Toolbar icons and the short "Notes" label are for the compact layout only; the canvas layout keeps text + shortcut. */
+.btn .ico, .btn .lbl-mob { display: none; }
+button, .btn, summary, select, [role="button"], [role="tab"], .quiz-option, .ledger-row, .grid-item { touch-action: manipulation; }
 .project-back { text-decoration: none; margin-right: 10px; }
 
 /* ------------------------------------------------------------------------------ presentation chrome */
@@ -132,7 +139,7 @@ body.presenting #stage { box-shadow: none; }
   opacity: 0; visibility: hidden; transition: opacity 0.25s ease;
 }
 .slide.active { opacity: 1; visibility: visible; }
-@media (prefers-reduced-motion: reduce) { .slide, #progress-bar, .fragment, .outcome { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .slide, #progress-bar, .fragment, .outcome, .ledger-row, .diagram [data-hl], .diagram .d-panel { transition: none !important; } }
 .slide-kicker { font-family: var(--font-sans); font-size: 20px; font-weight: 650; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); margin: 0 0 16px; display: flex; align-items: center; gap: 14px; line-height: 1; }
 .slide-kicker::before { content: ""; width: 34px; height: 4px; border-radius: 2px; background: var(--accent); }
 .slide h1 { font-family: var(--font-sans); font-size: 60px; line-height: 1.08; letter-spacing: -0.015em; font-weight: 700; margin: 0 0 32px; color: var(--text); max-width: 1640px; text-wrap: balance; }
@@ -189,11 +196,11 @@ body.presenting #stage { box-shadow: none; }
 /* ---- cols ---------------------------------------------------------------------------------- */
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: start; }
 .col { min-width: 0; }
-.col > h3 { color: var(--accent); font-size: 44px; margin-bottom: 18px; text-wrap: balance; }
+.col > h2, .col > h3 { color: var(--accent); font-size: 44px; line-height: 1.2; margin-bottom: 18px; text-wrap: balance; }
 .col > * + * { margin-top: 24px; }
 .slide-body .col > p { font-size: 36px; line-height: 1.38; }
 .layout-default .col { border-left: 6px solid var(--accent); padding-left: 36px; }
-.layout-default .col > h3 { color: var(--text); }
+.layout-default .col > h2, .layout-default .col > h3 { color: var(--text); }
 .layout-default .slide-body { gap: 52px; }
 .layout-split .cols { gap: 56px; align-items: start; }
 .layout-split .slide-body .col > p { font-size: 36px; }
@@ -206,7 +213,7 @@ body.presenting #stage { box-shadow: none; }
 .card { --tone: var(--accent); position: relative; background: var(--surface); border: 1px solid var(--line); border-top: 8px solid var(--tone); border-radius: 22px; padding: 56px 44px 64px; font-size: 36px; line-height: 1.38; }
 .card::after { content: "0" attr(data-i); position: absolute; top: 40px; right: 42px; font-family: var(--font-mono); font-size: 28px; font-weight: 600; color: var(--muted); }
 .card-icon { display: block; width: 88px; height: 88px; color: var(--tone); margin-bottom: 30px; }
-.card h3 { font-size: 44px; line-height: 1.16; margin-bottom: 18px; text-wrap: balance; }
+.card h2, .card h3 { font-size: 44px; line-height: 1.16; margin-bottom: 18px; text-wrap: balance; }
 .card p { max-width: none; }
 .card a { white-space: nowrap; }
 .card-good { --tone: var(--green); }
@@ -262,7 +269,8 @@ body.print .fragment { opacity: 1; }
 .layout-diagram .kv-k { font-size: 30px; }
 .layout-diagram .kv-v { font-size: 30px; }
 .ledger { list-style: none; padding: 0 !important; margin: 0; flex: 0 0 340px; border-left: 3px solid var(--line-strong); }
-.slide-body .ledger-row { position: relative; margin: 0; padding: 12px 16px 12px 28px; cursor: pointer; border-radius: 0 12px 12px 0; transition: background-color 0.15s ease; }
+.slide-body .ledger-item { display: flex; margin: 0; padding: 0; }
+.slide-body .ledger-row { position: relative; flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; margin: 0; padding: 12px 16px 12px 28px; font: inherit; color: inherit; text-align: left; background: none; border: 0; cursor: pointer; border-radius: 0 12px 12px 0; transition: background-color 0.15s ease; }
 .slide-body .ledger-row:hover { background: var(--surface); }
 .slide-body .ledger-row.is-active { background: var(--accent-soft); }
 .ledger-row::before { content: ""; position: absolute; left: -11px; top: 24px; width: 19px; height: 19px; border-radius: 50%; background: var(--line-strong); border: 4px solid var(--bg); }
@@ -311,10 +319,14 @@ body.print .fragment { opacity: 1; }
 .diagram .d-arrow-accent { fill: var(--accent); }
 .diagram .d-arrow-purple { fill: var(--purple); }
 .diagram .d-mono { font-family: var(--font-mono); }
-.diagram [data-hl] { cursor: pointer; transition: opacity 0.15s ease; }
+.diagram [data-hl] { cursor: pointer; }
 .diagram [data-hl]:focus { outline: none; }
 .diagram [data-hl]:focus-visible { outline: 3px solid var(--accent); outline-offset: 4px; }
-.diagram.has-focus [data-hl]:not(.is-hl) { opacity: 0.28; }
+/* Hovering or focusing a node lights its group. The other groups keep their text and shapes at full strength (informative text
+   is never faded below 5:1): the lit group takes a heavier outline instead, and a tint where its panel is a plain box. */
+.diagram .d-panel { transition: stroke-width 0.15s ease, stroke 0.15s ease, fill 0.15s ease; }
+.diagram.has-focus [data-hl].is-hl .d-panel { stroke-width: 5.5; }
+.diagram.has-focus [data-hl].is-hl .d-panel.d-box { stroke: var(--accent); fill: var(--accent-soft); }
 .diagram-missing { color: var(--red); font-family: var(--font-mono); }
 
 /* ---- diagram slides: the figure on top, one supporting block underneath ---------------------------- */
@@ -345,12 +357,14 @@ body.print .fragment { opacity: 1; }
 .decision-actions .btn { font-size: 36px; font-weight: 650; padding: 16px 52px; border-radius: 999px; min-height: 0; border-width: 2px; }
 .decision-actions .btn:hover { border-color: var(--accent); color: var(--accent); }
 .decision-outcomes { display: grid; grid-template-rows: 1fr 1fr; gap: 28px; }
-.outcome { --tone: var(--accent); --tone-soft: var(--accent-soft); display: flex; flex-direction: column; justify-content: center; background: var(--surface); border: 1px solid var(--line); border-left: 12px solid var(--tone); border-radius: 22px; padding: 36px 44px; transition: opacity 0.2s ease, background-color 0.2s ease; }
+.outcome { --tone: var(--accent); --tone-soft: var(--accent-soft); position: relative; display: flex; flex-direction: column; justify-content: center; background: var(--surface); border: 1px solid var(--line); border-left: 12px solid var(--tone); border-radius: 22px; padding: 36px 44px; transition: background-color 0.2s ease, border-color 0.2s ease; }
 .outcome-ai { --tone: var(--purple); --tone-soft: var(--purple-soft); }
-.outcome h3 { margin: 0 0 14px; font-size: 48px; }
+.outcome h2, .outcome h3 { margin: 0 0 14px; font-size: 48px; line-height: 1.2; }
 .slide-body .outcome p { font-size: 33px; line-height: 1.36; max-width: none; }
+/* The walk's answer is picked out by tint, outline and a tick; the other outcomes lose their tone and fill but keep their text at full strength. */
 .outcome.is-picked { background: var(--tone-soft); border-color: var(--tone); }
-.outcome.is-dim { opacity: 0.4; }
+.outcome.is-picked::after { content: "✓"; content: "✓" / ""; position: absolute; top: 24px; right: 34px; font-family: var(--font-sans); font-size: 52px; font-weight: 800; line-height: 1; color: var(--tone); }
+.outcome.is-dim { background: transparent; border-color: var(--line); border-left-color: var(--line-strong); }
 .decision-result { color: var(--text); }
 
 /* ---- lab layout: a spec tile beside the supporting rows ------------------------------------------------- */
@@ -368,6 +382,7 @@ a.lab-path { color: var(--accent); }
 .dlg-wide { width: min(1200px, 94vw); }
 .dlg h2 { margin: 0 0 18px; font-size: 22px; }
 .dlg form { margin-top: 20px; display: flex; justify-content: flex-end; }
+.dlg-body { display: contents; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 10px 20px; font-size: 15px; align-items: center; }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; max-height: 64vh; overflow: auto; padding: 4px; }
 .grid-item { text-align: left; font: inherit; color: var(--text); background: var(--bg); border: 2px solid var(--line); border-radius: 10px; padding: 12px; cursor: pointer; display: grid; gap: 6px; }
@@ -388,11 +403,27 @@ a.lab-path { color: var(--accent); }
 .agenda-table tr.is-current td { background: var(--accent-soft); }
 .agenda-table tr.ag-break td { color: var(--muted); }
 .agenda-table .ag-time { font-family: var(--font-mono); white-space: nowrap; }
-.agenda-table .ag-go { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 0; text-decoration: underline; }
+.agenda-table .ag-go { font: inherit; font-size: 13px; color: var(--accent); background: none; border: 0; cursor: pointer; padding: 6px 10px; margin: -6px -10px; text-decoration: underline; min-height: 24px; }
+.keys-heading { margin: 22px 0 10px; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+
+/* speaker notes inside the page: the way to read them where a second window is awkward or blocked (compact layout) */
+.dlg-notes { padding: 0; width: min(760px, 94vw); overflow: hidden; }
+.dlg-notes[open] { display: flex; flex-direction: column; max-height: min(88vh, 900px); }
+.notes-head { position: relative; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 12px 8px 20px; }
+.notes-titles { min-width: 0; }
+.dlg .notes-head h2 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+.notes-slide { margin: 4px 0 0; font-size: 19px; font-weight: 650; line-height: 1.25; color: var(--text); overflow-wrap: anywhere; }
+.notes-close { flex: none; min-width: 44px; min-height: 44px; justify-content: center; padding: 0; font-size: 28px; line-height: 1; }
+.notes-meta { margin: 0; padding: 0 20px 10px; font-size: 13px; border-bottom: 1px solid var(--line); }
+.dlg-notes .sp-notes { flex: 1 1 auto; min-height: 0; padding: 14px 20px 22px; background: var(--bg); font-size: var(--notes-size, 18px); overscroll-behavior: contain; }
+.dlg-notes .sp-notes:focus-visible { outline-offset: -3px; }
+.notes-foot { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface); }
+.notes-foot .btn { flex: 1 1 0; min-height: 44px; justify-content: center; }
+.notes-foot .btn[aria-disabled="true"] { opacity: 0.45; cursor: default; }
 
 /* ------------------------------------------------------------------------------ speaker surface */
-#speaker { position: fixed; inset: 0; display: grid; grid-template-rows: 56px minmax(0, 1fr); background: var(--bg); color: var(--text); }
-.sp-head { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
+#speaker { position: fixed; inset: 0; display: grid; grid-template-rows: minmax(56px, auto) minmax(0, 1fr); background: var(--bg); color: var(--text); }
+.sp-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; padding: 6px 20px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .sp-title { display: flex; gap: 14px; align-items: baseline; font-weight: 600; }
 .sp-title .kicker { font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
 .sp-clock { display: flex; align-items: center; gap: 12px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
@@ -433,10 +464,364 @@ a.lab-path { color: var(--accent); }
 .sp-notes .transition { margin: 1.2em 0 0; padding: 12px 16px; border-radius: 10px; background: var(--accent-soft); color: var(--text); font-style: italic; max-width: 60ch; }
 .sp-notes .transition .cue-label { color: var(--accent); font-style: normal; }
 .sp-notes .sources { margin-top: 1.2em; font-size: 0.7em; color: var(--muted); }
+.sp-notes .sources summary { min-height: 24px; padding-block: 3px; cursor: pointer; }
 .sp-notes .sources ul { padding-left: 1.2em; }
 .sp-notes .sources a { word-break: break-all; }
 .sp-notes .empty { color: var(--muted); font-style: italic; }
 .sp-status { padding: 8px 24px; border-top: 1px solid var(--line); font-size: 13px; }
+
+/* A finger needs more than a pointer does: on a touch screen the chrome and the overlays keep 44px targets even in the canvas layout
+   (an iPad in landscape). A mouse never matches this query, so the desktop is untouched. */
+@media (pointer: coarse) {
+  #topbar .btn, #bottombar .btn, .dlg .btn, .tabs button, .grid-item, .tz-label select, #speaker .btn { min-height: 44px; }
+  #speaker .btn { min-width: 44px; justify-content: center; }
+  .agenda-table .ag-go { min-height: 44px; min-width: 44px; margin-block: -12px; }
+}
+
+/* ================================================================================================
+   Compact layout: phones and tablets, portrait or landscape, and any window too small for the canvas
+   (under 900px wide, under 520px tall, or a portrait window up to 1199px wide).
+   The 1920×1080 canvas is the presentation. Here a slide is a normal page instead: it fills the screen,
+   flows in one column and scrolls on its own, and the chrome shrinks to touch-sized controls.
+   --layout tells app.js which layout is live, so this media query is the only place the breakpoint is written.
+   Every slide rule starts with #stage, so the speaker previews (which still draw the full canvas) are untouched.
+   ================================================================================================ */
+@media screen and (max-width: 899px), screen and (max-height: 519px), screen and (max-width: 1199px) and (orientation: portrait) {
+  :root { --layout: flow; }
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  html, body { overscroll-behavior: none; }
+
+  #presentation {
+    --pad: clamp(16px, 4.6vw, 44px);                       /* side padding of a slide */
+    --fs: clamp(15px, min(1vw + 13.5px, 4.2vh), 21px);     /* body text */
+    --gap: clamp(14px, min(3.4vw, 3.4vh), 26px);           /* space between blocks */
+    --tap: 44px;                                           /* touch target */
+    --pb: clamp(28px, 6vw, 44px);                          /* room under the last block of a slide */
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  /* ---- chrome: a slim bar on top, thumb-sized controls below ------------------------------------ */
+  .chrome { padding: 0 10px; }
+  #topbar { min-height: 36px; padding-block: 2px; gap: 8px; }
+  #topbar .btn { min-height: var(--tap); padding: 0 14px; }
+  .topbar-left { flex: 1 1 auto; min-width: 0; gap: 8px; }
+  #kicker-section { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar-right { flex: 0 1 auto; min-width: 0; gap: 8px; }
+  .lab-badge, .day-badge { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #bottombar { flex: none; }
+  #bottombar .bottombar-row { height: auto; padding: 6px 10px 8px; gap: 6px 10px; flex-wrap: wrap; }
+  #bottombar .nav-buttons { flex: 1 1 100%; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; }
+  #btn-prev { order: 1; }
+  #bottombar .counter { order: 2; }
+  #btn-next { order: 3; }
+  #bottombar .nav-buttons .btn { min-height: var(--tap); padding: 0 12px; justify-content: center; font-size: 28px; line-height: 1; }
+  #bottombar .counter { min-width: 72px; font-size: 15px; }
+  #bottombar .toolbar { flex: 1 1 100%; display: flex; flex-wrap: nowrap; justify-content: space-between; gap: 4px; overflow: visible; }
+  #bottombar .toolbar .btn { position: relative; flex: 1 1 0; min-width: var(--tap); max-width: 76px; min-height: var(--tap); padding: 0; gap: 0; justify-content: center; }
+  #bottombar .toolbar .btn .ico { display: block; flex: none; width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #bottombar .toolbar .btn kbd { display: none; }
+  #bottombar .toolbar .btn .lbl { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  #bottombar .toolbar .btn .lbl-desk { display: none; }
+  #bottombar .toolbar .btn .lbl-mob { display: inline; }
+  #btn-help { font-size: 20px; font-weight: 700; }
+  @media (max-width: 479px) { .day-badge { display: none; } }
+  @media (min-width: 520px) {                              /* one row: arrows left, tools right */
+    #bottombar .bottombar-row { flex-wrap: nowrap; justify-content: space-between; }
+    #bottombar .nav-buttons { flex: 0 0 auto; display: flex; }
+    #bottombar .nav-buttons .btn { min-width: 52px; }
+    #bottombar .toolbar { flex: 0 1 auto; justify-content: flex-end; gap: 6px; }
+    #bottombar .toolbar .btn { flex: 0 0 auto; width: var(--tap); max-width: none; }
+  }
+  @media (min-width: 900px) {                              /* room for the words as well */
+    #bottombar .toolbar .btn { width: auto; padding: 0 14px; gap: 8px; }
+    #bottombar .toolbar .btn .lbl { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; }
+    #btn-help { width: var(--tap); padding: 0; }
+  }
+  @media (max-height: 519px) {                             /* landscape phone: every pixel is for the slide */
+    #presentation { --gap: clamp(10px, 3vh, 18px); --pb: clamp(16px, 6vh, 28px); }
+    #topbar { min-height: 30px; }
+    #bottombar .bottombar-row { padding-block: 3px 4px; }
+  }
+  @media (max-height: 340px) { #presentation { --tap: 40px; } }
+  @media (max-width: 519px) and (max-height: 339px) and (pointer: fine) {   /* 400% zoom on a laptop leaves about 320×180: one slim row of controls, so the slide keeps the room */
+    #presentation { --tap: 28px; }
+    #topbar { min-height: 28px; padding-block: 0; }
+    #topbar .btn { padding: 0 10px; }
+    #bottombar .bottombar-row { flex-wrap: wrap; gap: 2px 4px; padding: 2px 4px 3px; }
+    #bottombar .nav-buttons { flex: 0 0 auto; display: flex; gap: 2px; }
+    #bottombar .nav-buttons .btn { min-width: var(--tap); padding: 0 6px; font-size: 20px; }
+    #bottombar .counter { min-width: 0; font-size: 12px; }
+    #bottombar .toolbar { flex: 1 1 auto; min-width: 0; justify-content: flex-end; gap: 2px; }
+    #bottombar .toolbar .btn { flex: 0 0 auto; width: var(--tap); max-width: none; }
+    #bottombar .toolbar .btn .ico { width: 16px; height: 16px; }
+  }
+
+  /* ---- the stage becomes the screen; the active slide scrolls inside it --------------------------- */
+  #stage { left: 0; top: 0; width: 100%; height: 100%; transform: none; box-shadow: none; }
+  #stage .slide {
+    padding: clamp(14px, 3vw, 26px) var(--pad) var(--pb);
+    justify-content: flex-start; font-size: var(--fs); overflow-wrap: anywhere;
+    overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y pinch-zoom;
+    scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent;
+  }
+  /* a soft fade where the slide continues below the fold. Sticky offsets count from the content edge, so it reaches down by
+     the padding to rest on the bottom of the screen; once you reach the end it sits below the content, in that padding */
+  #stage .slide::after { content: ""; position: sticky; bottom: calc(-1 * var(--pb)); flex: none; height: 28px; pointer-events: none; background: linear-gradient(to bottom, transparent, var(--bg)); }
+  #stage .slide-kicker { font-size: 12px; letter-spacing: 0.12em; margin-bottom: 10px; gap: 10px; }
+  #stage .slide-kicker::before { width: 22px; height: 3px; }
+  #stage .slide h1 { font-size: clamp(26px, min(3.6vw + 14px, 7vh + 8px), 46px); line-height: 1.12; letter-spacing: -0.01em; margin: 0 0 clamp(14px, 3vw, 24px); }
+  #stage .slide h1 code { white-space: nowrap; }
+  #stage .slide > .slide-kicker, #stage .slide > h1, #stage .slide > .slide-body { width: 100%; max-width: 880px; margin-inline: auto; }
+  #stage .slide-body { flex: 0 0 auto; justify-content: flex-start; gap: var(--gap); margin-block: auto; font-size: var(--fs); line-height: 1.5; }
+  #stage .slide-body :not(pre) > code { white-space: normal; overflow-wrap: anywhere; font-size: max(0.82em, 12px); }
+  #stage .slide-body pre.code, #stage .layout-split .slide-body pre.code { padding: 12px 14px; border-radius: 10px; font-size: 13.5px; line-height: 1.5; }
+  #stage .slide-body table { font-size: calc(var(--fs) * 0.9); }
+  #stage .slide-body th { padding: 8px 10px; font-size: calc(var(--fs) * 0.75); }
+  #stage .slide-body td { padding: 8px 10px; }
+  #stage .slide-body blockquote { padding: 12px 16px; }
+  #stage .slide-body img { max-height: none; height: auto; }
+  #stage .big { font-size: calc(var(--fs) * 1.3); max-width: none; }
+  #stage .aside { font-size: calc(var(--fs) * 0.85); }
+  #stage .layout-section h1, #stage .layout-break h1 { font-size: clamp(32px, min(8vw, 12vh), 64px); }
+  @media (max-height: 519px) {                             /* landscape phone: a tighter header leaves more of the slide */
+    #stage .slide { padding-top: 8px; }
+    #stage .slide-kicker { margin-bottom: 6px; }
+    #stage .slide h1 { margin-bottom: 10px; font-size: clamp(24px, min(3.6vw + 14px, 6vh + 6px), 46px); }
+  }
+
+  /* ---- title: the glyph is decoration; it follows the text and never sits on it ------------------- */
+  #stage .layout-title { padding-top: clamp(20px, 6vw, 48px); }
+  #stage .layout-title > .slide-kicker { margin-top: auto; margin-bottom: clamp(12px, 3vw, 20px); font-size: 13px; }
+  #stage .layout-title > .slide-body { margin-top: 0; margin-bottom: auto; gap: calc(var(--gap) * 0.9); }
+  #stage .layout-title h1 { font-size: clamp(36px, min(10.5vw, 15vh), 84px); line-height: 1; letter-spacing: -0.03em; margin-bottom: clamp(14px, 3.4vw, 26px); }
+  #stage .layout-title .slide-body > p { max-width: none; font-size: calc(var(--fs) * 1.15); line-height: 1.4; }
+  #stage .layout-title .glyph { position: static; transform: none; order: 99; width: min(56vw, 240px); height: auto; aspect-ratio: 1 / 1; margin: 6px auto 0; }
+  #stage .glyph-svg text { display: none; }
+  @media (min-width: 640px) { #stage .layout-title .glyph { width: min(40vw, 300px); } }
+  @media (min-width: 640px) and (max-height: 519px) {      /* landscape: text left, glyph right, as on the canvas */
+    #stage .layout-title > .slide-kicker, #stage .layout-title > h1, #stage .layout-title > .slide-body { max-width: min(62%, 560px); margin-inline: 0; }
+    #stage .layout-title .glyph { position: absolute; right: var(--pad); top: 50%; transform: translateY(-50%); order: 0; width: min(30vw, 240px); margin: 0; }
+    /* the cover is the first thing a rotated phone shows, so it is packed to fit one short screen */
+    #stage .layout-title { padding-top: 8px; }
+    #stage .layout-title > .slide-kicker { margin-bottom: 8px; }
+    #stage .layout-title h1 { font-size: clamp(30px, 11.5vh, 52px); margin-bottom: 10px; }
+    #stage .layout-title > .slide-body { gap: 8px; }
+    #stage .layout-title .slide-body > p { font-size: var(--fs); line-height: 1.35; }
+    #stage .layout-title .slide-body .chip { gap: 7px; padding: 5px 11px 5px 10px; font-size: calc(var(--fs) * 0.82); }
+  }
+
+  /* ---- columns, cards, stats ------------------------------------------------------------------- */
+  #stage .cols { grid-template-columns: minmax(0, 1fr) !important; gap: var(--gap); }
+  #stage .col > h2, #stage .col > h3 { margin-bottom: 8px; font-size: calc(var(--fs) * 1.2); }
+  #stage .slide-body .col > p, #stage .layout-split .slide-body .col > p { font-size: var(--fs); line-height: 1.5; }
+  #stage .layout-default .col { padding-left: 16px; border-left-width: 4px; }
+  #stage .layout-default .slide-body { gap: var(--gap); }
+  #stage .cards, #stage .cards[data-count="2"], #stage .cards[data-count="4"] { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  #stage .card { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; padding: 16px 16px 18px; border-top-width: 5px; border-radius: 16px; font-size: var(--fs); line-height: 1.45; }
+  #stage .card::after { top: 12px; right: 14px; font-size: 13px; }
+  #stage .card-icon { flex: none; width: 36px; height: 36px; margin: 0; }
+  #stage .card h2, #stage .card h3 { flex: 1 1 0; min-width: 0; margin: 0; padding-right: 30px; font-size: calc(var(--fs) * 1.2); line-height: 1.2; }
+  #stage .card p { flex: 0 0 100%; margin-top: 10px; }
+  #stage .stats { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  #stage .slide-body .stat { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 16px; padding: 12px 16px; border-radius: 14px; }
+  #stage .stat-value { grid-row: 1 / span 2; min-width: 1.2ch; text-align: center; font-size: clamp(44px, 13vw, 60px); }
+  #stage .stat-label { margin: 0; font-size: calc(var(--fs) * 0.8); letter-spacing: 0.04em; }
+  #stage .stat-note { margin: 2px 0 0; font-size: calc(var(--fs) * 0.92); }
+  @media (min-width: 640px) {
+    #stage .cols { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+    #stage .stats { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    #stage .slide-body .stat { display: block; padding: 14px 16px 16px; }
+    #stage .stat-value { text-align: left; font-size: clamp(48px, 7vw, 72px); }
+    #stage .stat-label { margin-top: 10px; }
+  }
+  @media (min-width: 840px), (min-width: 640px) and (max-height: 519px) {
+    #stage .cards, #stage .cards[data-count="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    #stage .cards[data-count="2"], #stage .cards[data-count="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #stage .card { display: block; }
+    #stage .card-icon { margin-bottom: 10px; }
+    #stage .card h2, #stage .card h3 { margin-bottom: 8px; }
+    #stage .card p { margin-top: 0; }
+  }
+
+  /* ---- callout, chips, key/value rows, timeline, spec links -------------------------------------- */
+  #stage .callout { padding: 14px 16px; border-left-width: 5px; font-size: var(--fs); }
+  #stage .callout-title { gap: 10px; margin-bottom: 6px; font-size: calc(var(--fs) * 1.1); }
+  #stage .callout-icon { width: 24px; height: 24px; }
+  #stage .chips { gap: 8px; }
+  #stage .slide-body .chip { gap: 10px; padding: 8px 14px 8px 12px; font-size: calc(var(--fs) * 0.92); }
+  #stage .chip::before { width: 9px; height: 9px; }
+  #stage .kv-row, #stage .layout-diagram .kv-row { grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 12px 0; }
+  #stage .kv-k, #stage .layout-diagram .kv-k { font-size: calc(var(--fs) * 1.1); }
+  #stage .kv-v, #stage .layout-diagram .kv-v { font-size: var(--fs); line-height: 1.5; }
+  #stage .timeline { gap: 10px; }
+  #stage .slide-body .tl-row { grid-template-columns: 40px minmax(0, 1fr); align-items: start; gap: 2px 14px; padding: 12px 14px; border-radius: 14px; }
+  #stage .tl-row::before { grid-row: 1 / span 2; width: 36px; height: 36px; border-width: 2px; font-size: 16px; }
+  #stage .tl-row.tl-poll::before { font-size: 20px; }
+  #stage .tl-date { grid-column: 2; font-size: calc(var(--fs) * 1.1); }
+  #stage .tl-text { grid-column: 2; font-size: var(--fs); line-height: 1.45; }
+  #stage .slide-body p.spec-ref, #stage .slide-body .col > p.spec-ref, #stage .layout-split .slide-body .col > p.spec-ref { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 1.4; }
+  #stage .spec-ref a { display: inline-flex; align-items: center; min-width: 0; min-height: var(--tap); border-bottom: 0; text-decoration: underline dashed; text-decoration-thickness: 1px; text-underline-offset: 0.3em; }
+  @media (min-width: 700px) {
+    #stage .kv-row, #stage .layout-diagram .kv-row { grid-template-columns: minmax(140px, 30%) minmax(0, 1fr); gap: 16px; align-items: baseline; }
+  }
+
+  /* ---- lab tile ------------------------------------------------------------------------------------ */
+  #stage .layout-lab .slide-body { flex-direction: column; align-items: stretch; gap: var(--gap); }
+  #stage .lab-tile { flex: none; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 14px 16px; border-top-width: 5px; border-radius: 16px; }
+  #stage .lab-tile .lab-num { font-size: clamp(54px, 16vw, 84px); line-height: 0.9; }
+  #stage .lab-tile .lab-dur { flex: 1 1 8em; font-size: calc(var(--fs) * 1.1); }
+  #stage .lab-tile .lab-path { flex: 1 1 100%; display: flex; align-items: center; min-height: var(--tap); padding: 8px 12px; font-size: 13px; }
+  #stage .lab-main { flex: none; }
+  @media (min-width: 700px) {
+    #stage .layout-lab .slide-body { flex-direction: row; align-items: center; gap: 28px; }
+    #stage .lab-tile { flex: 0 0 240px; flex-direction: column; align-items: flex-start; }
+    #stage .lab-main { flex: 1 1 auto; min-width: 0; }
+  }
+
+  /* ---- quiz and decision tree: big, thumb-sized answers -------------------------------------------- */
+  #stage .quiz { padding: 16px; border-radius: 16px; }
+  #stage .slide-body p.quiz-q { max-width: none; margin-bottom: 16px; font-size: clamp(20px, min(2.2vw + 14px, 5.5vh), 30px); }
+  #stage .quiz-options { gap: 10px; }
+  #stage .quiz-option { gap: 14px; min-height: 56px; padding: 12px 14px; border-radius: 14px; font-size: var(--fs); }
+  #stage .quiz-key { width: 36px; height: 36px; border-width: 2px; font-size: 17px; }
+  #stage .quiz-option.is-correct::after, #stage .quiz-option.is-wrong::after { font-size: 24px; }
+  #stage .slide-body p.quiz-expl { max-width: none; margin-top: 16px; font-size: var(--fs); }
+  #stage .decision { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  #stage .decision-panel { gap: 18px; min-height: 0; padding: 18px 16px; border-radius: 18px; }
+  #stage .slide .decision-q { font-size: clamp(20px, min(2.2vw + 14px, 5.5vh), 30px); }
+  #stage .decision-actions { gap: 10px; }
+  #stage .decision-actions .btn { flex: 1 1 0; justify-content: center; min-height: var(--tap); padding: 10px 24px; font-size: calc(var(--fs) * 1.1); }
+  #stage .decision-outcomes { grid-template-rows: none; gap: 10px; }
+  #stage .outcome { padding: 14px 16px; border-left-width: 8px; border-radius: 16px; }
+  #stage .outcome h2, #stage .outcome h3 { margin-bottom: 6px; font-size: calc(var(--fs) * 1.25); }
+  #stage .outcome.is-picked { padding-right: 46px; }
+  #stage .outcome.is-picked::after { top: 10px; right: 14px; font-size: 26px; }
+  #stage .slide-body .outcome p { font-size: var(--fs); }
+  @media (min-width: 840px), (min-width: 640px) and (max-height: 519px) {
+    #stage .decision { grid-template-columns: 1.1fr 1fr; }
+  }
+
+  /* ---- live pilot: the ledger steps through the panels, the drawing pans sideways -------------------- */
+  #stage .layout-media { padding-bottom: var(--pb); }
+  #stage .layout-media .slide-body { display: flex; flex-direction: column; align-items: stretch; gap: 12px; }
+  #stage .layout-media .ledger { flex: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; border-left: 0; }
+  #stage .slide-body .ledger-row { min-height: 52px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+  #stage .slide-body .ledger-row.is-active { border-color: var(--accent); background: var(--accent-soft); }
+  #stage .ledger-row::before { display: none; }
+  #stage .ledger-k { font-size: 13px; }
+  #stage .ledger-v { font-size: 13.5px; }
+  #stage .pilot-controls .btn { min-width: var(--tap); min-height: var(--tap); justify-content: center; }
+  @media (min-width: 560px) { #stage .layout-media .ledger { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+
+  /* ---- diagrams: drawn for a wide canvas, so on a narrow screen they keep a readable size and pan --- */
+  #stage .diagram { display: block; margin-inline: calc(-1 * var(--pad)); padding-inline: 8px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+  #stage .diagram svg { width: max(100%, calc(var(--vb-w, 1000) * var(--dscale, 0.5) * 1px)); max-width: none; max-height: none; height: auto; }
+  #stage .diagram svg[data-pilot] { --dscale: 0.62; }
+  @media (min-width: 640px) { #stage .diagram svg { --dscale: 0.48; } }
+  /* the pilot's Prev / Next are drawn inside the figure: enlarge them to a thumb-sized target without moving them */
+  #stage [data-pilot-prev], #stage [data-pilot-next] { transform-box: fill-box; transform-origin: center; transform: scale(1.4); }
+  #stage .diagram figcaption { font-size: 13px; }
+  #stage .diagram:focus-visible, #stage .slide:focus-visible { outline-offset: -3px; }
+  #stage .layout-diagram .slide-body, #stage .layout-decision .slide-body, #stage .layout-end .slide-body { row-gap: var(--gap); align-content: start; }
+
+  /* ---- overlays: close to full width. The body scrolls in its own region and the Close button sits below it, never over it,
+     so a control that takes focus is never hidden behind the button ------------------------------------------------- */
+  .dlg { width: calc(100vw - 20px); max-width: 720px; max-height: calc(100vh - 20px); max-height: calc(100dvh - 20px); padding: 0; border-radius: 14px; overflow: hidden; }
+  .dlg[open] { display: flex; flex-direction: column; }
+  .dlg-body { display: block; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 16px 16px 12px; }
+  .dlg-body:focus-visible { outline-offset: -3px; }
+  .dlg-wide { max-width: 1200px; }
+  .dlg h2 { margin-bottom: 12px; font-size: 20px; }
+  .dlg form { flex: none; margin: 0; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+  .dlg .btn { min-height: 44px; padding: 0 18px; }
+  .keys { grid-template-columns: minmax(0, 1fr); gap: 0; font-size: 15px; }
+  .keys > div:nth-child(odd) { margin-top: 10px; font-weight: 600; }
+  .keys > div:nth-child(even) { color: var(--text-2); }
+  @media (min-width: 640px) {
+    .keys { grid-template-columns: auto minmax(0, 1fr); gap: 10px 20px; }
+    .keys > div:nth-child(odd) { margin-top: 0; font-weight: inherit; }
+    .keys > div:nth-child(even) { color: inherit; }
+  }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); max-height: none; padding: 0; overflow: visible; }
+  .grid-item { min-height: 56px; }
+  .agenda-head { flex-wrap: wrap; gap: 8px 20px; }
+  .tz-label { flex: 1 1 100%; justify-content: space-between; }
+  .tz-label select { flex: 1 1 auto; min-width: 0; min-height: 44px; }
+  .tabs { flex-wrap: wrap; }
+  .tabs button { min-height: 44px; }
+  .agenda-table { font-size: 14px; }
+  .agenda-table th, .agenda-table td { padding: 8px 6px; }
+  .agenda-table .ag-go { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; margin: -12px -6px; padding: 0 12px; }
+
+  /* ---- speaker notes as a bottom sheet ------------------------------------------------------------- */
+  .dlg.dlg-notes { padding: 0; }
+  .dlg.dlg-notes[open] { width: 100%; max-width: 100%; max-height: min(88vh, 760px); max-height: min(88dvh, 760px); margin: auto 0 0; border-width: 1px 0 0; border-radius: 18px 18px 0 0; }
+  .notes-head { padding-top: 20px; }
+  .notes-head::before { content: ""; position: absolute; top: 7px; left: 50%; width: 38px; height: 4px; margin-left: -19px; border-radius: 2px; background: var(--line-strong); }
+  @media (min-width: 760px) { .dlg.dlg-notes[open] { width: min(100%, 720px); margin-inline: auto; } }
+  @media (prefers-reduced-motion: no-preference) {
+    .dlg.dlg-notes[open] { animation: sheet-up 0.2s ease-out; }
+    @keyframes sheet-up { from { transform: translateY(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+  }
+  /* a short screen: the sheet's header, meta line and buttons give up room to the notes (the sheet keeps its usual height, so a tap
+     above it still closes it) */
+  @media (max-height: 420px) {
+    .notes-head { padding: 6px 6px 2px 16px; }
+    .notes-head::before { display: none; }
+    .dlg .notes-head h2 { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }   /* still names the dialog */
+    .notes-slide { margin: 0; font-size: 16px; }
+    .notes-meta { padding: 0 16px 4px; font-size: 12px; }
+    .dlg-notes .sp-notes { padding: 8px 16px 12px; }
+    .notes-foot { gap: 6px; padding: 4px 8px; }
+  }
+  /* shorter still (a laptop window at 400% zoom): the sheet takes the screen and nothing can stay pinned, so it scrolls as one
+     page with its header held at the top */
+  @media (max-height: 280px) {
+    .dlg.dlg-notes[open] { display: block; overflow-y: auto; scroll-padding-top: 56px; max-height: calc(100vh - 8px); max-height: calc(100dvh - 8px); }
+    .notes-head { position: sticky; top: 0; z-index: 2; background: var(--surface); }
+    .dlg-notes .sp-notes { overflow: visible; }
+  }
+}
+
+/* ---- the speaker view on a narrow screen or a landscape phone: one column, notes first, controls pinned below ---- */
+@media screen and (max-width: 839px), screen and (max-height: 519px) and (max-width: 960px) {
+  #speaker { grid-template-rows: auto minmax(0, 1fr); }
+  .sp-head { flex-wrap: wrap; gap: 6px 12px; min-height: 56px; padding: 6px 12px; }
+  .sp-title { flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+  #sp-deck-title { min-width: 0; overflow-wrap: anywhere; }
+  .sp-clock { flex-wrap: wrap; gap: 6px 10px; margin-left: auto; }
+  .sp-time, .sp-elapsed { font-size: 18px; }
+  @media (max-width: 479px) { .sp-time, .sp-sep, #sp-deck-title { display: none; } }
+  #speaker .btn { min-height: 44px; }
+  .sp-body { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .sp-current { display: contents; }
+  .sp-preview-wrap { order: 1; flex: none; width: min(calc(100% - 24px), 340px); margin: 10px 12px 0; }
+  .sp-next-wrap, .sp-budget { display: none; }
+  .sp-notes-wrap { order: 2; display: block; flex: 1 0 auto; }
+  .sp-notes-head { flex-wrap: wrap; gap: 6px 12px; padding: 12px 14px 8px; }
+  .sp-notes-head h2 { flex: 1 1 100%; font-size: 18px; }
+  .sp-notes-tools { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; white-space: normal; }
+  #sp-words { flex: 1 1 100%; }
+  #speaker .sp-notes { padding: 14px 14px 20px; overflow: visible; }
+  .sp-status { padding: 8px 14px; }
+  .sp-position { order: 3; position: sticky; bottom: 0; z-index: 3; justify-content: space-between; margin-top: auto; padding: 8px 12px; border-top: 1px solid var(--line); background: var(--surface); }
+  .sp-position .counter { flex: 1 1 auto; }
+  /* a short window has no room for pinned bars: the page scrolls as one, with Prev / Next at the top of it, under the header */
+  @media (max-height: 420px) {
+    #speaker { display: block; overflow-y: auto; overscroll-behavior: contain; }
+    .sp-body { overflow: visible; }
+    .sp-position { order: 0; position: static; margin-top: 0; border-top: 0; border-bottom: 1px solid var(--line); }
+  }
+}
+@media screen and (max-height: 519px) and (max-width: 960px) { .sp-preview-wrap { display: none; } }
+/* two columns but not much width (a tablet in landscape): let the notes header wrap instead of pushing past the edge */
+@media screen and (min-width: 840px) and (max-width: 1100px) {
+  .sp-body { grid-template-columns: minmax(380px, 44%) minmax(0, 1fr); }
+  .sp-notes-head { flex-wrap: wrap; }
+  .sp-notes-head h2 { flex: 1 1 100%; }
+  .sp-notes-tools { flex: 1 1 100%; min-width: 0; flex-wrap: wrap; white-space: normal; }
+  @media (max-width: 959px) { #sp-words { flex: 1 1 100%; } }
+}
 
 /* ------------------------------------------------------------------------------ print */
 @media print {
