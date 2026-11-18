@@ -176,8 +176,8 @@ post-steps:
       name: sdlc-cascade-shas-${{ github.run_id }}
       path: /tmp/gh-aw/cascade-shas.json
       if-no-files-found: error
-  - name: node --frozen-intrinsics "$GITHUB_WORKSPACE/src/verify-immutable-gates.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-pipeline-showcase
-    run: node --frozen-intrinsics "$GITHUB_WORKSPACE/src/verify-immutable-gates.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-pipeline-showcase
+  - name: node --frozen-intrinsics "$GITHUB_WORKSPACE/src/verify-immutable-gates.mjs" --downstream "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-pipeline-showcase
+    run: node --frozen-intrinsics "$GITHUB_WORKSPACE/src/verify-immutable-gates.mjs" --downstream "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-pipeline-showcase
   - name: npm run build:workshop
     run: npm run build:workshop
     working-directory: portfolio

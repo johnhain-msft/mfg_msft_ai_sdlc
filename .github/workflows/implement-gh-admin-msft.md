@@ -64,7 +64,7 @@ pre-agent-steps:
       CONFIGURED_TARGET_REPO: johnhain-msft/gh-admin-msft
       APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --upkeep-strategy content-and-docs-sync --implementation
+    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --upkeep-strategy content-and-docs-sync --implementation --project gh-admin-msft
   - name: Install target checkout dependencies for in-sandbox validation
     working-directory: gh-admin-msft
     run: npm ci --ignore-scripts

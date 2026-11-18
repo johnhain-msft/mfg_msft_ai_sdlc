@@ -85,7 +85,7 @@ jobs:
             importCommands: []
             preflightCommands:
               - npm run sync:workshop-source -- <checkout>
-              - node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$TARGET_SHA"
+              - node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$TARGET_SHA"
             buildCommands:
               - npm run build:workshop
             verifyCommands:
@@ -126,7 +126,7 @@ jobs:
                   if (!studio._provenance || studio._provenance.commit !== want) stale.push("lab-sources.json _provenance.commit");
                   if (stale.length > 0) { console.error("stale provenance: " + stale.join(", ")); process.exit(1); }
                   '
-                  node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$UPSTREAM_SHA"
+                  node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$UPSTREAM_SHA"
                 fi
               - |
                 # post-run check: the upstream checkout stays read-only

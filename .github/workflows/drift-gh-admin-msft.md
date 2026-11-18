@@ -63,7 +63,7 @@ pre-agent-steps:
       CONFIGURED_TARGET_REPO: johnhain-msft/gh-admin-msft
       APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --close-older-key sdlc-drift-gh-admin-msft --upkeep-strategy content-and-docs-sync
+    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --close-older-key sdlc-drift-gh-admin-msft --upkeep-strategy content-and-docs-sync --project gh-admin-msft
   - name: Find the watch index of the previous run
     env:
       GH_TOKEN: ${{ github.token }}
