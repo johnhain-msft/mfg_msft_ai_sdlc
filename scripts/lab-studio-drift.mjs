@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Lab Studio drift (contract C7 (2)(a), SPEC-04 AC31-AC34).
 //
-//   node src/lab-studio-drift.mjs --portfolio <abs-path> --upstream <abs-path> --commit <40-hex-sha> [--accept]
+//   node scripts/lab-studio-drift.mjs --portfolio <abs-path> --upstream <abs-path> --commit <40-hex-sha> [--accept]
 //
 // The studio manifest of the downstream checkout records one revision of the upstream repository and, for each of its twenty lessons, the first sixteen
 // hexadecimal characters of the SHA-256 of the lesson's source file with its line ends normalised to LF. This command recomputes those hashes from the
@@ -15,15 +15,14 @@
 // differs from the recorded one. Without --accept the command writes nothing. With --accept it changes the manifest by those values only: the recorded
 // commit and each changed hash, in place, so that the key order, the field order, the indentation, the line ends and everything else stay as they were.
 //
-// The path of the manifest is data of the fleet manifest (sdlc.yaml, adaptation.labStudioDrift.manifest): this file names no repository and no path.
+// The path of the manifest is data of the fleet manifest (sdlc.yaml, adaptation.helpers.labStudioDrift.manifest): this file names no repository and no path.
+//
+// This script belongs to the orchestrator repository, not to the engine. It imports the engine only through its public API, ai-sdlc-factory/script-kit.
 
 import crypto from "node:crypto";
 import path from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { writeFilesAtomically } from "./drift/lib/atomic.mjs";
-import { parseFlags, UsageError } from "./drift/lib/args.mjs";
-import { resolveIo, runAsMain } from "./drift/lib/cli.mjs";
-import { adaptationSection, isInside, ManifestError, readManifest, relativePath } from "./adaptation/manifest.mjs";
+import { helperSection, isInside, ManifestError, parseFlags, readManifest, relativePath, resolveIo, runAsMain, UsageError, writeFilesAtomically } from "ai-sdlc-factory/script-kit";
 
 const OPTIONS = { portfolio: { type: "string" }, upstream: { type: "string" }, commit: { type: "string" }, accept: { type: "boolean" } };
 const SHA = /^[0-9a-f]{40}$/;
@@ -135,9 +134,9 @@ export async function run(argv, ioInput = {}) {
     }
 
     const { document } = await readManifest({ cwd: io.cwd, env: io.env, avoid: [portfolio] });
-    const section = adaptationSection(document, "labStudioDrift");
-    if (section === null) throw new ManifestError("sdlc.yaml declares no adaptation.labStudioDrift data (the path of the studio manifest)");
-    const manifestRelative = relativePath(isObject(section) ? section.manifest : undefined, "adaptation.labStudioDrift.manifest");
+    const section = helperSection(document, "labStudioDrift");
+    if (section === null) throw new ManifestError("sdlc.yaml declares no adaptation.helpers.labStudioDrift data (the path of the studio manifest)");
+    const manifestRelative = relativePath(isObject(section) ? section.manifest : undefined, "adaptation.helpers.labStudioDrift.manifest");
     const manifestPath = path.join(portfolio, ...manifestRelative.split("/"));
     if (!isInside(portfolio, manifestPath)) throw new DriftError(`${manifestRelative} resolves outside --portfolio`);
     if (!io.fs.existsSync(manifestPath)) throw new DriftError(`${manifestPath} does not exist`);

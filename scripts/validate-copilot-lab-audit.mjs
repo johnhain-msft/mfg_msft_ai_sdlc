@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Post-step validator of the lab audit (SPEC-02 AC22, AC23, AC33).
 //
-//   node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" [--self-improve]
+//   node "$GITHUB_WORKSPACE/scripts/validate-copilot-lab-audit.mjs" [--self-improve]
 //
 // It runs with the target checkout as its working directory (or --checkout) and exits 0 only when
 //  1. docs/_meta/registry.yaml has all 11 top-level keys;
@@ -48,15 +48,16 @@
 // the commits, the index and the comparison of the working tree with the base commit read. A checkout whose own configuration sets one of those programs
 // is refused too, as the mark of an agent that did it.
 // The script does not protect its own file: it runs from the orchestrator checkout, the working directory of the agent step, and the agent can
-// write there. The workflow protects it: prepare-run stages a copy of this file and of drift/lib/ under ${RUNNER_TEMP}/gh-aw/sdlc-validator/
-// before the agent starts (the compiled agent step mounts ${RUNNER_TEMP}/gh-aw read-only), and the verifyCommands entry that runs this script
-// first compares the two and fails when they differ (SPEC-02 AC22 and §4, item 6, say what that closes and what it leaves open).
+// write there. The workflow protects it: prepare-run stages a copy of this file (declared in stagedScripts of the project) and of the engine's
+// src/drift/lib/ under ${RUNNER_TEMP}/gh-aw/sdlc-validator/, in a layout that mirrors the workspace, before the agent starts (the compiled agent step mounts
+// ${RUNNER_TEMP}/gh-aw read-only), and the verifyCommands entry that runs this script first compares the two and fails when they differ (SPEC-02 AC22 and
+// §4, item 6, say what that closes and what it leaves open). For that reason this script imports the engine only through ai-sdlc-factory/drift-lib, which is
+// the staged tree: what is compared is what is imported.
 
 import nodeFs from "node:fs";
 import path from "node:path";
-import { parseFlags, UsageError } from "./drift/lib/args.mjs";
-import { BASE_SHA_VARIABLE, outDirectory, resolveIo, runAsMain } from "./drift/lib/cli.mjs";
 import {
+  BASE_SHA_VARIABLE,
   branchTips,
   bundleCommits,
   COMMIT_LIMIT,
@@ -67,12 +68,17 @@ import {
   indexPaths,
   listRefs,
   openScratch,
+  outDirectory,
+  parseFlags,
   patchTrees,
   refsByCommit,
   replaceRefs,
+  resolveIo,
+  runAsMain,
   snapshotTransportFiles,
+  UsageError,
   workTreePaths,
-} from "./drift/lib/git-artifacts.mjs";
+} from "ai-sdlc-factory/drift-lib";
 
 const OPTIONS = {
   out: { type: "string" },

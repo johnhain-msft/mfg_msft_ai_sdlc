@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Studio revision pins (contract C7 (2)(b), SPEC-04 AC35-AC39).
 //
-//   node src/bump-studio-revision-pins.mjs --portfolio <abs-path> --new-sha <40-hex-sha>
+//   node scripts/bump-studio-revision-pins.mjs --portfolio <abs-path> --new-sha <40-hex-sha>
 //
 // The downstream checkout names the upstream revision it was adapted to in a handful of places: a constant of a source module, assertions of its tests,
 // links in a README, a notice and a page. When the revision moves, those literals move with it. This command reads the revision that the checkout
@@ -20,15 +20,13 @@
 //
 //   exit 0  done (also when no literal needed replacing)     exit 2  a fatal error: every file is as it was
 //
-// The provenance files, the target files and the pin constant are data of the fleet manifest (sdlc.yaml, adaptation.revisionPins): this file names no
+// The provenance files, the target files and the pin constant are data of the fleet manifest (sdlc.yaml, adaptation.helpers.revisionPins): this file names no
 // repository and no path. Standard output is one JSON line: { newSha, priorShas, updatedFiles }.
+//
+// This script belongs to the orchestrator repository, not to the engine. It imports the engine only through its public API, ai-sdlc-factory/script-kit.
 
 import path from "node:path";
-import { writeFilesAtomically } from "./drift/lib/atomic.mjs";
-import { parseFlags, UsageError } from "./drift/lib/args.mjs";
-import { resolveIo, runAsMain } from "./drift/lib/cli.mjs";
-import { adaptationSection, isInside, ManifestError, readManifest, relativePath, resolvePointer } from "./adaptation/manifest.mjs";
-import { inComment, matchingBracket, scan } from "./adaptation/ts-scan.mjs";
+import { helperSection, inComment, isInside, ManifestError, matchingBracket, parseFlags, readManifest, relativePath, resolveIo, resolvePointer, runAsMain, scan, UsageError, writeFilesAtomically } from "ai-sdlc-factory/script-kit";
 
 const OPTIONS = { portfolio: { type: "string" }, "new-sha": { type: "string" } };
 const SHA = /^[0-9a-f]{40}$/;
@@ -159,18 +157,18 @@ export function assignedLiterals(text, name) {
 
 /** The pin data of the manifest, checked. @throws {ManifestError} */
 function readPinData(section) {
-  if (!isObject(section)) throw new ManifestError("adaptation.revisionPins must be a mapping");
+  if (!isObject(section)) throw new ManifestError("adaptation.helpers.revisionPins must be a mapping");
   const { provenance, files, constant } = section;
-  if (!Array.isArray(provenance) || provenance.length === 0) throw new ManifestError("adaptation.revisionPins.provenance must be a non-empty list");
-  if (!Array.isArray(files) || files.length === 0) throw new ManifestError("adaptation.revisionPins.files must be a non-empty list");
-  if (!isObject(constant) || typeof constant.name !== "string" || !NAME.test(constant.name)) throw new ManifestError("adaptation.revisionPins.constant needs a file and a name");
+  if (!Array.isArray(provenance) || provenance.length === 0) throw new ManifestError("adaptation.helpers.revisionPins.provenance must be a non-empty list");
+  if (!Array.isArray(files) || files.length === 0) throw new ManifestError("adaptation.helpers.revisionPins.files must be a non-empty list");
+  if (!isObject(constant) || typeof constant.name !== "string" || !NAME.test(constant.name)) throw new ManifestError("adaptation.helpers.revisionPins.constant needs a file and a name");
   const provenanceFiles = provenance.map((entry, index) => {
-    if (!isObject(entry) || typeof entry.pointer !== "string") throw new ManifestError(`adaptation.revisionPins.provenance[${index}] needs a file and a pointer`);
-    return { file: relativePath(entry.file, `adaptation.revisionPins.provenance[${index}].file`), pointer: entry.pointer };
+    if (!isObject(entry) || typeof entry.pointer !== "string") throw new ManifestError(`adaptation.helpers.revisionPins.provenance[${index}] needs a file and a pointer`);
+    return { file: relativePath(entry.file, `adaptation.helpers.revisionPins.provenance[${index}].file`), pointer: entry.pointer };
   });
-  const targets = [...new Set(files.map((file, index) => relativePath(file, `adaptation.revisionPins.files[${index}]`)))];
-  const constantFile = relativePath(constant.file, "adaptation.revisionPins.constant.file");
-  if (!targets.includes(constantFile)) throw new ManifestError("the file of adaptation.revisionPins.constant must be one of adaptation.revisionPins.files");
+  const targets = [...new Set(files.map((file, index) => relativePath(file, `adaptation.helpers.revisionPins.files[${index}]`)))];
+  const constantFile = relativePath(constant.file, "adaptation.helpers.revisionPins.constant.file");
+  if (!targets.includes(constantFile)) throw new ManifestError("the file of adaptation.helpers.revisionPins.constant must be one of adaptation.helpers.revisionPins.files");
   for (const { file } of provenanceFiles) {
     if (targets.includes(file)) throw new ManifestError(`${file} is a provenance file and cannot be a pin target: only the accept commands write it`);
   }
@@ -193,8 +191,8 @@ export async function run(argv, ioInput = {}) {
     if (!io.fs.existsSync(portfolio) || !io.fs.statSync(portfolio).isDirectory()) throw new UsageError(`--portfolio is not a directory: ${portfolio}`);
 
     const { document } = await readManifest({ cwd: io.cwd, env: io.env, avoid: [portfolio] });
-    const section = adaptationSection(document, "revisionPins");
-    if (section === null) throw new ManifestError("sdlc.yaml declares no adaptation.revisionPins data (the provenance files, the target files and the pin constant)");
+    const section = helperSection(document, "revisionPins");
+    if (section === null) throw new ManifestError("sdlc.yaml declares no adaptation.helpers.revisionPins data (the provenance files, the target files and the pin constant)");
     const { provenanceFiles, targets, constant } = readPinData(section);
     const inPortfolio = (relative) => {
       const file = path.join(portfolio, ...relative.split("/"));
