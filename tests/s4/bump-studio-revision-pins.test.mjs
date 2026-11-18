@@ -1,9 +1,9 @@
-// AC35-AC39: src/bump-studio-revision-pins.mjs replaces the prior revision in the pin files that the manifest names, and nowhere else.
+// AC35-AC39: scripts/bump-studio-revision-pins.mjs replaces the prior revision in the pin files that the manifest names, and nowhere else.
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { assignedLiterals, bumpText } from "../../src/bump-studio-revision-pins.mjs";
+import { assignedLiterals, bumpText } from "../../scripts/bump-studio-revision-pins.mjs";
 import { HELPERS, commitAll, fixture, git, jsonOf, portfolioMin, readJson, readText, runNode, tempDir, writeFiles } from "./helpers/fixtures.mjs";
 
 const PRIOR = "2108ac9a1e9eff96e97b500117b0de4a546768c3";

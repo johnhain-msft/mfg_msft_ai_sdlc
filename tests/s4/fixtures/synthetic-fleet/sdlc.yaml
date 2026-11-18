@@ -80,20 +80,21 @@ dependencyEdges:
     adaptation:
       preflightReports:
         - lessons-drift.txt
-      labStudioDrift:
-        manifest: studio/sources.json
-      revisionPins:
-        provenance:
-          - file: studio/sources.json
-            pointer: /_provenance/commit
-          - file: web/provenance.json
-            pointer: /commit
-        files:
-          - web/revision.ts
-          - README.md
-        constant:
-          file: web/revision.ts
-          name: PINNED_REVISION
+      helpers:
+        labStudioDrift:
+          manifest: studio/sources.json
+        revisionPins:
+          provenance:
+            - file: studio/sources.json
+              pointer: /_provenance/commit
+            - file: web/provenance.json
+              pointer: /commit
+          files:
+            - web/revision.ts
+            - README.md
+          constant:
+            file: web/revision.ts
+            name: PINNED_REVISION
       pullRequestResult:
         adaptedModules: web/pages/p*.ts
         adaptedStudioLabs: studio/views/v*.tsx

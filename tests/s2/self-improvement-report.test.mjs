@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test, { after, before } from "node:test";
-import { run } from "../../src/validate-copilot-lab-audit.mjs";
+import { run } from "../../scripts/validate-copilot-lab-audit.mjs";
 import { abs, driftWorkflow, readText, tempDir } from "./helpers/fixtures.mjs";
 import { createRepo } from "./helpers/git-fixture.mjs";
 import { labFiles, withoutSection } from "./helpers/lab-fixture.mjs";

@@ -1,4 +1,4 @@
-// AC23: node src/validate-copilot-lab-audit.mjs exits 0 only when all 11 top-level keys of docs/_meta/registry.yaml are present and,
+// AC23: node scripts/validate-copilot-lab-audit.mjs exits 0 only when all 11 top-level keys of docs/_meta/registry.yaml are present and,
 // for an audit run, docs/_meta/audit-report.md has its four required sections (and the sections of docs/_meta/audit-report.template.md),
 // or, for a self-improve run (--self-improve), self-improvement-report.md has its four required sections: a self-improve run does not
 // need the audit report, which the weekly audit generates in its own pull request. Otherwise it exits non-zero and names the missing
@@ -7,8 +7,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test, { after, before } from "node:test";
-import { AUDIT_SECTIONS, REGISTRY_KEYS, run, scalarOf, scanTopLevelKeys, SELF_IMPROVEMENT_SECTIONS, secondLevelHeadings, sectionProblems } from "../../src/validate-copilot-lab-audit.mjs";
-import { driftWorkflow, driftPreset, forceRemove, presetManifest, projectOf, tempDir, script } from "./helpers/fixtures.mjs";
+import { AUDIT_SECTIONS, REGISTRY_KEYS, run, scalarOf, scanTopLevelKeys, SELF_IMPROVEMENT_SECTIONS, secondLevelHeadings, sectionProblems } from "../../scripts/validate-copilot-lab-audit.mjs";
+import { driftWorkflow, forceRemove, instanceScript, presetManifest, projectOf, renderedVerifyCommands, tempDir } from "./helpers/fixtures.mjs";
 import { BASH_SKIP, createGateWorkspace } from "./helpers/gate-harness.mjs";
 import { createRepo } from "./helpers/git-fixture.mjs";
 import { labFiles, withoutSection, withoutTopLevelKey, withSectionOrder } from "./helpers/lab-fixture.mjs";
@@ -136,9 +136,9 @@ test("AC23: a run that is not a self-improve run does not need the self-improvem
 
 test("AC23: how a self-improve run is selected is the --self-improve argument, which the preset passes", () => {
   const verify = projectOf(presetManifest(), "self-improving-agents").driftAudit.verifyCommands;
-  assert.match(verify[0], /node "\$GITHUB_WORKSPACE\/src\/validate-copilot-lab-audit\.mjs" --self-improve \)$/, "the validator is the last thing of the first command, with its argument");
-  assert.match(projectOf(presetManifest(), "copilot-lab").driftAudit.verifyCommands[0], /node "\$GITHUB_WORKSPACE\/src\/validate-copilot-lab-audit\.mjs" \)$/, "and the lab's audit has none");
-  assert.equal(driftWorkflow("self-improving-agents").frontmatter["post-steps"][0].run, verify[0]);
+  assert.match(verify[0], /node "\$GITHUB_WORKSPACE\/scripts\/validate-copilot-lab-audit\.mjs" --self-improve \)$/, "the validator is the last thing of the first command, with its argument");
+  assert.match(projectOf(presetManifest(), "copilot-lab").driftAudit.verifyCommands[0], /node "\$GITHUB_WORKSPACE\/scripts\/validate-copilot-lab-audit\.mjs" \)$/, "and the lab's audit has none");
+  assert.equal(driftWorkflow("self-improving-agents").frontmatter["post-steps"][0].run, renderedVerifyCommands("self-improving-agents")[0], "the rendered step is the manifest's, with the engine placeholders expanded");
 });
 
 test("AC23: without a base commit the report-only rule cannot be checked, so the run fails closed; the base is --base-sha or SDLC_BASE_SHA, never run-context.json", async () => {
@@ -353,7 +353,7 @@ test("AC23: anything that a pull request could be made of brings the report back
 
 test("AC23: the rendered post-step of drift-self-improving-agents passes on a lab tree that has the audit template and no audit report, as the default branch of the lab does", { skip: BASH_SKIP }, async () => {
   const step = driftWorkflow("self-improving-agents").frontmatter["post-steps"][0];
-  assert.match(step.run, /node "\$GITHUB_WORKSPACE\/src\/validate-copilot-lab-audit\.mjs" --self-improve \)$/);
+  assert.match(step.run, /node "\$GITHUB_WORKSPACE\/scripts\/validate-copilot-lab-audit\.mjs" --self-improve \)$/);
   const files = labFiles();
   delete files["docs/_meta/audit-report.md"];
   assert.ok("docs/_meta/audit-report.template.md" in files);
@@ -388,7 +388,7 @@ test("AC23: the scanner reads top-level keys only: quoted keys, comments, block 
 
 test("AC23: the post-step of drift-copilot-lab runs the validator from the orchestrator workspace in the target checkout", { skip: BASH_SKIP }, async () => {
   const step = driftWorkflow("copilot-lab").frontmatter["post-steps"][0];
-  assert.match(step.run, /node "\$GITHUB_WORKSPACE\/src\/validate-copilot-lab-audit\.mjs" \)$/);
+  assert.match(step.run, /node "\$GITHUB_WORKSPACE\/scripts\/validate-copilot-lab-audit\.mjs" \)$/);
   assert.equal(step["working-directory"], "day-in-the-life-copilot-lab");
   const gate = createGateWorkspace({ checkoutName: "day-in-the-life-copilot-lab", files: labFiles() });
   try {
@@ -401,16 +401,16 @@ test("AC23: the post-step of drift-copilot-lab runs the validator from the orche
   } finally {
     gate.cleanup();
   }
-  assert.ok(driftPreset("copilot-lab").driftAudit.verifyCommands.includes(step.run));
+  assert.ok(renderedVerifyCommands("copilot-lab").includes(step.run), "the rendered step is a verifyCommands entry of the manifest, with the engine placeholders expanded");
 });
 
 test("AC23: run as a process, the validator exits 0 on the valid fixture and 1 on a broken one", async () => {
   const environment = { ...process.env };
-  const ok = await runNode(script("validate-copilot-lab-audit.mjs"), ["--out", out, "--base-sha", base], { env: environment, cwd: repo.dir });
+  const ok = await runNode(instanceScript("validate-copilot-lab-audit.mjs"), ["--out", out, "--base-sha", base], { env: environment, cwd: repo.dir });
   assert.equal(ok.code, 0, ok.stderr);
   repo.write("docs/_meta/audit-report.md", "# nothing\n");
   try {
-    const broken = await runNode(script("validate-copilot-lab-audit.mjs"), ["--out", out, "--base-sha", base], { env: environment, cwd: repo.dir });
+    const broken = await runNode(instanceScript("validate-copilot-lab-audit.mjs"), ["--out", out, "--base-sha", base], { env: environment, cwd: repo.dir });
     assert.equal(broken.code, 1);
     for (const section of AUDIT_SECTIONS) assert.ok(broken.stderr.includes(`'## ${section}'`), section);
   } finally {

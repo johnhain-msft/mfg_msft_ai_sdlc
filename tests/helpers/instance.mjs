@@ -48,3 +48,25 @@ export const engineFile = (...parts) => path.join(engineRoot(), ...parts);
 
 /** Imports a module of the engine package by its path inside it, for example `importEngine("src/drift/prepare-run.mjs")`. */
 export const importEngine = (relative) => import(pathToFileURL(engineFile(...relative.split("/"))).href);
+
+/** The directory of the engine package relative to the workspace of a job, as the manifest says it (`factory.dir`, else node_modules/<package>). */
+export const FACTORY_DIR = (() => {
+  const { factory } = presetManifest();
+  return factory?.dir ?? (factory ? `node_modules/${factory.package}` : ".");
+})();
+
+/** A command of the manifest as the renderer writes it into a workflow: `<factory-dir>` is the relative directory, `<factory>` the quoted absolute one. */
+export const expandFactoryCommand = (command) =>
+  command.replaceAll("<factory-dir>", FACTORY_DIR).replaceAll("<factory>", `"${FACTORY_DIR === "." ? "$GITHUB_WORKSPACE" : `$GITHUB_WORKSPACE/${FACTORY_DIR}`}"`);
+
+/**
+ * Puts the engine package into a scratch workspace the way npm lays it out, as a copy of the files that a script needs (never a link into this repository):
+ * `<dir>/node_modules/ai-sdlc-factory/package.json` and `src/`, so that `import "ai-sdlc-factory/drift-lib"` resolves from a script of the workspace. The exports that
+ * such a script imports need no third-party package.
+ */
+export function installFactory(dir, { entries = ["package.json", "src"] } = {}) {
+  const target = path.join(dir, ...FACTORY_DIR.split("/"));
+  fs.mkdirSync(target, { recursive: true });
+  for (const entry of entries) fs.cpSync(engineFile(entry), path.join(target, entry), { recursive: true });
+  return target;
+}

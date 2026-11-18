@@ -124,10 +124,8 @@ export function runNode(script, args = [], { cwd = REPO_ROOT, env = {}, frozen =
 }
 
 export const HELPERS = {
-  drift: abs("src", "lab-studio-drift.mjs"),
-  bump: abs("src", "bump-studio-revision-pins.mjs"),
-  gates: abs("src", "verify-immutable-gates.mjs"),
-  result: abs("src", "ai-pull-request-result.mjs"),
+  drift: abs("scripts", "lab-studio-drift.mjs"),
+  bump: abs("scripts", "bump-studio-revision-pins.mjs"),
 };
 
 /** The one JSON object on the standard output of a helper, or null when there is none (a fatal error prints none). */

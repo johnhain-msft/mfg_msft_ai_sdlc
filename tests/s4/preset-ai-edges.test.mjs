@@ -1,6 +1,8 @@
 // AC2, AC12-AC15 (data), AC24 (scopes), AC51 (provenance files) and AC60-AC68 (commands of the edges): the three ai-adaptation edges of the preset sdlc.yaml.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { engineFile } from "../helpers/instance.mjs";
+import { readJson } from "./helpers/fixtures.mjs";
 import { AI, ALL_SCOPES, DOWNSTREAM, edgeOf, manifest } from "./helpers/workflows.mjs";
 
 const aiEdges = () => manifest().dependencyEdges.filter((edge) => edge.mode === "ai-adaptation");
@@ -137,12 +139,18 @@ test("AC12-AC14: the allowed files of each edge are exactly the lists of the spe
   assert.equal(ALLOWED["copilot-lab"].length, 20);
 });
 
-test("AC24: the sync scopes of each edge are the ones that its workflow accepts, all of them members of the five-value enum", () => {
+test("AC24: the sync scopes of each edge are the ones that its workflow accepts: ids that the installed engine's schema takes for a scope, and members of this fleet's five", () => {
+  // a scope is a free-form id in the engine's schemas (the router dispatches one of the edge's, the workflow refuses any other), so the engine fixes only the shape of one
+  const pattern = new RegExp(readJson(engineFile("schemas", "sdlc.schema.json")).definitions.scopeId.pattern);
   for (const spec of AI) {
     const scopes = edgeOf(spec).syncScopes;
     assert.deepEqual(scopes, spec.scopes, spec.id);
-    for (const scope of scopes) assert.ok(ALL_SCOPES.includes(scope), `${spec.id}: ${scope}`);
+    for (const scope of scopes) {
+      assert.match(scope, pattern, `${spec.id}: ${scope}`);
+      assert.ok(ALL_SCOPES.includes(scope), `${spec.id}: ${scope}`);
+    }
   }
+  assert.deepEqual([...new Set(AI.flatMap((spec) => edgeOf(spec).syncScopes))].sort(), [...ALL_SCOPES].sort(), "and the fleet uses no other");
 });
 
 test("AC41/AC15: the seventeen locked paths are the same, in order, for the three edges", () => {
@@ -169,14 +177,14 @@ test("AC68: each edge's verifyCommands are the ten commands that follow the help
 test("AC60/AC63: the copilot-lab accept commands run the revision bump first, then the two --accept commands, then the build", () => {
   const edge = edgeOf(AI[0]);
   assert.deepEqual(edge.acceptCommands, [
-    'node "$GITHUB_WORKSPACE/src/bump-studio-revision-pins.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --new-sha "$UPSTREAM_SHA"',
+    'node "$GITHUB_WORKSPACE/scripts/bump-studio-revision-pins.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --new-sha "$UPSTREAM_SHA"',
     "npm run sync:workshop-source -- <checkout> --accept",
-    'node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$UPSTREAM_SHA" --accept',
+    'node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$UPSTREAM_SHA" --accept',
   ]);
   assert.deepEqual(edge.buildCommands, ["npm run build:workshop"]);
   assert.deepEqual(edge.preflightCommands, [
     "npm run sync:workshop-source -- <checkout>",
-    'node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$TARGET_SHA"',
+    'node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$TARGET_SHA"',
   ]);
 });
 
@@ -194,15 +202,17 @@ test("AC64-AC67: the showcase and intermediate edges write the exact provenance 
   assert.deepEqual(intermediate.buildCommands, ["npm run build:experiences"]);
 });
 
-test("AC2: the adaptation data of the edges is the data that the helpers and the run report read (SPEC-04 schema field)", () => {
+test("AC2: the adaptation data of the edges is the data that the helpers and the run report read (SPEC-04 schema field): the engine's own keys, and the data of the helpers under adaptation.helpers", () => {
   const lab = edgeOf(AI[0]).adaptation;
+  assert.deepEqual(Object.keys(lab), ["preflightReports", "helpers", "pullRequestResult"], "the keys of the engine, and one place for the helpers' data that the engine does not read");
   assert.deepEqual(lab.preflightReports, ["workshop-drift.txt", "lab-studio-drift.txt"]);
-  assert.equal(lab.labStudioDrift.manifest, "apps/lab-studio/lab-sources.json");
-  assert.deepEqual(lab.revisionPins.provenance, [
+  assert.deepEqual(Object.keys(lab.helpers), ["labStudioDrift", "revisionPins"], "the two helpers that read their data through helperSection");
+  assert.equal(lab.helpers.labStudioDrift.manifest, "apps/lab-studio/lab-sources.json");
+  assert.deepEqual(lab.helpers.revisionPins.provenance, [
     { file: "apps/lab-studio/lab-sources.json", pointer: "/_provenance/commit" },
     { file: "experiences/copilot-workshop/provenance.json", pointer: "/commit" },
   ]);
-  assert.deepEqual(lab.revisionPins.files, [
+  assert.deepEqual(lab.helpers.revisionPins.files, [
     "apps/lab-studio/client/src/labs/source.ts",
     "apps/lab-studio/server/tests/source.test.ts",
     "apps/lab-studio/server/tests/lab-drift.test.ts",
@@ -210,7 +220,8 @@ test("AC2: the adaptation data of the edges is the data that the helpers and the
     "experiences/copilot-workshop/public/NOTICE.txt",
     "public/copilot-project.html",
   ]);
-  assert.deepEqual(lab.revisionPins.constant, { file: "apps/lab-studio/client/src/labs/source.ts", name: "SOURCE_COMMIT" });
+  assert.deepEqual(lab.helpers.revisionPins.constant, { file: "apps/lab-studio/client/src/labs/source.ts", name: "SOURCE_COMMIT" });
+  assert.equal("labStudioDrift" in lab || "revisionPins" in lab, false, "and neither is a key of adaptation any more: the engine's schema does not know them");
   assert.deepEqual(lab.pullRequestResult, { adaptedModules: "experiences/copilot-workshop/content/m*.ts", adaptedStudioLabs: "apps/lab-studio/client/src/labs/lab*.tsx" });
   assert.deepEqual(edgeOf(AI[1]).adaptation, { preflightReports: ["upstream-runs.json"] });
   assert.equal(edgeOf(AI[2]).adaptation, undefined);

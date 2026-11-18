@@ -2,16 +2,20 @@
 // AC24, AC29): in order, each step in its own `bash --noprofile --norc -eo pipefail` shell, in the step's working directory,
 // with the first non-zero exit ending the run, and with the GITHUB_ENV protocol of the runner: a step may append NAME=value lines
 // to the file that GITHUB_ENV names, and the steps after it (later calls, a job's later steps) are started with those variables.
-// The orchestrator workspace has `src/` of this repository linked in, the
+// The orchestrator workspace has the layout that a job has after `npm ci`: the scripts of this repository under `scripts/` and the engine package under
+// `node_modules/ai-sdlc-factory`, both as copies of their own (a test may change them as the agent could change the orchestrator checkout); the
 // target checkout is a real git repository, and `/tmp/gh-aw` is a scratch directory. gh, npm and git are the recording shims.
 
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { stageValidator } from "../../../src/drift/prepare-run.mjs";
+import { importEngine, installFactory } from "../../helpers/instance.mjs";
 import { git, writeGitFixtureConfig } from "./git-fixture.mjs";
-import { forceRemove, REPO_ROOT, tempDir, writeTree } from "./fixtures.mjs";
+import { abs, FACTORY_DIR, forceRemove, presetManifest, tempDir, writeTree } from "./fixtures.mjs";
 import { createShims } from "./shims.mjs";
+
+// the function that prepare-run runs first to stage the validator under RUNNER_TEMP: a deep import of the engine, so that a change of it is noticed here
+const { stageValidator } = await importEngine("src/drift/prepare-run.mjs");
 
 const TIMEOUT_MS = 120000;
 
@@ -48,11 +52,9 @@ function evaluate(value) {
 
 export class GateWorkspace {
   /**
-   * @param {{ checkoutName: string, files: Record<string, string>, ownSource?: boolean }} options
-   *   `ownSource` gives the workspace a copy of src/ of its own, which a test may then change as the agent could change the orchestrator checkout;
-   *   without it src/ of this repository is linked in (a junction or a link), and a test must not write there.
+   * @param {{ checkoutName: string, files: Record<string, string> }} options
    */
-  constructor({ checkoutName, files, ownSource = false }) {
+  constructor({ checkoutName, files }) {
     this.root = tempDir("sdlc-s2-gate-");
     this.workspace = path.join(this.root, "workspace");
     this.artifacts = path.join(this.root, "artifacts");
@@ -65,8 +67,8 @@ export class GateWorkspace {
     fs.mkdirSync(this.workspace, { recursive: true });
     fs.mkdirSync(this.agentDir, { recursive: true });
     fs.mkdirSync(this.runnerTemp, { recursive: true });
-    if (ownSource) fs.cpSync(path.join(REPO_ROOT, "src"), path.join(this.workspace, "src"), { recursive: true });
-    else fs.symlinkSync(path.join(REPO_ROOT, "src"), path.join(this.workspace, "src"), process.platform === "win32" ? "junction" : "dir");
+    fs.cpSync(abs("scripts"), path.join(this.workspace, "scripts"), { recursive: true });
+    installFactory(this.workspace);
     fs.mkdirSync(this.checkout, { recursive: true });
     git(this.checkout, ["init", "-q"]);
     writeGitFixtureConfig(this.checkout);
@@ -76,10 +78,12 @@ export class GateWorkspace {
     this.baseSha = git(this.checkout, ["rev-parse", "HEAD"]);
     // What the first pre-agent step of the job (prepare-run) leaves behind: the run context under the artifact directory, the base
     // commit that the runner hands to every later step because the step appended it to GITHUB_ENV (see runScript), and the copy of the
-    // validator that it stages read-only under RUNNER_TEMP (the same function, run on this workspace's own src/).
+    // validator that it stages read-only under RUNNER_TEMP (the same function, run on this workspace's own copies: the scripts that the manifest declares as
+    // staged, and the engine's drift library).
     this.exported = { SDLC_BASE_SHA: this.baseSha };
     this.writeRunContext();
-    stageValidator({ env: { RUNNER_TEMP: this.runnerTemp }, fs }, path.join(this.workspace, "src"));
+    const scripts = [...new Set(presetManifest().projects.flatMap((project) => project.driftAudit?.stagedScripts ?? []))];
+    stageValidator({ env: { RUNNER_TEMP: this.runnerTemp }, fs }, { workspace: this.workspace, factoryDir: FACTORY_DIR, factoryRoot: path.join(this.workspace, ...FACTORY_DIR.split("/")), scripts });
   }
 
   writeRunContext(extra = {}) {

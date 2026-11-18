@@ -5,9 +5,12 @@
 // self-improving-agents workflow: mechanical fixes only, with non-mechanical concerns flagged and duplicated-responsibility pairs named but not merged.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { engineFile } from "../helpers/instance.mjs";
 import { abs, DRIFT_KEYS, driftWorkflow, presetManifest, readText } from "./helpers/fixtures.mjs";
 
+// the keys of AC1, and the two optional ones: agentSandbox (projects that ask for the sandbox) and stagedScripts (projects whose validator is staged read-only)
 const AUDIT_KEYS = ["buildCommands", "draft", "enabled", "instructions", "instructionsFile", "knowledgeSources", "reviewers", "schedule", "upkeepStrategy", "verifyCommands"];
+const OPTIONAL_KEYS = ["agentSandbox", "stagedScripts"];
 
 /** The sentences of a Markdown text: bullets and lines are split, then each line at a full stop that ends a sentence. */
 function sentences(text) {
@@ -50,10 +53,11 @@ test("AC17: the bounds reach the rendered prompts of the two lab workflows, and 
   assert.deepEqual(driftWorkflow("copilot-lab").frontmatter["safe-outputs"]["create-pull-request"].reviewers, []);
 });
 
-test("AC17: every preset driftAudit block has exactly the keys of AC1 (and the optional agentSandbox of the projects that ask for it) and no remediationPolicy key", () => {
+test("AC17: every preset driftAudit block has exactly the keys of AC1 (and the optional agentSandbox and stagedScripts of the projects that ask for them) and no remediationPolicy key", () => {
   for (const project of presetManifest().projects) {
-    assert.deepEqual(Object.keys(project.driftAudit).filter((key) => key !== "agentSandbox").sort(), AUDIT_KEYS, project.projectKey);
+    assert.deepEqual(Object.keys(project.driftAudit).filter((key) => !OPTIONAL_KEYS.includes(key)).sort(), AUDIT_KEYS, project.projectKey);
     assert.equal("agentSandbox" in project.driftAudit, ["gh-admin-msft", "copilot-lab"].includes(project.projectKey), project.projectKey);
+    assert.equal("stagedScripts" in project.driftAudit, ["copilot-lab", "self-improving-agents"].includes(project.projectKey), `${project.projectKey}: the two projects that run the lab validator stage it`);
     assert.equal("remediationPolicy" in project.driftAudit, false, project.projectKey);
     assert.equal("remediationPolicy" in project, false, project.projectKey);
   }
@@ -62,7 +66,8 @@ test("AC17: every preset driftAudit block has exactly the keys of AC1 (and the o
 });
 
 test("AC17: the schema gains no field: remediationPolicy is not a property of any definition", () => {
-  const schema = readText(abs("schemas", "sdlc.schema.json"));
+  // the schema of the installed engine, which is the one that validates this repository's manifest
+  const schema = readText(engineFile("schemas", "sdlc.schema.json"));
   assert.equal(schema.includes("remediationPolicy"), false);
   assert.equal(schema.includes("workflowKey"), false, "and neither is <workflowKey>");
 });

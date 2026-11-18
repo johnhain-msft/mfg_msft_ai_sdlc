@@ -2,8 +2,7 @@
 // what order, and how to finish. The agent is a language model, so the contract is the text it is given; the commands in it are run for real by the other tests.
 import assert from "node:assert/strict";
 import test from "node:test";
-import { promptBlock } from "./helpers/runtime.mjs";
-import { AI, edgeOf, workflowOf } from "./helpers/workflows.mjs";
+import { AI, edgeOf, promptBlock, workflowOf } from "./helpers/workflows.mjs";
 
 const [LAB, SHOWCASE, INTERMEDIATE] = AI;
 const bodyOf = (spec) => workflowOf(spec).body;
@@ -21,9 +20,9 @@ function inOrder(text, needles, label) {
   for (let index = 1; index < positions.length; index += 1) assert.ok(positions[index - 1] < positions[index], `${label}: '${needles[index - 1]}' comes before '${needles[index]}'`);
 }
 const UPSTREAM = '"$GITHUB_WORKSPACE/upstream/day-in-the-life-copilot-lab"';
-const BUMP = 'node "$GITHUB_WORKSPACE/src/bump-studio-revision-pins.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --new-sha "$UPSTREAM_SHA"';
+const BUMP = 'node "$GITHUB_WORKSPACE/scripts/bump-studio-revision-pins.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --new-sha "$UPSTREAM_SHA"';
 const SYNC_ACCEPT = 'npm run sync:workshop-source -- "$UPSTREAM_DIR" --accept';
-const DRIFT_ACCEPT = 'node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$UPSTREAM_SHA" --accept';
+const DRIFT_ACCEPT = 'node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$UPSTREAM_SHA" --accept';
 
 test("AC60: the copilot-lab prompt has the agent run the revision bump, with exactly those arguments, before the first --accept command", () => {
   const body = bodyOf(LAB);
@@ -198,7 +197,7 @@ test("AC75: no prompt tells the agent to merge, to push or to write anything und
     }
     // $UPSTREAM_DIR is only ever an argument of the checks and the helpers, which read it
     for (const line of block.split("\n").filter((candidate) => candidate.includes("$UPSTREAM_DIR"))) {
-      assert.match(line, /^(?:npm run sync:workshop-source -- |node "\$GITHUB_WORKSPACE\/src\/lab-studio-drift\.mjs" )/, `${spec.id}: ${line}`);
+      assert.match(line, /^(?:npm run sync:workshop-source -- |node "\$GITHUB_WORKSPACE\/scripts\/lab-studio-drift\.mjs" )/, `${spec.id}: ${line}`);
     }
   }
 });

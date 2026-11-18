@@ -11,7 +11,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { abs, driftWorkflow, readText, REPO_ROOT } from "./helpers/fixtures.mjs";
+import { abs, driftWorkflow, engineScript, instanceScript, readText, REPO_ROOT } from "./helpers/fixtures.mjs";
 
 const instructions = () => readText(abs("instructions", "copilot-lab.md"));
 const body = () => driftWorkflow("copilot-lab").body;
@@ -57,7 +57,8 @@ test("AC16: the instructions state no threshold, date or file mapping of their o
 });
 
 test("AC16: the validator and the other S2 scripts encode no freshness threshold, no verification-date location and no claim-to-file mapping", () => {
-  const files = [abs("src", "validate-copilot-lab-audit.mjs"), abs("src", "snapshot-watch-sources.mjs"), ...fs.readdirSync(abs("src", "drift"), { withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => abs("src", "drift", entry.name))];
+  // the validator is a script of this repository; the others are the scripts of the engine package that this repository runs
+  const files = [instanceScript("validate-copilot-lab-audit.mjs"), engineScript("snapshot-watch-sources.mjs"), ...fs.readdirSync(engineScript("drift"), { withFileTypes: true }).filter((entry) => entry.isFile()).map((entry) => engineScript("drift", entry.name))];
   for (const file of files) {
     const text = fs.readFileSync(file, "utf8");
     for (const pattern of [/last_verified/, /draft_pr_if_changes_exceed/, /freshness_threshold|max_age|stale_after|review_by/, /consumers?\s*[:=]/, /registry-consumed|lab10-contract|time-budget/]) {

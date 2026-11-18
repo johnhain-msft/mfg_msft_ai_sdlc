@@ -15,15 +15,18 @@ import fs from "node:fs";
 import path from "node:path";
 import test, { after, before } from "node:test";
 import { pathToFileURL } from "node:url";
-import { run as prepare } from "../../src/drift/prepare-run.mjs";
-import { openScratch } from "../../src/drift/lib/git-artifacts.mjs";
-import { changedPaths, pinnedValueAt, run } from "../../src/validate-copilot-lab-audit.mjs";
-import { DRIFT_KEYS, driftWorkflow, forceRemove, tempDir, writeTree } from "./helpers/fixtures.mjs";
+import { openScratch } from "ai-sdlc-factory/drift-lib";
+import { importEngine } from "../helpers/instance.mjs";
+import { changedPaths, pinnedValueAt, run } from "../../scripts/validate-copilot-lab-audit.mjs";
+import { DRIFT_KEYS, driftWorkflow, forceRemove, stepWith, tempDir, writeTree } from "./helpers/fixtures.mjs";
 import { BASH_SKIP, createGateWorkspace } from "./helpers/gate-harness.mjs";
 import { createRepo, git as gitIn, writeGitFixtureConfig } from "./helpers/git-fixture.mjs";
 import { labFiles, withoutSection, withoutTopLevelKey } from "./helpers/lab-fixture.mjs";
 import { invoke } from "./helpers/run-script.mjs";
 import { cleanEnv } from "./helpers/stub-server.mjs";
+
+// prepare-run, the first step of every drift job: a deep import of the installed engine, the step that these tests run in process
+const { run: prepare } = await importEngine("src/drift/prepare-run.mjs");
 
 let repo;
 let base;
@@ -364,10 +367,10 @@ test("AC22: prepare-run appends the base commit to GITHUB_ENV, and the one line 
 
 test("AC22: through the rendered steps, an agent that bumps the pinned version and forges run-context.json still fails the lab's post-step", { skip: BASH_SKIP }, async () => {
   const { frontmatter } = driftWorkflow("copilot-lab");
-  const [prepareStep] = frontmatter["pre-agent-steps"];
+  const prepareStep = stepWith(frontmatter["pre-agent-steps"], "drift/prepare-run.mjs");
   const [validator] = frontmatter["post-steps"];
   assert.match(prepareStep.run, /prepare-run\.mjs/);
-  assert.match(validator.run, /node "\$GITHUB_WORKSPACE\/src\/validate-copilot-lab-audit\.mjs" \)$/);
+  assert.match(validator.run, /node "\$GITHUB_WORKSPACE\/scripts\/validate-copilot-lab-audit\.mjs" \)$/);
   const lab = labFiles();
   for (const forge of [true, false]) {
     const gate = createGateWorkspace({ checkoutName: "day-in-the-life-copilot-lab", files: lab });
@@ -404,7 +407,7 @@ test("AC22: through the rendered steps, an agent that bumps the pinned version a
 
 test("AC22: through the rendered steps, an agent that commits a bump of the pinned version and then plants a replace ref, or puts its working tree back, still fails the lab's post-step", { skip: BASH_SKIP }, async () => {
   const { frontmatter } = driftWorkflow("copilot-lab");
-  const [prepareStep] = frontmatter["pre-agent-steps"];
+  const prepareStep = stepWith(frontmatter["pre-agent-steps"], "drift/prepare-run.mjs");
   const [validator] = frontmatter["post-steps"];
   const lab = labFiles();
   const bumped = lab["docs/_meta/registry.yaml"].replace('gh_aw_schema_version: "0.86.2"', 'gh_aw_schema_version: "9.9.9"');
@@ -743,7 +746,7 @@ test("AC22: reading the patches and the bundles writes nothing in the checkout a
 
 test("AC22: through the rendered steps, an agent that commits a bump, calls create_pull_request (the patch) and switches back still fails the lab's post-step", { skip: BASH_SKIP }, async () => {
   const { frontmatter } = driftWorkflow("copilot-lab");
-  const [prepareStep] = frontmatter["pre-agent-steps"];
+  const prepareStep = stepWith(frontmatter["pre-agent-steps"], "drift/prepare-run.mjs");
   const [validator] = frontmatter["post-steps"];
   const lab = labFiles();
   const bumped = lab["docs/_meta/registry.yaml"].replace('gh_aw_schema_version: "0.86.2"', 'gh_aw_schema_version: "9.9.9"');
