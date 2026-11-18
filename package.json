@@ -23,6 +23,7 @@
     "onboard": "node bin/sdlc-onboard.mjs"
   },
   "dependencies": {
+    "ai-sdlc-factory": "file:../ai-sdlc-factory",
     "ajv": "^8.17.1",
     "libsodium-wrappers": "^0.8.4",
     "yaml": "^2.8.1"
