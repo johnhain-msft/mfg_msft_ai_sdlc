@@ -4,11 +4,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
-import { reconcile } from "../../../src/reconcile.mjs";
-import { abs, hashListing, listFiles, REPO_ROOT } from "./fixtures.mjs";
+import { reconcile } from "ai-sdlc-factory/reconcile";
+import { engineFile } from "../../helpers/instance.mjs";
+import { abs, hashListing, listFiles } from "./fixtures.mjs";
 import { installShims } from "./shims.mjs";
 
-const RECONCILE_CLI = path.join(REPO_ROOT, "src", "reconcile.mjs");
+// the command line of the installed engine package: `sdlc-reconcile --request <file>`
+const RECONCILE_CLI = engineFile("bin", "sdlc-reconcile.mjs");
 
 export class Workspace {
   constructor(root, shims) {
@@ -58,7 +60,7 @@ export class Workspace {
     return reconcile(request, { cwd: this.dir, env: this.shims.env(extraEnv) });
   }
 
-  /** Runs `node src/reconcile.mjs --request <file>` in the workspace. */
+  /** Runs `sdlc-reconcile --request <file>` of the installed engine in the workspace. */
   cli(requestFile) {
     const outcome = spawnSync(process.execPath, [RECONCILE_CLI, "--request", requestFile], {
       cwd: this.dir,

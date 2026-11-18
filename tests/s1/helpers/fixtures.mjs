@@ -19,7 +19,7 @@ export const sha256 = (value) => crypto.createHash("sha256").update(value).diges
 export const clone = (value) => structuredClone(value);
 
 /** The request that the committed workflows were rendered from. */
-export const referenceRequest = () => readJson(fixture("request.reference.json"));
+export const referenceRequest = () => readJson(abs("tests", "fixtures", "request.reference.json"));
 
 /** A copy of a request with a shallow patch (securityBaseline patches are merged one level deep). */
 export function withRequest(patch = {}, base = referenceRequest()) {

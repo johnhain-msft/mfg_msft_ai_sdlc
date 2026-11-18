@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import Ajv from "ajv";
+import { engineFile } from "../helpers/instance.mjs";
 import { abs, edgeOf, globMatches, presetManifest, projectOf, readJson, REPO_ROOT } from "./helpers/fixtures.mjs";
 
 const manifest = presetManifest();
-const validate = new Ajv({ allErrors: true, strict: true }).compile(readJson(abs("schemas", "sdlc.schema.json")));
+// the schema of the installed engine: the manifest of this repository is validated against the one that the pinned engine validates it against
+const validate = new Ajv({ allErrors: true, strict: true }).compile(readJson(engineFile("schemas", "sdlc.schema.json")));
 const trackedFiles = (pathspec) =>
   spawnSync("git", ["ls-files", pathspec], { cwd: REPO_ROOT, encoding: "utf8" }).stdout.split("\n").filter((line) => line !== "");
 
@@ -257,4 +259,30 @@ test("AC7: no importCommands or preflightCommands entry spells the upstream path
       assert.equal(command.includes("$GITHUB_WORKSPACE/upstream"), false, `${edge.edgeId}: ${command}`);
     }
   }
+});
+
+test("the engine is an npm dependency that the manifest declares: package, source and private (no dir: node_modules/<package>), and package.json depends on it", () => {
+  assert.deepEqual(manifest.factory, { package: "ai-sdlc-factory", source: "github:johnhain-msft/ai-sdlc-factory", private: true });
+  assert.ok(readJson(abs("package.json")).dependencies[manifest.factory.package], "package.json has the dependency that the manifest names");
+});
+
+test("the sync-state variables keep their field name, portfolioMainSha: there is no state block (state.dialect preserve) until the rollback window is closed", () => {
+  assert.equal(Object.hasOwn(manifest, "state"), false);
+});
+
+test("what the engine used to do for this fleet on its own is declared: the helper scripts are instance scripts, and every classifier and staged script that the manifest names exists", () => {
+  const named = new Set();
+  const collect = (value) => {
+    for (const match of String(value).matchAll(/\$GITHUB_WORKSPACE\/(scripts\/[\w.-]+\.mjs)/g)) named.add(match[1]);
+  };
+  for (const edge of manifest.dependencyEdges) {
+    for (const command of [...edge.importCommands, ...edge.preflightCommands, ...edge.acceptCommands, ...edge.buildCommands, ...edge.verifyCommands, ...(edge.preflightChecks ?? []).map((check) => check.classifier ?? "")]) collect(command);
+  }
+  for (const project of manifest.projects) {
+    for (const script of project.driftAudit.stagedScripts ?? []) named.add(script);
+    for (const command of project.driftAudit.verifyCommands) collect(command);
+  }
+  assert.deepEqual([...named].sort(), ["scripts/bump-studio-revision-pins.mjs", "scripts/classify-showcase-runs.mjs", "scripts/classify-workshop-report.mjs", "scripts/lab-studio-drift.mjs", "scripts/validate-copilot-lab-audit.mjs"]);
+  for (const script of named) assert.ok(trackedFiles(script).includes(script), `${script} is a tracked file of this repository`);
+  assert.equal(JSON.stringify(manifest).includes("$GITHUB_WORKSPACE/src/"), false, "no command runs a script from the workspace's src/: the engine is not in this repository");
 });

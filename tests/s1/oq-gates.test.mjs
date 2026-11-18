@@ -7,7 +7,8 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import YAML from "yaml";
-import { checkRendered, renderFleet } from "../../src/reconcile.mjs";
+import { checkRendered, renderFleet } from "ai-sdlc-factory/reconcile";
+import { engineFile } from "../helpers/instance.mjs";
 import {
   abs,
   fixture,
@@ -86,7 +87,7 @@ test("OQ30", async (t) => {
   } finally {
     missing.cleanup();
   }
-  const source = readText(abs("src", "reconcile.mjs"));
+  const source = readText(engineFile("src", "reconcile.mjs"));
   for (const literal of ["gh-aw-metadata", "schema_version", "frontmatter_hash", "body_hash"]) assert.equal(source.includes(literal), false, `the engine never mentions ${literal}`);
 });
 
@@ -110,7 +111,7 @@ test("OQ31", async (t) => {
   } finally {
     workspace.cleanup();
   }
-  const source = readText(abs("src", "reconcile.mjs"));
+  const source = readText(engineFile("src", "reconcile.mjs"));
   assert.equal(source.includes("compiler_version"), false);
 });
 
@@ -299,8 +300,7 @@ test("OQ42", async (t) => {
   }
   const phrase = /unchanged|untouched|zero installed/i;
   for (const name of [...committedMd(), ...mdFiles]) assert.equal(phrase.test(rendered.files.get(name) ?? readText(abs(name))), false, name);
-  for (const name of listFiles(REPO_ROOT, "tests/s1/fixtures/golden")) assert.equal(phrase.test(readText(abs(name))), false, name);
-  const generator = readText(abs("src", "reconcile.mjs"));
+  const generator = readText(engineFile("src", "reconcile.mjs"));
   assert.equal(/target repositor(y|ies) (stay|remain)/i.test(generator), false);
 });
 

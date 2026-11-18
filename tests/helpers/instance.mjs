@@ -31,6 +31,15 @@ export function parseWorkflow(text) {
 
 export const readWorkflow = (name) => parseWorkflow(readText(abs(WORKFLOWS, name)));
 
+/**
+ * The steps that install the engine package at the head of a list of steps: the step that mints the read token for the private engine repository (id factory_token) and
+ * the `npm ci --ignore-scripts` that follows it, and what is left. A fleet whose engine is public has the install step alone.
+ */
+export function splitFactoryInstall(steps) {
+  const count = steps[0]?.id === "factory_token" ? 2 : steps[0]?.run === "npm ci --ignore-scripts" ? 1 : 0;
+  return { install: steps.slice(0, count), rest: steps.slice(count) };
+}
+
 /** The directory of the installed engine package. */
 export const engineRoot = () => path.dirname(createRequire(import.meta.url).resolve("ai-sdlc-factory/package.json"));
 
