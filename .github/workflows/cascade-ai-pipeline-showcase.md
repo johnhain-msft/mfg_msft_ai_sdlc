@@ -81,6 +81,26 @@ steps:
     run: npx playwright install --with-deps msedge
     working-directory: portfolio
 pre-agent-steps:
+  - name: Mint the factory read token
+    id: factory_token
+    uses: actions/create-github-app-token@v2
+    with:
+      app-id: ${{ vars.APP_CLIENT_ID }}
+      private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      owner: johnhain-msft
+      repositories: ai-sdlc-factory
+      permission-contents: read
+  - name: Install the factory
+    env:
+      GIT_TERMINAL_PROMPT: "0"
+      GIT_CONFIG_COUNT: "3"
+      GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+      GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+      GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+    run: npm ci --ignore-scripts
   - name: Validate dispatch inputs and checkouts
     env:
       CORRELATION_ID: ${{ inputs.correlation_id }}
@@ -176,8 +196,8 @@ post-steps:
       name: sdlc-cascade-shas-${{ github.run_id }}
       path: /tmp/gh-aw/cascade-shas.json
       if-no-files-found: error
-  - name: node --frozen-intrinsics "$GITHUB_WORKSPACE/src/verify-immutable-gates.mjs" --downstream "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-pipeline-showcase
-    run: node --frozen-intrinsics "$GITHUB_WORKSPACE/src/verify-immutable-gates.mjs" --downstream "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-pipeline-showcase
+  - name: node --frozen-intrinsics "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/verify-immutable-gates.mjs" --downstream "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-pipeline-showcase
+    run: node --frozen-intrinsics "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/verify-immutable-gates.mjs" --downstream "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-pipeline-showcase
   - name: npm run build:workshop
     run: npm run build:workshop
     working-directory: portfolio
@@ -352,10 +372,31 @@ jobs:
         with:
           token: ${{ steps.app_token.outputs.token }}
           sparse-checkout: |-
-            src
-            schemas
+            /package.json
+            /package-lock.json
+            /sdlc.yaml
+          sparse-checkout-cone-mode: false
           persist-credentials: false
-      - run: npm ci --ignore-scripts
+      - name: Mint the factory read token
+        id: factory_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: johnhain-msft
+          repositories: ai-sdlc-factory
+          permission-contents: read
+      - name: Install the factory
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+        run: npm ci --ignore-scripts
       - uses: actions/download-artifact@v4
         with:
           name: sdlc-cascade-shas-${{ github.run_id }}
@@ -381,10 +422,10 @@ jobs:
           BRANCH_NAME: sdlc/cascade-pipeline-showcase
           PROVENANCE_FILE: experiences/pipeline-showcase/content/provenance.json
         run: |-
-          node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --slug "$REPO_SLUG" --branch "$BRANCH_NAME" --provenance-file "$PROVENANCE_FILE" --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG" > "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
+          node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/update-poll-state.mjs" --slug "$REPO_SLUG" --branch "$BRANCH_NAME" --provenance-file "$PROVENANCE_FILE" --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG" > "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
           cat "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
           if [ -s "${RUNNER_TEMP:-/tmp}/poll-state-result.json" ]; then
-            node "$GITHUB_WORKSPACE/src/ai-pull-request-result.mjs" --slug "$REPO_SLUG" --poll-state-result "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
+            node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/ai-pull-request-result.mjs" --slug "$REPO_SLUG" --poll-state-result "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
           fi
   escalate_failure:
     needs:
@@ -410,10 +451,31 @@ jobs:
         with:
           token: ${{ steps.app_token.outputs.token }}
           sparse-checkout: |-
-            src
-            schemas
+            /package.json
+            /package-lock.json
+            /sdlc.yaml
+          sparse-checkout-cone-mode: false
           persist-credentials: false
-      - run: npm ci --ignore-scripts
+      - name: Mint the factory read token
+        id: factory_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: johnhain-msft
+          repositories: ai-sdlc-factory
+          permission-contents: read
+      - name: Install the factory
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+        run: npm ci --ignore-scripts
       - name: Record the failure
         if: inputs.dry_run != 'true'
         env:
@@ -423,7 +485,7 @@ jobs:
           CORRELATION_ID: ${{ inputs.correlation_id }}
           REPO_SLUG: PIPELINE_SHOWCASE
           BRANCH_NAME: sdlc/cascade-pipeline-showcase
-        run: node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --record-failure --slug "$REPO_SLUG" --target-sha "$UPSTREAM_SHA" --workflow-id cascade-ai-pipeline-showcase
+        run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/update-poll-state.mjs" --record-failure --slug "$REPO_SLUG" --target-sha "$UPSTREAM_SHA" --workflow-id cascade-ai-pipeline-showcase
 ---
 
 # AI adaptation: pipeline-showcase

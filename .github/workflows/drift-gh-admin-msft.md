@@ -50,6 +50,26 @@ mcp-servers:
     type: http
     url: https://learn.microsoft.com/api/mcp
 pre-agent-steps:
+  - name: Mint the factory read token
+    id: factory_token
+    uses: actions/create-github-app-token@v2
+    with:
+      app-id: ${{ vars.APP_CLIENT_ID }}
+      private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      owner: johnhain-msft
+      repositories: ai-sdlc-factory
+      permission-contents: read
+  - name: Install the factory
+    env:
+      GIT_TERMINAL_PROMPT: "0"
+      GIT_CONFIG_COUNT: "3"
+      GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+      GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+      GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+    run: npm ci --ignore-scripts
   - name: Prepare run context
     env:
       CONFIGURED_TARGET_REPO: johnhain-msft/gh-admin-msft
@@ -57,21 +77,21 @@ pre-agent-steps:
       CORRELATION_ID: ${{ inputs.correlation_id }}
       EXTRA_INSTRUCTIONS: ${{ inputs.extra_instructions }}
       DRY_RUN: ${{ inputs.dry_run }}
-    run: node "$GITHUB_WORKSPACE/src/drift/prepare-run.mjs" --out /tmp/gh-aw/agent --target-repo "$TARGET_REPO_INPUT" --correlation-id "$CORRELATION_ID" --extra-instructions "$EXTRA_INSTRUCTIONS" --dry-run "$DRY_RUN"
+    run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/prepare-run.mjs" --out /tmp/gh-aw/agent --target-repo "$TARGET_REPO_INPUT" --correlation-id "$CORRELATION_ID" --extra-instructions "$EXTRA_INSTRUCTIONS" --dry-run "$DRY_RUN"
   - name: Deduplicate open pull requests
     env:
       CONFIGURED_TARGET_REPO: johnhain-msft/gh-admin-msft
       APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --close-older-key sdlc-drift-gh-admin-msft --upkeep-strategy content-and-docs-sync --project gh-admin-msft
+    run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --close-older-key sdlc-drift-gh-admin-msft --upkeep-strategy content-and-docs-sync --project gh-admin-msft
   - name: Find the watch index of the previous run
     env:
       GH_TOKEN: ${{ github.token }}
-    run: node "$GITHUB_WORKSPACE/src/drift/previous-watch-index.mjs" --out /tmp/gh-aw/agent --workflow drift-gh-admin-msft.lock.yml --artifact sdlc-watch-index-gh-admin-msft
+    run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/previous-watch-index.mjs" --out /tmp/gh-aw/agent --workflow drift-gh-admin-msft.lock.yml --artifact sdlc-watch-index-gh-admin-msft
   - name: Snapshot watched sources and package manifests
     env:
       CONFIGURED_TARGET_REPO: johnhain-msft/gh-admin-msft
-    run: node "$GITHUB_WORKSPACE/src/snapshot-watch-sources.mjs" --out /tmp/gh-aw/agent --project gh-admin-msft --checkout gh-admin-msft --previous /tmp/gh-aw/agent/previous
+    run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/snapshot-watch-sources.mjs" --out /tmp/gh-aw/agent --project gh-admin-msft --checkout gh-admin-msft --previous /tmp/gh-aw/agent/previous
   - name: Upload the watch index
     if: inputs.dry_run != true
     uses: actions/upload-artifact@v4
@@ -208,10 +228,31 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |-
-            src
-            schemas
+            /package.json
+            /package-lock.json
+            /sdlc.yaml
+          sparse-checkout-cone-mode: false
           persist-credentials: false
-      - run: npm ci --ignore-scripts
+      - name: Mint the factory read token
+        id: factory_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: johnhain-msft
+          repositories: ai-sdlc-factory
+          permission-contents: read
+      - name: Install the factory
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+        run: npm ci --ignore-scripts
       - name: Escalate gate failure
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -219,7 +260,7 @@ jobs:
           TARGET_REPO: johnhain-msft/gh-admin-msft
           CORRELATION_ID: ${{ inputs.correlation_id }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: node "$GITHUB_WORKSPACE/src/drift/escalate-gate-failure.mjs" --workflow-id "$WORKFLOW_ID" --target-repo "$TARGET_REPO" --correlation-id "$CORRELATION_ID" --run-url "$RUN_URL"
+        run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/escalate-gate-failure.mjs" --workflow-id "$WORKFLOW_ID" --target-repo "$TARGET_REPO" --correlation-id "$CORRELATION_ID" --run-url "$RUN_URL"
   implement_report:
     needs:
       - safe_outputs

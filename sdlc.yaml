@@ -1,17 +1,27 @@
 # Portfolio reference preset for the AI SDLC orchestrator.
 #
-# This file is data: the engine (src/reconcile.mjs) is repository-agnostic and
-# turns it into the generated workflows under .github/workflows/. Edit this file
-# (by hand or through `sdlc onboard`), then run the reconciler; never edit a
+# This file is data: the engine (the ai-sdlc-factory package, which this repository
+# installs: see `factory` below) is repository-agnostic and turns it into the
+# generated workflows under .github/workflows/. Edit this file (by hand or through
+# `sdlc-onboard`), then run the reconciler (`npm run reconcile`); never edit a
 # generated workflow directly.
 #
 # `<checkout>` inside any command is replaced by the renderer with the absolute
-# path of the upstream checkout, "$UPSTREAM_DIR".
+# path of the upstream checkout, "$UPSTREAM_DIR". `<factory>` is the directory of the
+# engine package (a quoted absolute path) and `<factory-dir>` the same relative to the
+# workspace.
 #
 # A verifyCommands entry whose first non-blank character is `#` (for example
 # "# post-run check: ...") is a post-run check. Every verifyCommands entry runs in
 # the order listed here; a post-run check only stays out of the verification gate
 # that the reconciler reports for the AI adaptation workflows (SPEC-01 AC50, AC53).
+
+# Where the engine runs from. It is an npm dependency of this repository (package.json, pinned to a commit by the lockfile) and the engine repository is private,
+# so every job that installs it first mints a read token for that one repository from the GitHub App.
+factory:
+  package: ai-sdlc-factory
+  source: github:johnhain-msft/ai-sdlc-factory
+  private: true
 
 # What used to be built into the engine for this fleet is data of this manifest. Each block below is what the engine did on its own before it became a package:
 # the generic engine reads it, and the rendered workflows come out the same (the proof is the render-diff of the migration: only the paths of scripts change).

@@ -241,10 +241,31 @@ jobs:
         with:
           token: ${{ steps.app_token.outputs.token }}
           sparse-checkout: |-
-            src
-            schemas
+            /package.json
+            /package-lock.json
+            /sdlc.yaml
+          sparse-checkout-cone-mode: false
           persist-credentials: false
-      - run: npm ci --ignore-scripts
+      - name: Mint the factory read token
+        id: factory_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: johnhain-msft
+          repositories: ai-sdlc-factory
+          permission-contents: read
+      - name: Install the factory
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+        run: npm ci --ignore-scripts
       - uses: actions/download-artifact@v4
         with:
           name: sdlc-cascade-shas-${{ github.run_id }}
@@ -266,7 +287,7 @@ jobs:
           UPSTREAM_SHA: ${{ inputs.upstream_sha }}
           CORRELATION_ID: ${{ inputs.correlation_id }}
           UPSTREAM_ETAG: ${{ inputs.upstream_etag }}
-        run: node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --slug GH_ADMIN_MSFT --branch sdlc/cascade-ghec-admin --provenance-file public/ghec-admin/source.json --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG"
+        run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/update-poll-state.mjs" --slug GH_ADMIN_MSFT --branch sdlc/cascade-ghec-admin --provenance-file public/ghec-admin/source.json --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG"
   escalate_failure:
     needs:
       - agent
@@ -291,10 +312,31 @@ jobs:
         with:
           token: ${{ steps.app_token.outputs.token }}
           sparse-checkout: |-
-            src
-            schemas
+            /package.json
+            /package-lock.json
+            /sdlc.yaml
+          sparse-checkout-cone-mode: false
           persist-credentials: false
-      - run: npm ci --ignore-scripts
+      - name: Mint the factory read token
+        id: factory_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: johnhain-msft
+          repositories: ai-sdlc-factory
+          permission-contents: read
+      - name: Install the factory
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+        run: npm ci --ignore-scripts
       - name: Record the failure
         if: inputs.dry_run != 'true'
         env:
@@ -302,7 +344,7 @@ jobs:
           ISSUES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UPSTREAM_SHA: ${{ inputs.upstream_sha }}
           CORRELATION_ID: ${{ inputs.correlation_id }}
-        run: node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --record-failure --slug GH_ADMIN_MSFT --target-sha "$UPSTREAM_SHA" --workflow-id cascade-mechanical-ghec-admin
+        run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/update-poll-state.mjs" --record-failure --slug GH_ADMIN_MSFT --target-sha "$UPSTREAM_SHA" --workflow-id cascade-mechanical-ghec-admin
 ---
 
 # Mechanical cascade: ghec-admin
