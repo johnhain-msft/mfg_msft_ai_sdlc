@@ -1,0 +1,41 @@
+// The helper of the instance's own tests: the root of this repository, small readers over it, and the way to reach the engine package that it installs.
+//
+// The engine is a dependency (node_modules/ai-sdlc-factory), and its `exports` map publishes only five entries (the three modules of docs/api.md, the schemas
+// and package.json). A test that has to run an engine script by path, or read an engine file, finds the package directory through package.json, which is
+// exported, and imports a module of it by file URL. That is a deep import: it is not covered by the engine's semver, and the tests that do it are the ones
+// that are meant to notice when the engine moves.
+
+import { createRequire } from "node:module";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import YAML from "yaml";
+
+export const INSTANCE_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+export const WORKFLOWS = ".github/workflows";
+
+export const abs = (...parts) => path.join(INSTANCE_ROOT, ...parts);
+export const readText = (file) => fs.readFileSync(file, "utf8");
+export const readJson = (file) => JSON.parse(readText(file));
+export const readYaml = (file) => YAML.parse(readText(file));
+
+/** The manifest of this repository. */
+export const presetManifest = () => readYaml(abs("sdlc.yaml"));
+
+/** Splits a generated workflow into its parsed frontmatter and its Markdown body. */
+export function parseWorkflow(text) {
+  const match = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(text.replace(/\r\n/g, "\n"));
+  if (!match) throw new Error("the workflow has no frontmatter");
+  return { frontmatter: YAML.parse(match[1]), frontmatterText: match[1], body: match[2] };
+}
+
+export const readWorkflow = (name) => parseWorkflow(readText(abs(WORKFLOWS, name)));
+
+/** The directory of the installed engine package. */
+export const engineRoot = () => path.dirname(createRequire(import.meta.url).resolve("ai-sdlc-factory/package.json"));
+
+/** A path inside the engine package. */
+export const engineFile = (...parts) => path.join(engineRoot(), ...parts);
+
+/** Imports a module of the engine package by its path inside it, for example `importEngine("src/drift/prepare-run.mjs")`. */
+export const importEngine = (relative) => import(pathToFileURL(engineFile(...relative.split("/"))).href);
