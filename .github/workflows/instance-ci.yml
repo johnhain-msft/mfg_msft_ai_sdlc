@@ -1,0 +1,64 @@
+# The tests of this repository, run on every pull request. A plain Actions workflow, like sdlc-bridge-dispatch.yml: nothing generates it, `gh aw compile` does not see it,
+# and it calls no agent. It is the CI of the instance (design I.4, M step 13): `npm test` runs the instance tests, among them tests/parity.test.mjs, which renders the fleet
+# from sdlc.yaml with the pinned engine and requires that it equals the committed .github/workflows byte for byte. Bumping the engine without regenerating fails it, and
+# regenerating shows the difference in the pull request.
+#
+# The engine (ai-sdlc-factory) is a dependency of this repository and its repository is private, so the install is the one that every generated job does: a read token for that
+# one repository, minted from the GitHub App (APP_CLIENT_ID, APP_PRIVATE_KEY), and `npm ci --ignore-scripts` with three git rewrites in the environment of that step alone,
+# because npm resolves the dependency to git+ssh and a runner has no key. Nothing is written to ~/.gitconfig, and the checkout keeps no credential.
+#
+# Every action is pinned by commit, with the pin that .github/aw/actions-lock.json holds for it (tests/instance-ci.test.mjs checks it).
+name: Instance CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: instance-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: npm test
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Mint the factory read token
+        id: factory_token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: johnhain-msft
+          repositories: ai-sdlc-factory
+          permission-contents: read
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+
+      - name: Install the dependencies
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+        run: npm ci --ignore-scripts
+
+      - name: Run the tests
+        run: npm test
