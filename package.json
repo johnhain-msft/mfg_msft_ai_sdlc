@@ -19,7 +19,7 @@
     "onboard": "sdlc-onboard"
   },
   "dependencies": {
-    "ai-sdlc-factory": "file:../ai-sdlc-factory",
+    "ai-sdlc-factory": "github:johnhain-msft/ai-sdlc-factory#v0.1.0",
     "ajv": "^8.17.1",
     "libsodium-wrappers": "^0.8.4",
     "yaml": "^2.8.1"
