@@ -14,6 +14,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { pathToFileURL } from "node:url";
 import { VALIDATOR_STAGE_DIRECTORY } from "ai-sdlc-factory/drift-lib";
 import { engineFile, importEngine, installFactory } from "../helpers/instance.mjs";
 import { abs, DRIFT_KEYS, driftPreset, driftWorkflow, FACTORY_DIR, forceRemove, listTree, renderedVerifyCommands, stepWith, tempDir } from "./helpers/fixtures.mjs";
@@ -105,13 +106,15 @@ test("AC22: the staged files are read-only (0444) and so are the directories (05
 });
 
 for (const key of LAB_KEYS) {
-  test(`AC22: the validator entry of drift-${key} compares the declared script and the engine's drift library with the staged copy, fails closed, and then runs the validator`, () => {
+  test(`AC22: the validator entry of drift-${key} compares the declared script, the factory's package.json and drift/lib with the staged copy, refuses scripts/node_modules, fails closed, and then runs the staged validator`, () => {
     const command = renderedVerifyCommands(key)[0];
     assert.equal(driftWorkflow(key).frontmatter["post-steps"][0].run, command, "the rendered step is the manifest entry, with the engine placeholders expanded and nothing else");
     const pieces = [
       'copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"',
       `cmp -s "$copy/${VALIDATOR}" "$GITHUB_WORKSPACE/${VALIDATOR}"`,
+      `cmp -s "$copy/${FACTORY_DIR}/package.json" "$GITHUB_WORKSPACE/${FACTORY_DIR}"/package.json`,
       `diff -rq "$copy/${FACTORY_DIR}/src/drift/lib" "$GITHUB_WORKSPACE/${FACTORY_DIR}"/src/drift/lib`,
+      '! test -e "$GITHUB_WORKSPACE/scripts/node_modules"',
     ];
     let from = -1;
     for (const piece of pieces) {
@@ -119,8 +122,9 @@ for (const key of LAB_KEYS) {
       assert.ok(at > from, `${piece} comes in this order`);
       from = at;
     }
-    assert.ok(command.indexOf(`node "$GITHUB_WORKSPACE/${VALIDATOR}"`) > from, "and the validator runs after the comparisons");
-    assert.equal(command.match(/\|\| \{ echo "[^"]+" >&2; exit 1; \}/g).length, 2, "each comparison that fails ends the command with exit 1");
+    assert.ok(command.indexOf(`node "$copy/${VALIDATOR}"`) > from, "and the staged validator runs after the comparisons");
+    assert.equal(command.includes('node "$GITHUB_WORKSPACE/'), false, "the workspace copy is compared, never run: what the agent can write does not decide what imports resolve to");
+    assert.equal(command.match(/\|\| \{ echo "[^"]+" >&2; exit 1; \}/g).length, 4, "each comparison that fails, and the refusal, ends the command with exit 1");
     assert.match(command, /^\( set -euo pipefail; /);
     assert.equal(/staged/.test(command), false, "SPEC-01's staging-key scans read the whole rendered file for the word, so the command does not use it");
     assert.equal(/\|\|\s*(?:true|:)\b|;\s*exit\s+0\b|--retry/.test(command), false, "nothing turns a failure into a pass");
@@ -137,6 +141,48 @@ function bumpAndCommit(gate) {
   gate.git("commit", "-q", "-m", "bump the pinned version");
 }
 const ALWAYS_PASSES = "process.exit(0);\n";
+const NEUTRALISED = "validator neutralised by the agent";
+const neutralisedModule = (realIndex) => `export * from ${JSON.stringify(pathToFileURL(realIndex).href)};\nexport async function runAsMain() { await new Promise((resolve) => process.stdout.write(${JSON.stringify(`${NEUTRALISED}\n`)}, resolve)); process.exit(0); }\n`;
+const installedFactory = (gate) => path.join(gate.workspace, ...FACTORY_DIR.split("/"));
+const installedIndex = (gate) => path.join(installedFactory(gate), "src", "drift", "lib", "index.mjs");
+const selfReferencing = () => `${JSON.stringify({ name: "ai-sdlc-factory", type: "module", exports: { "./drift-lib": "./neutralised.mjs" } })}\n`;
+const RESOLUTION_TAMPERS = {
+  "rewrites exports['./drift-lib'] of the installed factory's package.json to a module of its own": {
+    refused: `${FACTORY_DIR}/package.json`,
+    tamper(gate) {
+      const factory = installedFactory(gate);
+      const manifest = JSON.parse(fs.readFileSync(path.join(factory, "package.json"), "utf8"));
+      fs.writeFileSync(path.join(factory, "neutralised.mjs"), neutralisedModule(installedIndex(gate)));
+      manifest.exports["./drift-lib"] = "./neutralised.mjs";
+      fs.writeFileSync(path.join(factory, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+    },
+  },
+  "adds scripts/node_modules/ai-sdlc-factory, which Node finds before the installed factory": {
+    refused: "scripts/node_modules",
+    tamper(gate) {
+      const shadow = path.join(gate.workspace, "scripts", "node_modules", "ai-sdlc-factory");
+      fs.mkdirSync(shadow, { recursive: true });
+      fs.writeFileSync(path.join(shadow, "package.json"), selfReferencing());
+      fs.writeFileSync(path.join(shadow, "neutralised.mjs"), neutralisedModule(installedIndex(gate)));
+    },
+  },
+  "adds scripts/package.json that names itself ai-sdlc-factory, so that the package finds itself before any node_modules": {
+    refused: null,
+    tamper(gate) {
+      fs.writeFileSync(path.join(gate.workspace, "scripts", "package.json"), selfReferencing());
+      fs.writeFileSync(path.join(gate.workspace, "scripts", "neutralised.mjs"), neutralisedModule(installedIndex(gate)));
+    },
+  },
+  "renames the package.json of the workspace to ai-sdlc-factory, so that the package finds itself before any node_modules": {
+    refused: null,
+    tamper(gate) {
+      const file = path.join(gate.workspace, "package.json");
+      const own = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : { name: "mfg_msft_ai_sdlc", private: true };
+      fs.writeFileSync(file, `${JSON.stringify({ ...own, ...JSON.parse(selfReferencing()) }, null, 2)}\n`);
+      fs.writeFileSync(path.join(gate.workspace, "neutralised.mjs"), neutralisedModule(installedIndex(gate)));
+    },
+  },
+};
 
 for (const key of LAB_KEYS) {
   const { frontmatter } = driftWorkflow(key);
@@ -202,6 +248,35 @@ for (const key of LAB_KEYS) {
       }
     }
   });
+
+  for (const [name, { refused, tamper }] of Object.entries(RESOLUTION_TAMPERS)) {
+    test(`AC22: drift-${key}: an agent that ${name} fails the gate with exit 1, and the validator of the workspace alone would have let a bumped version pass`, { skip: BASH_SKIP }, async () => {
+    const gate = labGate();
+    try {
+      gate.exported = {};
+      assert.equal((await gate.runSteps([prepareStep])).code, 0);
+      tamper(gate);
+      if (refused === null) {
+        const valid = await gate.runSteps([validator]);
+        assert.equal(valid.code, 0, valid.log);
+        assert.match(valid.output, /validate-copilot-lab-audit: ok \(11 registry keys/, "the validator that ran is the real staged one");
+        assert.equal(valid.output.includes(NEUTRALISED), false, "the agent's module did not run");
+      }
+      bumpAndCommit(gate);
+      const finished = await gate.runSteps([validator]);
+      assert.equal(finished.code, 1, finished.log);
+      if (refused === null) assert.ok(finished.output.includes("gh_aw_schema_version"), `the staged validator ran, and its own verdict stopped the gate: ${finished.log}`);
+      else assert.ok(finished.output.includes(`${refused} is not the copy that prepare-run made before the agent started`), finished.log);
+      assert.equal(finished.output.includes(NEUTRALISED), false, "the agent's module did not run");
+      const bare = { name: "the validator alone", run: key === "copilot-lab" ? `node "$GITHUB_WORKSPACE/${VALIDATOR}"` : `node "$GITHUB_WORKSPACE/${VALIDATOR}" --self-improve`, "working-directory": CHECKOUT };
+      const passes = await gate.runSteps([bare]);
+      assert.equal(passes.code, 0, `without the gate the agent's module judges the checkout: ${passes.log}`);
+      assert.ok(passes.output.includes(NEUTRALISED), passes.log);
+    } finally {
+      gate.cleanup();
+    }
+    });
+  }
 
   test(`AC22: drift-${key}: a missing staged copy, or no RUNNER_TEMP, is a failed gate and not a skipped one`, { skip: BASH_SKIP }, async () => {
     const gate = labGate();
