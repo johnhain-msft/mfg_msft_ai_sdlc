@@ -3,9 +3,9 @@
 The live AI SDLC orchestrator of `johnhain-msft`: a GitHub App, GitHub Actions and [`gh-aw`](https://github.com/github/gh-aw) (GitHub Agentic Workflows)
 that keep a fleet of repositories current. No webhook server, no database and no non-GitHub compute are involved.
 
-This repository is an **instance** of `ai-sdlc-factory`. The factory is the engine: it turns a fleet manifest into generated workflows, compiles
+This repository is an **instance** of the AI SDLC factory package. The factory is the engine: it turns a fleet manifest into generated workflows, compiles
 them in strict mode, and ships the commands and the scripts that those workflows run. It is an npm dependency of this repository (`package.json`,
-pinned to one commit by `package-lock.json`), not a copy in it. What is in this repository is what only this fleet has: the manifest
+locked by `package-lock.json`), not a copy in it. What is in this repository is what only this fleet has: the manifest
 ([`sdlc.yaml`](sdlc.yaml)), the workflows generated from it, the instructions of the agents, the helper scripts of the fleet, the specifications and
 the briefing deck.
 
@@ -68,22 +68,23 @@ workflows, compiles them with `gh aw compile --strict --purge --json`, prints th
 
 ### Bump the engine
 
-An update of the engine is one pull request: the tag in `package.json` is readable, and the lock pins the commit that it pointed at.
+An update of the engine is one pull request: the tag in `package.json` is readable, and the lock pins the commit that it pointed at. The registry flag keeps
+every `resolved` URL of the lock on the public registry, whatever registry your npm is configured to use; `tests/parity.test.mjs` fails on any other.
 
 ```powershell
-$repo = 'johnhain-msft/ai-sdlc-factory'
+$repo = '<owner>/<factory-repo>'
 $token = gh auth token
 $env:GIT_CONFIG_COUNT = '3'
 0..2 | ForEach-Object { Set-Item "env:GIT_CONFIG_KEY_$_" "url.https://x-access-token:$token@github.com/$repo.insteadOf" }
 $env:GIT_CONFIG_VALUE_0 = "ssh://git@github.com/$repo"; $env:GIT_CONFIG_VALUE_1 = "git@github.com:$repo"; $env:GIT_CONFIG_VALUE_2 = "https://github.com/$repo"
-npm install "github:$repo#vX.Y.Z" --ignore-scripts
+npm install "github:$repo#vX.Y.Z" --ignore-scripts --registry=https://registry.npmjs.org/
 Remove-Item env:GIT_CONFIG_COUNT, env:GIT_CONFIG_KEY_*, env:GIT_CONFIG_VALUE_*
 npx sdlc-reconcile --request tests/fixtures/request.reference.json
 npm test
 ```
 
 The rewrite lives in the environment of that shell only; nothing is written to `~/.gitconfig`. Read the Breaking and Migration notes of every release between
-the old tag and the new one in `node_modules/ai-sdlc-factory/CHANGELOG.md`, review `git diff --stat`, and commit `package.json`, `package-lock.json` and
+the old tag and the new one in the installed factory package's `CHANGELOG.md`, review `git diff --stat`, and commit `package.json`, `package-lock.json` and
 `.github/workflows/` together: `parity` fails the pull request if they do not agree. Do not update `.github/workflows/sdlc-onboard.md` with `gh aw update`:
 the reconciler renders it, with the App's slug in it.
 
@@ -108,8 +109,8 @@ npx sdlc-onboard --repo <owner/repo-or-path>
 
 The bootstrap registers (or reuses) the GitHub App, verifies its installations, writes the Actions variables and secrets, hands `sdlc.yaml` to the
 reconciler and checks readiness. The onboarding command inspects a repository and writes its `projects[]` and `dependencyEdges[]` entries and
-`instructions/<projectKey>.md`. Their flags, the environment that they read and the exit codes are in `node_modules/ai-sdlc-factory/README.md` and
-`node_modules/ai-sdlc-factory/docs/`. Nothing is ever placed in a file, a command-line flag or a log: secrets come from the environment or a prompt that
+`instructions/<projectKey>.md`. Their flags, the environment that they read and the exit codes are in the installed factory package's `README.md` and
+`docs/`. Nothing is ever placed in a file, a command-line flag or a log: secrets come from the environment or a prompt that
 does not echo.
 
 `.github/workflows/sdlc-onboard.md` is a workflow with one `workflow_dispatch` input per flag, whose agent is told to run the same command and to open a
