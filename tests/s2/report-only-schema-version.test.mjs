@@ -370,7 +370,7 @@ test("AC22: through the rendered steps, an agent that bumps the pinned version a
   const prepareStep = stepWith(frontmatter["pre-agent-steps"], "drift/prepare-run.mjs");
   const [validator] = frontmatter["post-steps"];
   assert.match(prepareStep.run, /prepare-run\.mjs/);
-  assert.match(validator.run, /node "\$GITHUB_WORKSPACE\/scripts\/validate-copilot-lab-audit\.mjs" \)$/);
+  assert.match(validator.run, /node "\$copy\/scripts\/validate-copilot-lab-audit\.mjs" \)$/);
   const lab = labFiles();
   for (const forge of [true, false]) {
     const gate = createGateWorkspace({ checkoutName: "day-in-the-life-copilot-lab", files: lab });

@@ -136,8 +136,8 @@ test("AC23: a run that is not a self-improve run does not need the self-improvem
 
 test("AC23: how a self-improve run is selected is the --self-improve argument, which the preset passes", () => {
   const verify = projectOf(presetManifest(), "self-improving-agents").driftAudit.verifyCommands;
-  assert.match(verify[0], /node "\$GITHUB_WORKSPACE\/scripts\/validate-copilot-lab-audit\.mjs" --self-improve \)$/, "the validator is the last thing of the first command, with its argument");
-  assert.match(projectOf(presetManifest(), "copilot-lab").driftAudit.verifyCommands[0], /node "\$GITHUB_WORKSPACE\/scripts\/validate-copilot-lab-audit\.mjs" \)$/, "and the lab's audit has none");
+  assert.match(verify[0], /node "\$copy\/scripts\/validate-copilot-lab-audit\.mjs" --self-improve \)$/, "the validator is the last thing of the first command, with its argument");
+  assert.match(projectOf(presetManifest(), "copilot-lab").driftAudit.verifyCommands[0], /node "\$copy\/scripts\/validate-copilot-lab-audit\.mjs" \)$/, "and the lab's audit has none");
   assert.equal(driftWorkflow("self-improving-agents").frontmatter["post-steps"][0].run, renderedVerifyCommands("self-improving-agents")[0], "the rendered step is the manifest's, with the engine placeholders expanded");
 });
 
@@ -353,7 +353,7 @@ test("AC23: anything that a pull request could be made of brings the report back
 
 test("AC23: the rendered post-step of drift-self-improving-agents passes on a lab tree that has the audit template and no audit report, as the default branch of the lab does", { skip: BASH_SKIP }, async () => {
   const step = driftWorkflow("self-improving-agents").frontmatter["post-steps"][0];
-  assert.match(step.run, /node "\$GITHUB_WORKSPACE\/scripts\/validate-copilot-lab-audit\.mjs" --self-improve \)$/);
+  assert.match(step.run, /node "\$copy\/scripts\/validate-copilot-lab-audit\.mjs" --self-improve \)$/);
   const files = labFiles();
   delete files["docs/_meta/audit-report.md"];
   assert.ok("docs/_meta/audit-report.template.md" in files);
@@ -388,7 +388,7 @@ test("AC23: the scanner reads top-level keys only: quoted keys, comments, block 
 
 test("AC23: the post-step of drift-copilot-lab runs the validator from the orchestrator workspace in the target checkout", { skip: BASH_SKIP }, async () => {
   const step = driftWorkflow("copilot-lab").frontmatter["post-steps"][0];
-  assert.match(step.run, /node "\$GITHUB_WORKSPACE\/scripts\/validate-copilot-lab-audit\.mjs" \)$/);
+  assert.match(step.run, /node "\$copy\/scripts\/validate-copilot-lab-audit\.mjs" \)$/);
   assert.equal(step["working-directory"], "day-in-the-life-copilot-lab");
   const gate = createGateWorkspace({ checkoutName: "day-in-the-life-copilot-lab", files: labFiles() });
   try {
