@@ -37,13 +37,14 @@
         <button type="button" id="btn-next" class="btn" data-nav="next" aria-label="Next slide">›</button>
         <span id="counter" class="counter" aria-live="off"></span>
       </div>
+      <!-- Wide screens show "label + shortcut"; compact screens (see --layout in styles.css) show the icon and keep the label for assistive technology. -->
       <div class="toolbar">
-        <button type="button" id="btn-agenda" class="btn" aria-haspopup="dialog">Agenda <kbd>A</kbd></button>
-        <button type="button" id="btn-grid" class="btn" aria-haspopup="dialog">Overview <kbd>G</kbd></button>
-        <button type="button" id="btn-speaker" class="btn">Speaker <kbd>S</kbd></button>
-        <button type="button" id="btn-theme" class="btn" aria-label="Toggle light and dark theme">Theme <kbd>T</kbd></button>
-        <button type="button" id="btn-fullscreen" class="btn">Present <kbd>F</kbd></button>
-        <button type="button" id="btn-help" class="btn" aria-haspopup="dialog" aria-label="Keyboard shortcuts">?</button>
+        <button type="button" id="btn-agenda" class="btn" aria-haspopup="dialog" aria-keyshortcuts="A"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span class="lbl">Agenda</span> <kbd>A</kbd></button>
+        <button type="button" id="btn-grid" class="btn" aria-haspopup="dialog" aria-keyshortcuts="G"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></svg><span class="lbl">Overview</span> <kbd>G</kbd></button>
+        <button type="button" id="btn-speaker" class="btn" aria-keyshortcuts="S"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="4.5" y="3.5" width="15" height="17" rx="2.5"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4"/></svg><span class="lbl"><span class="lbl-desk">Speaker</span><span class="lbl-mob">Notes</span></span> <kbd>S</kbd></button>
+        <button type="button" id="btn-theme" class="btn" aria-label="Toggle light and dark theme" aria-keyshortcuts="T"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 1 0 17z" fill="currentColor"/></svg><span class="lbl" aria-hidden="true">Theme</span> <kbd>T</kbd></button>
+        <button type="button" id="btn-fullscreen" class="btn" aria-keyshortcuts="F"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="lbl">Present</span> <kbd>F</kbd></button>
+        <button type="button" id="btn-help" class="btn" aria-haspopup="dialog" aria-label="Keyboard shortcuts" aria-keyshortcuts="?">?</button>
       </div>
     </div>
   </footer>
@@ -73,7 +74,7 @@
         <span id="sp-budget" class="sp-budget"></span>
       </div>
       <div class="sp-next-wrap">
-        <div class="kicker">Next</div>
+        <div class="kicker">Next<span id="sp-next-title" class="visually-hidden"></span></div>
         <div class="sp-preview-wrap sp-preview-wrap-small"><div id="sp-next-preview" class="sp-preview"></div></div>
       </div>
     </section>
@@ -82,8 +83,8 @@
         <h2 id="sp-slide-title"></h2>
         <div class="sp-notes-tools">
           <span id="sp-words" class="muted"></span>
-          <button type="button" id="sp-font-dec" class="btn" aria-label="Smaller notes text">A−</button>
-          <button type="button" id="sp-font-inc" class="btn" aria-label="Larger notes text">A+</button>
+          <button type="button" id="sp-font-dec" class="btn" aria-label="A−, smaller notes text">A−</button>
+          <button type="button" id="sp-font-inc" class="btn" aria-label="A+, larger notes text">A+</button>
           <button type="button" id="sp-open-deck" class="btn">Open deck</button>
         </div>
       </div>
@@ -95,6 +96,7 @@
 
 <!-- Overlays (presentation surface) -->
 <dialog id="dlg-help" class="dlg" aria-labelledby="dlg-help-title">
+  <div class="dlg-body" tabindex="0" role="region" aria-label="Shortcut list">
   <h2 id="dlg-help-title">Keyboard shortcuts</h2>
   <div class="keys">
     <div><kbd>→</kbd> <kbd>Space</kbd> <kbd>PgDn</kbd></div><div>Next step or slide</div>
@@ -110,16 +112,27 @@
     <div><kbd>P</kbd></div><div>Print all slides (PDF handout)</div>
     <div><kbd>?</kbd></div><div>This help</div>
   </div>
+  <h3 class="keys-heading">Phones and tablets</h3>
+  <div class="keys">
+    <div><kbd>Swipe</kbd> left or right</div><div>Next or previous slide</div>
+    <div><kbd>Scroll</kbd></div><div>Read the rest of a tall slide. With a keyboard, <kbd>↑</kbd> <kbd>↓</kbd> scroll it before they change slide</div>
+    <div><kbd>Notes</kbd> or <kbd>S</kbd></div><div>The speaker notes for this slide, in a sheet instead of a new window</div>
+    <div><kbd>Tap</kbd></div><div>Use the arrows below. In fullscreen, tap the right or left half of the screen</div>
+  </div>
+  </div>
   <form method="dialog"><button class="btn">Close</button></form>
 </dialog>
 
 <dialog id="dlg-grid" class="dlg dlg-wide" aria-labelledby="dlg-grid-title">
+  <div class="dlg-body">
   <h2 id="dlg-grid-title">Overview</h2>
   <div id="grid" class="grid"></div>
+  </div>
   <form method="dialog"><button class="btn">Close</button></form>
 </dialog>
 
 <dialog id="dlg-agenda" class="dlg dlg-wide" aria-labelledby="dlg-agenda-title">
+  <div class="dlg-body">
   <div class="agenda-head">
     <h2 id="dlg-agenda-title">Agenda</h2>
     <label class="tz-label">Time zone
@@ -128,7 +141,28 @@
   </div>
   <div id="agenda-tabs" class="tabs" role="tablist"></div>
   <div id="agenda-body"></div>
+  </div>
   <form method="dialog"><button class="btn">Close</button></form>
+</dialog>
+
+<!-- Speaker notes inside the page: the way to read them where a second window is awkward or blocked (phones, small tablets).
+     It lives outside every slide, so it adds no words to a slide. Closed until the Notes button or S opens it. -->
+<dialog id="dlg-notes" class="dlg dlg-notes" aria-labelledby="dlg-notes-title">
+  <div class="notes-head">
+    <div class="notes-titles">
+      <h2 id="dlg-notes-title">Speaker notes</h2>
+      <p id="notes-slide" class="notes-slide"></p>
+    </div>
+    <button type="button" id="notes-close" class="btn notes-close" aria-label="Close speaker notes">×</button>
+  </div>
+  <p id="notes-meta" class="notes-meta muted"></p>
+  <div id="notes-body" class="sp-notes" tabindex="0" aria-label="Notes for this slide"></div>
+  <div class="notes-foot">
+    <button type="button" id="notes-prev" class="btn">‹ Prev</button>
+    <button type="button" id="notes-font-dec" class="btn" aria-label="A−, smaller notes text">A−</button>
+    <button type="button" id="notes-font-inc" class="btn" aria-label="A+, larger notes text">A+</button>
+    <button type="button" id="notes-next" class="btn">Next ›</button>
+  </div>
 </dialog>
 
 <div id="live" class="visually-hidden" role="status" aria-live="polite" aria-atomic="true"></div>

@@ -4,10 +4,13 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { run } from "../../../src/route-upstream.mjs";
+import { importEngine } from "../../helpers/instance.mjs";
 import { createClock } from "../../s2/helpers/stub-server.mjs";
 import { createGitHubStub } from "./github-stub.mjs";
 import { appKeyPair, CENTRAL, createWorkspace, edge as edgeFixture, NOW, seedState, sha, STUB_API_URL, TOKENS } from "./fixtures.mjs";
+
+// the router of the installed engine, a deep import: its command is what the router workflow runs, and a change of it is what these tests are to notice
+const { run } = await importEngine("src/route-upstream.mjs");
 
 export const CLIENT_ID = "Iv1.fixtureclientid";
 
@@ -21,6 +24,8 @@ export const CLIENT_ID = "Iv1.fixtureclientid";
  * @param {object} [options.upstream] repository fields: head, etag, pullsEtag, closedPulls, runs, runList, files
  * @param {object} [options.downstream] repository fields: head, defaultBranch, files, pulls
  * @param {object[]} [options.manifestEdges] the edges of sdlc.yaml (default: the edge)
+ * @param {object} [options.manifestExtra] more top-level keys of sdlc.yaml (for example `{ factory: { package: "ai-sdlc-factory", private: true } }`)
+ * @param {Record<string, string>} [options.workspaceFiles] files of the workspace besides sdlc.yaml, by workspace-relative path (the scripts that the edge's commands name)
  * @param {string} [options.central] the orchestrator repository, <owner>/<repository> (default: acme/orchestrator)
  * @param {Record<string, string>} [options.env] environment overrides ("" or undefined removes a variable)
  * @param {object[]} [options.installations]
@@ -52,7 +57,12 @@ export function routerWorld(options = {}) {
     },
     ...(options.stubOptions ?? {}),
   });
-  const workspace = createWorkspace({ edges: options.manifestEdges ?? [edge], ...(options.workspacePrefix ? { prefix: options.workspacePrefix } : {}) });
+  const workspace = createWorkspace({
+    edges: options.manifestEdges ?? [edge],
+    ...(options.manifestExtra ? { manifestExtra: options.manifestExtra } : {}),
+    ...(options.workspacePrefix ? { prefix: options.workspacePrefix } : {}),
+    ...(options.workspaceFiles ? { files: options.workspaceFiles } : {}),
+  });
   const summaryDir = fs.mkdtempSync(path.join(os.tmpdir(), "sdlc-s3-summary-"));
   const summaryFile = path.join(summaryDir, "step-summary.md");
   const clock = createClock(options.now ?? NOW);

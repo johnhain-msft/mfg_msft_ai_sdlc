@@ -1,11 +1,11 @@
-// AC31-AC34: src/lab-studio-drift.mjs recomputes the lab hashes of the studio manifest from an upstream checkout, reports the difference, and with
+// AC31-AC34: scripts/lab-studio-drift.mjs recomputes the lab hashes of the studio manifest from an upstream checkout, reports the difference, and with
 // --accept records it in place. The hashes are those of the studio's own checker (fixtures/lab-sources/expected-hashes.json was produced by it).
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { labDigest } from "../../src/lab-studio-drift.mjs";
+import { labDigest } from "../../scripts/lab-studio-drift.mjs";
 import { HELPERS, REPO_ROOT, abs, commitAll, fixture, git, jsonOf, labUpstream, readJson, readText, runNode, studioCheckout, tempDir, writeFiles } from "./helpers/fixtures.mjs";
 
 const OLD = "d362e1c8752b398307ae84341ccc82fec63b595f";

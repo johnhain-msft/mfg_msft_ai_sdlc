@@ -1,8 +1,8 @@
-<svg viewBox="0 0 1560 540" role="group" aria-label="Fleet topology. S1 renders the workflows for S2, S3 and S4. Four upstream repositories feed S2 upstream drift, then S3 hybrid router, then S4 cascade, then the portfolio. S5 bootstraps the fleet and cascades this repository into the portfolio.">
+<svg viewBox="0 0 1570 556" role="group" aria-label="Fleet topology. S1 renders the workflows for S2, S3 and S4. Five upstream repositories feed S2 upstream drift, then S3 hybrid router, then S4 cascade, then two downstream repositories, portfolio and ai_asset_management. S5 bootstraps the fleet and cascades this repository, the sixth upstream, into the portfolio.">
 <title>Five workstreams, one control plane</title>
 
 <g data-hl="s1" role="img" aria-label="S1 manifest and reconciler: sdlc.yaml and reconcile.mjs render every workflow and lockfile">
-<rect class="d-box-accent" x="340" y="12" width="880" height="96" rx="18"/>
+<rect class="d-box-accent d-panel" x="340" y="12" width="880" height="96" rx="18"/>
 <text class="d-text" x="780" y="54" font-size="28" text-anchor="middle"><tspan class="d-label" font-size="26">S1:</tspan>  Manifest &amp; Reconciler</text>
 <text class="d-sub d-mono" x="780" y="90" font-size="22" text-anchor="middle">sdlc.yaml → reconcile.mjs → workflows + lockfiles</text>
 <path class="d-line-accent" d="M475 108V158"/><path class="d-arrow-accent" d="M475 170l-10-16h20z"/>
@@ -10,15 +10,16 @@
 <path class="d-line-accent" d="M1085 108V158"/><path class="d-arrow-accent" d="M1085 170l-10-16h20z"/>
 </g>
 
-<g data-hl="s2" role="img" aria-label="Four upstream repositories (gh-admin-msft, copilot-lab, pipeline-showcase, github-intermediate) feed S2 upstream drift, which audits watched docs and opens drift pull requests">
-<rect class="d-box-dashed" x="20" y="132" width="290" height="296" rx="18"/>
-<text class="d-sub" x="44" y="166" font-size="22">4 upstream repos:</text>
-<rect class="d-box" x="42" y="186" width="246" height="48" rx="12"/><text class="d-small" x="62" y="218" font-size="22">gh-admin-msft</text>
-<rect class="d-box" x="42" y="246" width="246" height="48" rx="12"/><text class="d-small" x="62" y="278" font-size="22">copilot-lab</text>
-<rect class="d-box" x="42" y="306" width="246" height="48" rx="12"/><text class="d-small" x="62" y="338" font-size="22">pipeline-showcase</text>
-<rect class="d-box" x="42" y="366" width="246" height="48" rx="12"/><text class="d-small" x="62" y="398" font-size="22">github-intermediate</text>
+<g data-hl="s2" role="img" aria-label="Five upstream repositories (gh-admin-msft, copilot-lab, pipeline-showcase, github-intermediate, copilot-config) feed S2 upstream drift, which audits watched docs and opens drift pull requests">
+<rect class="d-box-dashed" x="20" y="118" width="290" height="322" rx="18"/>
+<text class="d-sub" x="44" y="152" font-size="22">5 upstream repos:</text>
+<rect class="d-box" x="42" y="172" width="246" height="44" rx="12"/><text class="d-small" x="62" y="202" font-size="22">gh-admin-msft</text>
+<rect class="d-box" x="42" y="224" width="246" height="44" rx="12"/><text class="d-small" x="62" y="254" font-size="22">copilot-lab</text>
+<rect class="d-box" x="42" y="276" width="246" height="44" rx="12"/><text class="d-small" x="62" y="306" font-size="22">pipeline-showcase</text>
+<rect class="d-box" x="42" y="328" width="246" height="44" rx="12"/><text class="d-small" x="62" y="358" font-size="22">github-intermediate</text>
+<rect class="d-box" x="42" y="380" width="246" height="44" rx="12"/><text class="d-small" x="62" y="410" font-size="22">copilot-config</text>
 <path class="d-line" d="M310 280H338"/><path class="d-arrow" d="M350 280l-14-9v18z"/>
-<rect class="d-box" x="350" y="172" width="250" height="216" rx="18"/>
+<rect class="d-box d-panel" x="350" y="172" width="250" height="216" rx="18"/>
 <text class="d-label" x="374" y="214" font-size="22">S2:</text>
 <text class="d-text" x="374" y="254" font-size="26">Upstream Drift</text>
 <text class="d-sub" x="374" y="304" font-size="22">audit watched docs</text>
@@ -27,33 +28,33 @@
 
 <g data-hl="s3" role="img" aria-label="S3 hybrid router: sdlc-bridge-dispatch plus a six hour ETag poll">
 <path class="d-line" d="M600 280H628"/><path class="d-arrow" d="M640 280l-14-9v18z"/>
-<rect class="d-box" x="640" y="172" width="280" height="216" rx="18"/>
+<rect class="d-box d-panel" x="640" y="172" width="280" height="216" rx="18"/>
 <text class="d-label" x="664" y="214" font-size="22">S3:</text>
 <text class="d-text" x="664" y="254" font-size="26">Hybrid Router</text>
 <text class="d-sub" x="664" y="304" font-size="22">bridge dispatch</text>
 <text class="d-sub" x="664" y="336" font-size="22">+ 6 h ETag poll</text>
 </g>
 
-<g data-hl="s4" role="img" aria-label="S4 cascade, mechanical or AI adaptation, opens human-merged pull requests on johnhain-msft/portfolio">
+<g data-hl="s4" role="img" aria-label="S4 cascade, mechanical or AI adaptation, opens human-merged pull requests on two downstream repositories, johnhain-msft/portfolio and johnhain-msft/ai_asset_management">
 <path class="d-line" d="M920 280H948"/><path class="d-arrow" d="M960 280l-14-9v18z"/>
-<rect class="d-box" x="960" y="172" width="250" height="216" rx="18"/>
+<rect class="d-box d-panel" x="960" y="172" width="250" height="216" rx="18"/>
 <text class="d-label" x="984" y="214" font-size="22">S4:</text>
 <text class="d-text" x="984" y="254" font-size="26">Cascade</text>
 <text class="d-sub" x="984" y="304" font-size="22">mechanical or</text>
 <text class="d-sub" x="984" y="336" font-size="22">AI adaptation</text>
 <path class="d-line-accent" d="M1210 280H1238"/><path class="d-arrow-accent" d="M1250 280l-14-9v18z"/>
-<rect class="d-box-accent" x="1250" y="172" width="290" height="216" rx="18"/>
-<text class="d-label" x="1274" y="214" font-size="22">Downstream:</text>
-<text class="d-text" x="1274" y="254" font-size="26">portfolio</text>
-<text class="d-sub" x="1274" y="304" font-size="22">johnhain-msft</text>
-<text class="d-sub" x="1274" y="336" font-size="22">human-merged PRs</text>
+<rect class="d-box-dashed" x="1250" y="172" width="300" height="216" rx="18"/>
+<text class="d-sub" x="1274" y="206" font-size="22">2 downstream repos:</text>
+<rect class="d-box-accent d-panel" x="1272" y="218" width="256" height="44" rx="12"/><text class="d-small" x="1292" y="248" font-size="22">ai_asset_management</text>
+<rect class="d-box-accent d-panel" x="1272" y="270" width="256" height="44" rx="12"/><text class="d-small" x="1292" y="300" font-size="22">portfolio</text>
+<text class="d-sub" x="1274" y="356" font-size="22">human-merged PRs</text>
+<path class="d-line-dashed" d="M1500 464V332"/><path class="d-arrow-purple" d="M1500 316l-10 16h20z"/>
+<text class="d-sub" x="1484" y="434" font-size="22" text-anchor="end">ai-sdlc edge</text>
 </g>
 
-<g data-hl="s5" role="img" aria-label="S5 bootstrap and self-cascade: sdlc-bootstrap and sdlc-onboard set up the fleet, and mfg_msft_ai_sdlc cascades itself into the portfolio through the ai-sdlc edge">
-<rect class="d-box-purple" x="20" y="448" width="1520" height="80" rx="18"/>
-<text class="d-text" x="52" y="498" font-size="26"><tspan class="d-label-purple" font-size="24">S5:</tspan>  Bootstrap &amp; Self-Cascade</text>
-<text class="d-sub" x="580" y="497" font-size="22">sdlc-bootstrap, sdlc-onboard, mfg_msft_ai_sdlc → portfolio</text>
-<path class="d-line-dashed" d="M1395 448V402"/><path class="d-arrow-purple" d="M1395 388l-10 16h20z"/>
-<text class="d-sub" x="1378" y="428" font-size="22" text-anchor="end">ai-sdlc edge</text>
+<g data-hl="s5" role="img" aria-label="S5 bootstrap and self-cascade: sdlc-bootstrap and sdlc-onboard set up the fleet, and mfg_msft_ai_sdlc, the sixth upstream, cascades itself into the portfolio through the ai-sdlc edge">
+<rect class="d-box-purple d-panel" x="20" y="464" width="1530" height="80" rx="18"/>
+<text class="d-text" x="52" y="514" font-size="26"><tspan class="d-label-purple" font-size="24">S5:</tspan>  Bootstrap &amp; Self-Cascade</text>
+<text class="d-sub" x="580" y="513" font-size="22">sdlc-bootstrap, sdlc-onboard · 6th upstream: mfg_msft_ai_sdlc → portfolio</text>
 </g>
 </svg>

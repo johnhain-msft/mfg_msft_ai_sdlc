@@ -51,7 +51,15 @@ export const AI = [
 ];
 
 export const WORKFLOW_IDS = AI.map((spec) => spec.id);
+/** The sync scopes of this fleet: the engine has no list of them (a scope is any id that an edge declares), so these are the ones that this repository's three AI edges use. */
 export const ALL_SCOPES = ["both", "workshop-only", "studio-only", "showcase-runs", "github-intermediate"];
+
+/** The commands of the first fenced bash block of a prompt, as one script. */
+export function promptBlock(body) {
+  const match = /```bash\n([\s\S]*?)\n```/.exec(body);
+  if (!match) throw new Error("the prompt has no fenced bash block");
+  return match[1];
+}
 
 let preset = null;
 /** The preset manifest (parsed once). */

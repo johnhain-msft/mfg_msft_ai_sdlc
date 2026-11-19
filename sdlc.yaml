@@ -1,17 +1,64 @@
 # Portfolio reference preset for the AI SDLC orchestrator.
 #
-# This file is data: the engine (src/reconcile.mjs) is repository-agnostic and
-# turns it into the generated workflows under .github/workflows/. Edit this file
-# (by hand or through `sdlc onboard`), then run the reconciler; never edit a
+# This file is data: the engine (the ai-sdlc-factory package, which this repository
+# installs: see `factory` below) is repository-agnostic and turns it into the
+# generated workflows under .github/workflows/. Edit this file (by hand or through
+# `sdlc-onboard`), then run the reconciler (`npm run reconcile`); never edit a
 # generated workflow directly.
 #
 # `<checkout>` inside any command is replaced by the renderer with the absolute
-# path of the upstream checkout, "$UPSTREAM_DIR".
+# path of the upstream checkout, "$UPSTREAM_DIR". `<factory>` is the directory of the
+# engine package (a quoted absolute path) and `<factory-dir>` the same relative to the
+# workspace.
 #
 # A verifyCommands entry whose first non-blank character is `#` (for example
 # "# post-run check: ...") is a post-run check. Every verifyCommands entry runs in
 # the order listed here; a post-run check only stays out of the verification gate
 # that the reconciler reports for the AI adaptation workflows (SPEC-01 AC50, AC53).
+
+# Where the engine runs from. It is an npm dependency of this repository (package.json, pinned to a commit by the lockfile) and the engine repository is private,
+# so every job that installs it first mints a read token for that one repository from the GitHub App.
+factory:
+  package: ai-sdlc-factory
+  source: github:johnhain-msft/ai-sdlc-factory
+  private: true
+
+# What used to be built into the engine for this fleet is data of this manifest. Each block below is what the engine did on its own before it became a package:
+# the generic engine reads it, and the rendered workflows come out the same (the proof is the render-diff of the migration: only the paths of scripts change).
+#
+# The pull requests that the target repositories' own scheduled workflows open, which the dedupe step of a drift or implementation workflow tells apart from a duplicate.
+dedupe:
+  upkeeps:
+    - id: weekly-audit
+      branchPrefixes:
+        - automation/weekly-audit-
+        - sdlc/weekly-audit-
+      labels:
+        - content-audit
+    - id: self-improve
+      branchPrefixes:
+        - automation/self-improve-
+        - sdlc/self-improve-
+      labels:
+        - self-improving-agents
+  strategyUpkeep:
+    content-and-docs-sync: weekly-audit
+    code-quality-and-improvement-scan: self-improve
+
+# The example reports that a drift or implementation prompt names, and what the pull request of an AI adaptation lists.
+prompts:
+  reportExamples:
+    - docs/_meta/audit-report.md
+    - self-improvement-report.md
+  pullRequestBodyItems: the adapted modules and Studio labs
+
+# The files that an inspection of a repository takes for a provenance file (sdlc-onboard).
+onboarding:
+  provenanceNames:
+    - source.json
+    - lab-sources.json
+    - provenance.json
+    - registry.yaml
 
 projects:
   - projectKey: gh-admin-msft
@@ -142,8 +189,11 @@ projects:
               - -y
               - "@upstash/context7-mcp@latest"
       buildCommands: []
+      # The validator that the agent must not be able to change: prepare-run stages a read-only copy of it before the agent starts, and the first verify command compares it.
+      stagedScripts:
+        - scripts/validate-copilot-lab-audit.mjs
       verifyCommands:
-        - ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" || { echo "src/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/drift/lib" "$GITHUB_WORKSPACE/src/drift/lib" >&2 || { echo "src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" )
+        - ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/scripts/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/scripts/validate-copilot-lab-audit.mjs" || { echo "scripts/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; cmp -s "$copy/<factory-dir>/package.json" <factory>/package.json || { echo "<factory-dir>/package.json is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/<factory-dir>/src/drift/lib" <factory>/src/drift/lib >&2 || { echo "<factory-dir>/src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; ! test -e "$GITHUB_WORKSPACE/scripts/node_modules" || { echo "scripts/node_modules is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$copy/scripts/validate-copilot-lab-audit.mjs" )
         - ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; XDG_DATA_HOME="$GH_DATA_DIR"; export XDG_DATA_HOME; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
       draft: false
       reviewers: []
@@ -190,8 +240,11 @@ projects:
               - -y
               - "@upstash/context7-mcp@latest"
       buildCommands: []
+      # The same validator, staged and compared in the same way (this project runs it with --self-improve).
+      stagedScripts:
+        - scripts/validate-copilot-lab-audit.mjs
       verifyCommands:
-        - ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" || { echo "src/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/drift/lib" "$GITHUB_WORKSPACE/src/drift/lib" >&2 || { echo "src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" --self-improve )
+        - ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/scripts/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/scripts/validate-copilot-lab-audit.mjs" || { echo "scripts/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; cmp -s "$copy/<factory-dir>/package.json" <factory>/package.json || { echo "<factory-dir>/package.json is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/<factory-dir>/src/drift/lib" <factory>/src/drift/lib >&2 || { echo "<factory-dir>/src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; ! test -e "$GITHUB_WORKSPACE/scripts/node_modules" || { echo "scripts/node_modules is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$copy/scripts/validate-copilot-lab-audit.mjs" --self-improve )
         - ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; XDG_DATA_HOME="$GH_DATA_DIR"; export XDG_DATA_HOME; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
       draft: true
       reviewers: []
@@ -339,6 +392,11 @@ dependencyEdges:
     installDirectories:
       - .
       - apps/lab-studio
+    # The browser that the portfolio's end-to-end tests run in: the engine used to install it on every Node edge, and now installs what the edge declares.
+    setupSteps:
+      - name: Install Microsoft Edge
+        run: npx playwright install --with-deps msedge
+        workingDirectory: .
     importCommands:
       - npm run import:ghec-admin -- <checkout>
     preflightCommands: []
@@ -386,14 +444,28 @@ dependencyEdges:
     installDirectories:
       - .
       - apps/lab-studio
+    setupSteps:
+      - name: Install Microsoft Edge
+        run: npx playwright install --with-deps msedge
+        workingDirectory: .
     importCommands: []
     preflightCommands:
       - npm run sync:workshop-source -- <checkout>
-      - node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$TARGET_SHA"
+      - node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$TARGET_SHA"
+    # How the router reads each preflight command, in the same order. The workshop source check exits 1 whenever the checked commit differs from the recorded one,
+    # even when no input changed, so its report decides (the classifier); the studio helper's exit code (0 in sync, 1 drift, 2 fatal) is its verdict.
+    preflightChecks:
+      - scope: workshop-only
+        classifier: node "$GITHUB_WORKSPACE/scripts/classify-workshop-report.mjs"
+      - scope: studio-only
+    # The studio's own provenance, logged beside the edge's and never decided on.
+    logProvenance:
+      - file: apps/lab-studio/lab-sources.json
+        pointer: /_provenance/commit
     acceptCommands:
-      - node "$GITHUB_WORKSPACE/src/bump-studio-revision-pins.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --new-sha "$UPSTREAM_SHA"
+      - node "$GITHUB_WORKSPACE/scripts/bump-studio-revision-pins.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --new-sha "$UPSTREAM_SHA"
       - npm run sync:workshop-source -- <checkout> --accept
-      - node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$UPSTREAM_SHA" --accept
+      - node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$UPSTREAM_SHA" --accept
     buildCommands:
       - npm run build:workshop
     verifyCommands:
@@ -434,7 +506,7 @@ dependencyEdges:
           if (!studio._provenance || studio._provenance.commit !== want) stale.push("lab-sources.json _provenance.commit");
           if (stale.length > 0) { console.error("stale provenance: " + stale.join(", ")); process.exit(1); }
           '
-          node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$UPSTREAM_SHA"
+          node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream <checkout> --commit "$UPSTREAM_SHA"
         fi
       - |
         # post-run check: the upstream checkout stays read-only
@@ -460,24 +532,26 @@ dependencyEdges:
       preflightReports:
         - workshop-drift.txt
         - lab-studio-drift.txt
-      labStudioDrift:
-        manifest: apps/lab-studio/lab-sources.json
-      revisionPins:
-        provenance:
-          - file: apps/lab-studio/lab-sources.json
-            pointer: /_provenance/commit
-          - file: experiences/copilot-workshop/provenance.json
-            pointer: /commit
-        files:
-          - apps/lab-studio/client/src/labs/source.ts
-          - apps/lab-studio/server/tests/source.test.ts
-          - apps/lab-studio/server/tests/lab-drift.test.ts
-          - README.md
-          - experiences/copilot-workshop/public/NOTICE.txt
-          - public/copilot-project.html
-        constant:
-          file: apps/lab-studio/client/src/labs/source.ts
-          name: SOURCE_COMMIT
+      # The data of this repository's own helper scripts (scripts/): the engine does not read it, the helpers read it with helperSection().
+      helpers:
+        labStudioDrift:
+          manifest: apps/lab-studio/lab-sources.json
+        revisionPins:
+          provenance:
+            - file: apps/lab-studio/lab-sources.json
+              pointer: /_provenance/commit
+            - file: experiences/copilot-workshop/provenance.json
+              pointer: /commit
+          files:
+            - apps/lab-studio/client/src/labs/source.ts
+            - apps/lab-studio/server/tests/source.test.ts
+            - apps/lab-studio/server/tests/lab-drift.test.ts
+            - README.md
+            - experiences/copilot-workshop/public/NOTICE.txt
+            - public/copilot-project.html
+          constant:
+            file: apps/lab-studio/client/src/labs/source.ts
+            name: SOURCE_COMMIT
       pullRequestResult:
         adaptedModules: experiences/copilot-workshop/content/m*.ts
         adaptedStudioLabs: apps/lab-studio/client/src/labs/lab*.tsx
@@ -525,6 +599,9 @@ dependencyEdges:
         - apps/lab-studio/server/src/sim-terminal.ts
         - apps/lab-studio/server/src/skills.ts
         - apps/lab-studio/server/tests/sandbox.test.ts
+      # What the downstream generates (committed build output): not an editable module, so the constructs that the gate bans are not looked for in it.
+      generatedPaths:
+        - public/**
       lockedTestBlocks:
         - file: tests/copilot-workshop.test.ts
           blocks:
@@ -583,9 +660,19 @@ dependencyEdges:
     installDirectories:
       - .
       - apps/lab-studio
+    setupSteps:
+      - name: Install Microsoft Edge
+        run: npx playwright install --with-deps msedge
+        workingDirectory: .
     importCommands: []
     preflightCommands:
       - gh api "repos/ms-mfg-community/github-pipeline-showcase/actions/runs?per_page=100"
+    # The runs listing is judged by the classifier: a completed run newer than the newest recorded run of its own workflow, or a capture that differs from the committed
+    # snapshot, is drift; an unchanged snapshot is recorded as noop-unchanged-snapshot.
+    preflightChecks:
+      - scope: showcase-runs
+        noopAction: noop-unchanged-snapshot
+        classifier: node "$GITHUB_WORKSPACE/scripts/classify-showcase-runs.mjs"
     acceptCommands:
       - |-
         node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync("experiences/pipeline-showcase/content/provenance.json", JSON.stringify({ repository: "ms-mfg-community/github-pipeline-showcase", commit: process.env.UPSTREAM_SHA }, null, 2) + "\n");'
@@ -692,6 +779,8 @@ dependencyEdges:
         - apps/lab-studio/server/src/sim-terminal.ts
         - apps/lab-studio/server/src/skills.ts
         - apps/lab-studio/server/tests/sandbox.test.ts
+      generatedPaths:
+        - public/**
       lockedTestBlocks:
         - file: tests/pipeline-showcase.test.ts
           blocks:
@@ -731,9 +820,16 @@ dependencyEdges:
     installDirectories:
       - .
       - apps/lab-studio
+    setupSteps:
+      - name: Install Microsoft Edge
+        run: npx playwright install --with-deps msedge
+        workingDirectory: .
     importCommands: []
     preflightCommands:
       - git -C <checkout> diff --quiet "$LAST_MERGED_SHA" "$TARGET_SHA" -- labs solutions src style index.html README.md
+    # A plain git diff --quiet: its exit code is the verdict, and a difference asks for the one scope of this edge.
+    preflightChecks:
+      - scope: github-intermediate
     acceptCommands:
       - |-
         node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync("experiences/github-intermediate-labs/provenance.json", JSON.stringify({ repository: "githubschool/gh-github-intermediate-template", commit: process.env.UPSTREAM_SHA }, null, 2) + "\n");'
@@ -811,6 +907,8 @@ dependencyEdges:
         - apps/lab-studio/server/src/sim-terminal.ts
         - apps/lab-studio/server/src/skills.ts
         - apps/lab-studio/server/tests/sandbox.test.ts
+      generatedPaths:
+        - public/**
       lockedTestBlocks:
         - file: tests/github-intermediate-labs.test.ts
           blocks:
@@ -852,6 +950,10 @@ dependencyEdges:
     installDirectories:
       - .
       - apps/lab-studio
+    setupSteps:
+      - name: Install Microsoft Edge
+        run: npx playwright install --with-deps msedge
+        workingDirectory: .
     importCommands:
       - npm run import:ai-sdlc -- <checkout>
     preflightCommands: []

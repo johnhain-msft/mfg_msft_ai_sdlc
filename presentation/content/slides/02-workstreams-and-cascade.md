@@ -14,7 +14,7 @@ S1 | SPEC-01 · Reconciler | specs/01-manifest-and-reconciler.md
 :::
 
 :::kv
-Schema Gate | Validates `sdlc.yaml` against `schemas/sdlc.schema.json`, then cross-field semantic rules.
+Schema Gate | Validates `sdlc.yaml` against its JSON Schema, then cross-field semantic rules.
 Compiler Pipeline | Renders `.md` workflows, then runs `gh aw compile --strict --purge`.
 Token & Merge Guardrails | Scopes each App token to its edge's repositories and rejects `auto-merge`.
 :::

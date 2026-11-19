@@ -7,19 +7,22 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
-import { abs, DRIFT_KEYS, driftPreset, driftWorkflow, driftWorkflowText, listTree, presetManifest, projectOf, readText, S2_ROOT } from "./helpers/fixtures.mjs";
+import { engineFile } from "../helpers/instance.mjs";
+import { abs, DRIFT_KEYS, driftPreset, driftWorkflow, driftWorkflowText, instanceScript, listTree, presetManifest, projectOf, readText, S2_ROOT } from "./helpers/fixtures.mjs";
 
 const SPEC = readText(abs("specs", "02-upstream-drift-automation.md"));
 const GATED = { OQ22: "AC16", OQ23: "AC16", OQ24: "AC16", OQ25: "AC16", OQ28: "AC21", OQ29: "AC21", OQ34: "AC13, AC18", OQ35: "AC2, AC7", OQ36: "AC2, AC18, AC25", OQ37: "AC18, AC20" };
 
 const row = (id) => SPEC.split("\n").find((line) => line.startsWith(`| ${id} |`));
 const code = (file) => readText(file).split("\n").filter((line) => !line.trimStart().startsWith("//")).join("\n");
+/** The files of a directory of this repository, and of a directory of the engine package that this repository runs (S2 is the engine's drift automation: prompts/drift and src/drift). */
 const s2Surface = (...parts) => listTree(abs(...parts)).map((file) => abs(...parts, file));
+const engineSurface = (...parts) => listTree(engineFile(...parts)).map((file) => engineFile(...parts, file));
 
 /** The files in which S2 would have to hard-code anything about the lab registry. */
-const LAB_AUDIT_SURFACE = () => [abs("instructions", "copilot-lab.md"), abs("src", "validate-copilot-lab-audit.mjs"), ...s2Surface("prompts", "drift"), ...s2Surface("src", "drift")];
+const LAB_AUDIT_SURFACE = () => [abs("instructions", "copilot-lab.md"), instanceScript("validate-copilot-lab-audit.mjs"), ...engineSurface("prompts", "drift"), ...engineSurface("src", "drift")];
 /** The files in which S2 would have to encode anything about the target's freshness check. */
-const FRESHNESS_SURFACE = () => [abs("instructions", "gh-admin-msft.md"), abs("sdlc.yaml"), abs("src", "snapshot-watch-sources.mjs"), abs("src", "validate-copilot-lab-audit.mjs"), ...s2Surface("prompts", "drift"), ...s2Surface("src", "drift")];
+const FRESHNESS_SURFACE = () => [abs("instructions", "gh-admin-msft.md"), abs("sdlc.yaml"), engineFile("src", "snapshot-watch-sources.mjs"), instanceScript("validate-copilot-lab-audit.mjs"), ...engineSurface("prompts", "drift"), ...engineSurface("src", "drift")];
 /** Every non-comment line of every test and helper of the suite. */
 const SUITE_CODE = () => listTree(S2_ROOT).filter((file) => file.endsWith(".mjs") && !file.startsWith("fixtures/")).map((file) => ({ file, text: code(path.join(S2_ROOT, ...file.split("/"))) }));
 
@@ -122,7 +125,7 @@ test("OQ35", (t) => {
   for (const key of DRIFT_KEYS) assert.deepEqual(driftWorkflow(key).frontmatter["safe-outputs"]["threat-detection"], { "continue-on-error": false }, `AC2: ${key} renders the configuration`);
   const outcomes = [["gh-aw", "threat", "detected"].join("-"), ["gh-aw", "threat", "engine", "error"].join("-"), ["Threat detection", "engine error"].join(" "), ["agentic", "threat", "detected"].join(" "), "[!" + "CAUTION]"];
   for (const { file, text } of SUITE_CODE()) for (const outcome of outcomes) assert.equal(text.includes(outcome), false, `${file} asserts a detection outcome: ${outcome}`);
-  for (const file of [abs("src", "snapshot-watch-sources.mjs"), abs("src", "validate-copilot-lab-audit.mjs"), ...s2Surface("src", "drift")]) {
+  for (const file of [engineFile("src", "snapshot-watch-sources.mjs"), instanceScript("validate-copilot-lab-audit.mjs"), ...engineSurface("src", "drift")]) {
     for (const outcome of outcomes) assert.equal(readText(file).includes(outcome), false, `${path.relative(abs("."), file)} depends on a detection outcome`);
   }
 });
@@ -137,7 +140,7 @@ test("OQ36", (t) => {
   }
   const collision = [["already exists and", "preserve-branch-name is enabled"].join(" "), ["push", "failed"].join("_"), ["error", "type"].join("_"), ["Remote", "branch"].join(" ")];
   for (const { file, text } of SUITE_CODE()) for (const phrase of collision) assert.equal(text.includes(phrase), false, `${file} asserts what a remote-branch collision does: ${phrase}`);
-  for (const file of [abs("src", "snapshot-watch-sources.mjs"), ...s2Surface("src", "drift"), ...s2Surface("prompts", "drift")]) {
+  for (const file of [engineFile("src", "snapshot-watch-sources.mjs"), ...engineSurface("src", "drift"), ...engineSurface("prompts", "drift")]) {
     for (const phrase of collision) assert.equal(readText(file).includes(phrase), false, `${path.relative(abs("."), file)} assumes a collision behaviour: ${phrase}`);
   }
 });
@@ -150,7 +153,7 @@ test("OQ37", (t) => {
     assert.equal(text.includes(handlerError), false, `${file} asserts the handler's error text`);
     assert.equal(text.includes(recovery), false, `${file} asserts the handler's recovery path`);
   }
-  for (const file of [abs("src", "snapshot-watch-sources.mjs"), ...s2Surface("src", "drift"), ...s2Surface("prompts", "drift"), ...s2Surface("instructions")]) {
+  for (const file of [engineFile("src", "snapshot-watch-sources.mjs"), ...engineSurface("src", "drift"), ...engineSurface("prompts", "drift"), ...s2Surface("instructions")]) {
     assert.equal(readText(file).includes(handlerError), false, `${path.relative(abs("."), file)} depends on the handler's error text`);
   }
   const verify = driftPreset("gh-admin-msft").driftAudit.verifyCommands;

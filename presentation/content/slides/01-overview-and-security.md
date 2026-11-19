@@ -40,7 +40,7 @@ Merged upstream fixes leave portfolio bundles pinned to stale commits.
 :::
 
 :::stats
-6 | Tracked Fleet Repos | 5 upstreams + 1 portfolio
+8 | Tracked Fleet Repos | 6 upstreams + 2 downstreams
 1 | Declarative Manifest | `sdlc.yaml` owns every edge
 0 | Webhook Servers | 100% GitHub Actions native
 :::

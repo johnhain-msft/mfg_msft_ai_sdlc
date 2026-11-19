@@ -32,11 +32,11 @@ Cascade PR | portfolio#1
 
 :::cols 1fr 1fr
 :::col Bootstrap & Onboard CLI
-`sdlc-bootstrap.mjs` provisions the App and state variables; `sdlc-onboard.mjs` writes manifest entries.
+`sdlc-bootstrap` provisions the App and state variables; `sdlc-onboard` writes manifest entries.
 
 ```bash
-node bin/sdlc-bootstrap.mjs
-node bin/sdlc-onboard.mjs --repo <owner/repo>
+npx sdlc-bootstrap
+npx sdlc-onboard --repo <owner/repo>
 ```
 
 :::spec specs/05-packaging-bootstrap-and-governance.md

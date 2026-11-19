@@ -10,6 +10,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { engineFile } from "../helpers/instance.mjs";
 import { abs, driftPreset, driftWorkflow, fixture, listTree, projectOf, presetManifest, readText, readTree, REPO_ROOT } from "./helpers/fixtures.mjs";
 import { adminFiles, BASH_SKIP, createGateWorkspace } from "./helpers/gate-harness.mjs";
 
@@ -141,9 +142,9 @@ function* files(directory) {
   }
 }
 
-test("AC21: nothing in src/drift/, the instruction file or the rendered prompt names isCorrective, htmlToText or data-notes, and the target's tests are not edited", () => {
+test("AC21: nothing in the engine's src/drift/, the instruction file or the rendered prompt names isCorrective, htmlToText or data-notes, and the target's tests are not edited", () => {
   const identifiers = ["isCorrective", "htmlToText", "data-notes"];
-  const searched = [...files(abs("src", "drift")), abs("src", "snapshot-watch-sources.mjs"), abs("src", "validate-copilot-lab-audit.mjs"), abs("instructions", "gh-admin-msft.md")];
+  const searched = [...files(engineFile("src", "drift")), engineFile("src", "snapshot-watch-sources.mjs"), abs("scripts", "validate-copilot-lab-audit.mjs"), abs("instructions", "gh-admin-msft.md")];
   for (const file of searched) {
     const text = fs.readFileSync(file, "utf8");
     for (const identifier of identifiers) assert.equal(text.includes(identifier), false, `${path.relative(REPO_ROOT, file)} contains ${identifier}`);

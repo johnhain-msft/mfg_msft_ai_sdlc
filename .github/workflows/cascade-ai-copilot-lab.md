@@ -81,6 +81,26 @@ steps:
     run: npx playwright install --with-deps msedge
     working-directory: portfolio
 pre-agent-steps:
+  - name: Mint the factory read token
+    id: factory_token
+    uses: actions/create-github-app-token@v2
+    with:
+      app-id: ${{ vars.APP_CLIENT_ID }}
+      private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      owner: johnhain-msft
+      repositories: ai-sdlc-factory
+      permission-contents: read
+  - name: Install the factory
+    env:
+      GIT_TERMINAL_PROMPT: "0"
+      GIT_CONFIG_COUNT: "3"
+      GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+      GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+      GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+    run: npm ci --ignore-scripts
   - name: Validate dispatch inputs and checkouts
     env:
       CORRELATION_ID: ${{ inputs.correlation_id }}
@@ -144,7 +164,7 @@ pre-agent-steps:
       set +e
       ( npm run sync:workshop-source -- "$UPSTREAM_DIR" ) > /tmp/gh-aw/agent/preflight-1.txt 2>&1
       rc1=$?
-      ( node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$TARGET_SHA" ) > /tmp/gh-aw/agent/preflight-2.txt 2>&1
+      ( node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$TARGET_SHA" ) > /tmp/gh-aw/agent/preflight-2.txt 2>&1
       rc2=$?
       set -e
       cp /tmp/gh-aw/agent/preflight-1.txt /tmp/gh-aw/agent/workshop-drift.txt
@@ -177,8 +197,8 @@ post-steps:
       name: sdlc-cascade-shas-${{ github.run_id }}
       path: /tmp/gh-aw/cascade-shas.json
       if-no-files-found: error
-  - name: node --frozen-intrinsics "$GITHUB_WORKSPACE/src/verify-immutable-gates.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-copilot-lab
-    run: node --frozen-intrinsics "$GITHUB_WORKSPACE/src/verify-immutable-gates.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-copilot-lab
+  - name: node --frozen-intrinsics "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/verify-immutable-gates.mjs" --downstream "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-copilot-lab
+    run: node --frozen-intrinsics "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/verify-immutable-gates.mjs" --downstream "$GITHUB_WORKSPACE/portfolio" --base "$BASE_SHA" --workflow cascade-ai-copilot-lab
   - name: npm run build:workshop
     run: npm run build:workshop
     working-directory: portfolio
@@ -246,7 +266,7 @@ post-steps:
         if (!studio._provenance || studio._provenance.commit !== want) stale.push("lab-sources.json _provenance.commit");
         if (stale.length > 0) { console.error("stale provenance: " + stale.join(", ")); process.exit(1); }
         '
-        node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$UPSTREAM_SHA"
+        node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$UPSTREAM_SHA"
       fi
     working-directory: portfolio
   - name: "post-run check: the upstream checkout stays read-only"
@@ -353,10 +373,31 @@ jobs:
         with:
           token: ${{ steps.app_token.outputs.token }}
           sparse-checkout: |-
-            src
-            schemas
+            /package.json
+            /package-lock.json
+            /sdlc.yaml
+          sparse-checkout-cone-mode: false
           persist-credentials: false
-      - run: npm ci --ignore-scripts
+      - name: Mint the factory read token
+        id: factory_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: johnhain-msft
+          repositories: ai-sdlc-factory
+          permission-contents: read
+      - name: Install the factory
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+        run: npm ci --ignore-scripts
       - uses: actions/download-artifact@v4
         with:
           name: sdlc-cascade-shas-${{ github.run_id }}
@@ -382,10 +423,10 @@ jobs:
           BRANCH_NAME: sdlc/cascade-copilot-lab
           PROVENANCE_FILE: experiences/copilot-workshop/source-inputs.json
         run: |-
-          node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --slug "$REPO_SLUG" --branch "$BRANCH_NAME" --provenance-file "$PROVENANCE_FILE" --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG" > "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
+          node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/update-poll-state.mjs" --slug "$REPO_SLUG" --branch "$BRANCH_NAME" --provenance-file "$PROVENANCE_FILE" --base-sha "$BASE_SHA" --head-sha "$AGENT_HEAD_SHA" --target-sha "$UPSTREAM_SHA" --etag "$UPSTREAM_ETAG" > "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
           cat "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
           if [ -s "${RUNNER_TEMP:-/tmp}/poll-state-result.json" ]; then
-            node "$GITHUB_WORKSPACE/src/ai-pull-request-result.mjs" --slug "$REPO_SLUG" --poll-state-result "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
+            node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/ai-pull-request-result.mjs" --slug "$REPO_SLUG" --poll-state-result "${RUNNER_TEMP:-/tmp}/poll-state-result.json"
           fi
   escalate_failure:
     needs:
@@ -411,10 +452,31 @@ jobs:
         with:
           token: ${{ steps.app_token.outputs.token }}
           sparse-checkout: |-
-            src
-            schemas
+            /package.json
+            /package-lock.json
+            /sdlc.yaml
+          sparse-checkout-cone-mode: false
           persist-credentials: false
-      - run: npm ci --ignore-scripts
+      - name: Mint the factory read token
+        id: factory_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: johnhain-msft
+          repositories: ai-sdlc-factory
+          permission-contents: read
+      - name: Install the factory
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+        run: npm ci --ignore-scripts
       - name: Record the failure
         if: inputs.dry_run != 'true'
         env:
@@ -424,7 +486,7 @@ jobs:
           CORRELATION_ID: ${{ inputs.correlation_id }}
           REPO_SLUG: COPILOT_LAB
           BRANCH_NAME: sdlc/cascade-copilot-lab
-        run: node "$GITHUB_WORKSPACE/src/update-poll-state.mjs" --record-failure --slug "$REPO_SLUG" --target-sha "$UPSTREAM_SHA" --workflow-id cascade-ai-copilot-lab
+        run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/update-poll-state.mjs" --record-failure --slug "$REPO_SLUG" --target-sha "$UPSTREAM_SHA" --workflow-id cascade-ai-copilot-lab
 ---
 
 # AI adaptation: copilot-lab
@@ -443,7 +505,7 @@ Read the artifacts under `/tmp/gh-aw/agent/` first. They were captured before yo
 - `upstream-diff.txt`: the changed upstream files of `previous_sha..upstream_sha`, with their status.
 - `existing-pr.json`: the open pull request for the branch of this workflow, or `null`.
 - `workshop-drift.txt` (also `preflight-1.txt`): the output of `npm run sync:workshop-source -- "$UPSTREAM_DIR"`.
-- `lab-studio-drift.txt` (also `preflight-2.txt`): the output of `node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$TARGET_SHA"`.
+- `lab-studio-drift.txt` (also `preflight-2.txt`): the output of `node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$TARGET_SHA"`.
 - `preflight-exit-codes.txt`: the exit codes of those commands. An exit code of 1 is a drift report for you to act on, not a failure.
 
 The variables `UPSTREAM_DIR`, `UPSTREAM_SHA`, `PREVIOUS_SHA`, `BASE_SHA` and `BRANCH_NAME` are exported for you. The upstream checkout `$UPSTREAM_DIR` is read-only: never write to it.
@@ -526,9 +588,9 @@ Run these from `$GITHUB_WORKSPACE/portfolio`, in this order, after your edits. A
 
 ```bash
 cd "$GITHUB_WORKSPACE/portfolio"
-node "$GITHUB_WORKSPACE/src/bump-studio-revision-pins.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --new-sha "$UPSTREAM_SHA"
+node "$GITHUB_WORKSPACE/scripts/bump-studio-revision-pins.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --new-sha "$UPSTREAM_SHA"
 npm run sync:workshop-source -- "$UPSTREAM_DIR" --accept
-node "$GITHUB_WORKSPACE/src/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$UPSTREAM_SHA" --accept
+node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$UPSTREAM_SHA" --accept
 npm run build:workshop
 git add -- README.md apps/lab-studio/README.md apps/lab-studio/client/src/labs apps/lab-studio/client/src/labs/source.ts apps/lab-studio/lab-sources.json apps/lab-studio/server/src/verify.ts apps/lab-studio/server/tests/lab-drift.test.ts apps/lab-studio/server/tests/lesson-content.test.ts apps/lab-studio/server/tests/source.test.ts experiences/copilot-workshop/content experiences/copilot-workshop/content/index.ts experiences/copilot-workshop/content/interludes.ts experiences/copilot-workshop/content/lab-pace.ts experiences/copilot-workshop/provenance.json experiences/copilot-workshop/public/LICENSE experiences/copilot-workshop/public/NOTICE.txt experiences/copilot-workshop/source-inputs.json public/copilot-project.html public/workshop tests/copilot-workshop.test.ts
 git commit -m "feat(cascade): adapt copilot-lab to $UPSTREAM_SHA"

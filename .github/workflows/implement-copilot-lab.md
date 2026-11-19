@@ -47,28 +47,48 @@ mcp-servers:
     type: http
     url: https://learn.microsoft.com/api/mcp
 pre-agent-steps:
+  - name: Mint the factory read token
+    id: factory_token
+    uses: actions/create-github-app-token@v2
+    with:
+      app-id: ${{ vars.APP_CLIENT_ID }}
+      private-key: ${{ secrets.APP_PRIVATE_KEY }}
+      owner: johnhain-msft
+      repositories: ai-sdlc-factory
+      permission-contents: read
+  - name: Install the factory
+    env:
+      GIT_TERMINAL_PROMPT: "0"
+      GIT_CONFIG_COUNT: "3"
+      GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+      GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+      GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+      GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+    run: npm ci --ignore-scripts
   - name: Prepare run context
     env:
       CONFIGURED_TARGET_REPO: ms-mfg-community/day-in-the-life-copilot-lab
       CORRELATION_ID: ${{ inputs.correlation_id }}
       DRY_RUN: ${{ inputs.dry_run }}
-    run: node "$GITHUB_WORKSPACE/src/drift/prepare-run.mjs" --out /tmp/gh-aw/agent --correlation-id "$CORRELATION_ID" --dry-run "$DRY_RUN"
+    run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/prepare-run.mjs" --out /tmp/gh-aw/agent --correlation-id "$CORRELATION_ID" --dry-run "$DRY_RUN" --factory-dir node_modules/ai-sdlc-factory --stage-scripts scripts/validate-copilot-lab-audit.mjs
   - name: Read the drift report
     env:
       CONFIGURED_TARGET_REPO: ms-mfg-community/day-in-the-life-copilot-lab
       REPORT_ISSUE: ${{ inputs.report_issue }}
       APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-    run: node "$GITHUB_WORKSPACE/src/drift/read-report.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --report-issue "$REPORT_ISSUE" --project-key copilot-lab --author 'mfg-msft-ai-sdlc[bot]'
+    run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/read-report.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --report-issue "$REPORT_ISSUE" --project-key copilot-lab --author 'mfg-msft-ai-sdlc[bot]'
   - name: Deduplicate open pull requests
     env:
       CONFIGURED_TARGET_REPO: ms-mfg-community/day-in-the-life-copilot-lab
       APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
       APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
-    run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --upkeep-strategy content-and-docs-sync --implementation
+    run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --upkeep-strategy content-and-docs-sync --implementation --project copilot-lab
 post-steps:
-  - name: ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" || { echo "src/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/drift/lib" "$GITHUB_WORKSPACE/src/drift/lib" >&2 || { echo "src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" )
-    run: ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" || { echo "src/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/drift/lib" "$GITHUB_WORKSPACE/src/drift/lib" >&2 || { echo "src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" )
+  - name: ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/scripts/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/scripts/validate-copilot-lab-audit.mjs" || { echo "scripts/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; cmp -s "$copy/node_modules/ai-sdlc-factory/package.json" "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory"/package.json || { echo "node_modules/ai-sdlc-factory/package.json is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/node_modules/ai-sdlc-factory/src/drift/lib" "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory"/src/drift/lib >&2 || { echo "node_modules/ai-sdlc-factory/src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; ! test -e "$GITHUB_WORKSPACE/scripts/node_modules" || { echo "scripts/node_modules is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$copy/scripts/validate-copilot-lab-audit.mjs" )
+    run: ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/scripts/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/scripts/validate-copilot-lab-audit.mjs" || { echo "scripts/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; cmp -s "$copy/node_modules/ai-sdlc-factory/package.json" "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory"/package.json || { echo "node_modules/ai-sdlc-factory/package.json is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/node_modules/ai-sdlc-factory/src/drift/lib" "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory"/src/drift/lib >&2 || { echo "node_modules/ai-sdlc-factory/src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; ! test -e "$GITHUB_WORKSPACE/scripts/node_modules" || { echo "scripts/node_modules is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$copy/scripts/validate-copilot-lab-audit.mjs" )
     working-directory: day-in-the-life-copilot-lab
   - name: ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; XDG_DATA_HOME="$GH_DATA_DIR"; export XDG_DATA_HOME; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
     run: ( set -euo pipefail; for f in tests/content-currency/registry-consumed.test.ts tests/lab-structure/lab10-contract.test.ts tests/workshop/time-budget.test.ts; do test -f "$f" || { echo "missing required test file $f" >&2; exit 1; }; done; GH_DATA_DIR="$(mktemp -d)"; export GH_DATA_DIR; XDG_DATA_HOME="$GH_DATA_DIR"; export XDG_DATA_HOME; gh extension install github/gh-aw --pin v0.86.2; npm ci; npm test )
@@ -162,10 +182,31 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |-
-            src
-            schemas
+            /package.json
+            /package-lock.json
+            /sdlc.yaml
+          sparse-checkout-cone-mode: false
           persist-credentials: false
-      - run: npm ci --ignore-scripts
+      - name: Mint the factory read token
+        id: factory_token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          owner: johnhain-msft
+          repositories: ai-sdlc-factory
+          permission-contents: read
+      - name: Install the factory
+        env:
+          GIT_TERMINAL_PROMPT: "0"
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+        run: npm ci --ignore-scripts
       - name: Escalate gate failure
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -173,7 +214,7 @@ jobs:
           TARGET_REPO: ms-mfg-community/day-in-the-life-copilot-lab
           CORRELATION_ID: ${{ inputs.correlation_id }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: node "$GITHUB_WORKSPACE/src/drift/escalate-gate-failure.mjs" --workflow-id "$WORKFLOW_ID" --target-repo "$TARGET_REPO" --correlation-id "$CORRELATION_ID" --run-url "$RUN_URL"
+        run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/escalate-gate-failure.mjs" --workflow-id "$WORKFLOW_ID" --target-repo "$TARGET_REPO" --correlation-id "$CORRELATION_ID" --run-url "$RUN_URL"
 ---
 
 # Implement a drift report: copilot-lab

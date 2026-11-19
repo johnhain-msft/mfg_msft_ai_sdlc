@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import YAML from "yaml";
-import { renderFleet } from "../../src/reconcile.mjs";
+import { renderFleet } from "ai-sdlc-factory/reconcile";
+import { engineFile, splitFactoryInstall } from "../helpers/instance.mjs";
 import { abs, parseWorkflow, presetManifest, readText, readWorkflow, referenceRequest } from "./helpers/fixtures.mjs";
 
 const W = ".github/workflows";
@@ -36,7 +37,9 @@ const BROWSER_GATE = "npx playwright test tests/browser/sites.spec.ts";
 
 test("ae32bf1: drift-gh-admin-msft installs the dependencies of its target after the snapshot and before the agent starts, so that the validators run inside the sandbox", () => {
   for (const [label, workflow] of versions("drift-gh-admin-msft.md")) {
-    const steps = workflow.frontmatter["pre-agent-steps"];
+    // the engine is installed first (a read token for its repository, then npm ci): the steps after it are the six of the drift pipeline
+    const { install, rest: steps } = splitFactoryInstall(workflow.frontmatter["pre-agent-steps"]);
+    assert.equal(install.length, 2, `${label}: the engine install comes first`);
     assert.equal(steps.length, 6, label);
     assert.ok(steps[3].run.includes("snapshot-watch-sources.mjs"), `${label}: the snapshot is the fourth step`);
     assert.equal(steps[4].name, UPLOAD_STEP_NAME, `${label}: the upload of the watch index follows it`);
@@ -53,7 +56,11 @@ test("ae32bf1: drift-gh-admin-msft installs the dependencies of its target after
 
 test("ae32bf1: the drift workflows of the projects that did not ask for the install keep their five pre-agent steps", () => {
   for (const key of ["copilot-lab", "self-improving-agents"]) {
-    for (const [label, workflow] of versions(`drift-${key}.md`)) assert.equal(workflow.frontmatter["pre-agent-steps"].length, 5, `${key} ${label}`);
+    for (const [label, workflow] of versions(`drift-${key}.md`)) {
+      const { install, rest } = splitFactoryInstall(workflow.frontmatter["pre-agent-steps"]);
+      assert.equal(install.length, 2, `${key} ${label}: the engine install comes first`);
+      assert.equal(rest.length, 5, `${key} ${label}`);
+    }
     assert.equal(agentSteps(`drift-${key}`).some((step) => step.run === "npm ci --ignore-scripts" && step["working-directory"] !== undefined), false, `${key}: the lock installs nothing`);
   }
 });
@@ -266,7 +273,7 @@ test("43926158616 (AC69): the spec and the generator say what the token of a dri
   assert.ok(row, "the spec has the AC69 row");
   for (const text of [...CONCLUSION_SCRIPTS, "[aw] Detection Runs", "gh-admin-msft", "given up", "GH_AW_DETECTION_CONTINUE_ON_ERROR", "escalate_failure", "secrets.GITHUB_TOKEN"]) assert.ok(row.includes(text), `AC69 names ${text}`);
   assert.equal(row.includes("is the only repository that they write to"), false, "AC69 does not claim what the conclusion job disproves");
-  const generator = readText(abs("src", "reconcile.mjs"));
+  const generator = readText(engineFile("src", "reconcile.mjs"));
   assert.equal(/writes? only to the target/i.test(generator), false, "no comment of the generator claims it either");
   for (const text of ["Detection Runs", "given up", "AC69"]) assert.ok(generator.includes(text), `the comments of the generator name ${text}`);
 });

@@ -110,7 +110,7 @@ jobs:
 
 Add one repository to the fleet manifest. The dispatch inputs are recorded in `/tmp/gh-aw/agent/onboard-inputs.json`.
 
-1. Run `node bin/sdlc-onboard.mjs --repo <repo>` with the `repo` input, adding `--downstream`, `--strategy`, `--watch-url`, `--schedule`, `--mode`, `--instructions` and `--manifest` for every input that is not empty. The command also accepts the repository as a positional `<owner/repo>`.
+1. Run `node node_modules/ai-sdlc-factory/bin/sdlc-onboard.mjs --repo <repo>` with the `repo` input, adding `--downstream`, `--strategy`, `--watch-url`, `--schedule`, `--mode`, `--instructions` and `--manifest` for every input that is not empty. The command also accepts the repository as a positional `<owner/repo>`.
 2. The command inspects the repository and writes its project and edge entries to the manifest and its instructions to `instructions/<projectKey>.md`. Check that what it wrote matches the inspected repository.
 3. Commit the manifest and instruction files to the working branch and call `create_pull_request`.
 

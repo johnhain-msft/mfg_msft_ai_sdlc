@@ -1,5 +1,5 @@
-# gh-aw-metadata: {"schema_version":"v4","frontmatter_hash":"3ffa77ee5c52cfc0ea0c2c19b9838c7bc9af81de6d2570753463db86df3a1414","body_hash":"537a65b5a28ef74a4450aa95992cf3e8d51287a812578347a4f42c09f2e71cfd","compiler_version":"v1.0.1","strict":true,"agent_id":"copilot","engine_versions":{"copilot":"1.0.103","copilot-sdk":"1.0.16"}}
-# gh-aw-manifest: {"version":1,"secrets":["APP_PRIVATE_KEY","COPILOT_GITHUB_TOKEN","GH_AW_CI_TRIGGER_TOKEN","GH_AW_DEFAULT_OTLP_ENDPOINT","GH_AW_DEFAULT_OTLP_HEADERS","GH_AW_GITHUB_MCP_SERVER_TOKEN","GH_AW_GITHUB_TOKEN","GITHUB_TOKEN"],"actions":[{"repo":"actions/checkout","sha":"11d5960a326750d5838078e36cf38b85af677262","version":"v4"},{"repo":"actions/checkout","sha":"3d3c42e5aac5ba805825da76410c181273ba90b1","version":"v7.0.1"},{"repo":"actions/create-github-app-token","sha":"64ab729a6294000f5aa4a4bc0b73d1f32bc45510","version":"v3.3.0"},{"repo":"actions/download-artifact","sha":"9000827ccba6bdab643e8b6fd33ac0654aef8333","version":"v8.0.2"},{"repo":"actions/github-script","sha":"3a2844b7e9c422d3c10d287c895573f7108da1b3","version":"v9.0.0"},{"repo":"actions/setup-node","sha":"949feb2413d6458794dcd2491c4babbbce0c15c1","version":"v7.1.0"},{"repo":"actions/upload-artifact","sha":"cf430e030ddbb5b0abf93d22962f4752f3646cd9","version":"v7.0.2"},{"repo":"github/gh-aw-actions/setup","sha":"221ba4f4319de6b8e809d1a15528b3ae6a818aa5","version":"v1.0.1"}],"containers":[{"image":"ghcr.io/github/gh-aw-firewall/agent:0.29.0","digest":"sha256:b14bd399376180b5649a9324be3b50fbfc82bfe8f0c80045840416b5a4e65b96","pinned_image":"ghcr.io/github/gh-aw-firewall/agent:0.29.0@sha256:b14bd399376180b5649a9324be3b50fbfc82bfe8f0c80045840416b5a4e65b96"},{"image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.29.0","digest":"sha256:baff00b856a4bdc93bce134928c70af3d3492f2e518757115042040674d56b0b","pinned_image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.29.0@sha256:baff00b856a4bdc93bce134928c70af3d3492f2e518757115042040674d56b0b"},{"image":"ghcr.io/github/gh-aw-firewall/squid:0.29.0","digest":"sha256:6e0cbf7f980beb78b5461563a8164f6439ca959bc93733d5a6b52972e523ed50","pinned_image":"ghcr.io/github/gh-aw-firewall/squid:0.29.0@sha256:6e0cbf7f980beb78b5461563a8164f6439ca959bc93733d5a6b52972e523ed50"},{"image":"ghcr.io/github/gh-aw-mcpg:v0.5.0","digest":"sha256:d3544a4222e7efeeeb38669d8a1af0c72691c55b8f6506b15aa5920f7f31b7bc","pinned_image":"ghcr.io/github/gh-aw-mcpg:v0.5.0@sha256:d3544a4222e7efeeeb38669d8a1af0c72691c55b8f6506b15aa5920f7f31b7bc"},{"image":"ghcr.io/github/gh-aw-node","digest":"sha256:2c2ea524e648b91c8333ce246e3838fcf5b19ac70e45baac1a51b9207299749f","pinned_image":"ghcr.io/github/gh-aw-node@sha256:2c2ea524e648b91c8333ce246e3838fcf5b19ac70e45baac1a51b9207299749f"},{"image":"ghcr.io/github/github-mcp-server:v2.0.3","digest":"sha256:250bc6ce70788207608ef74cef4397230ff2e8481218da74d6093e4bd9101132","pinned_image":"ghcr.io/github/github-mcp-server:v2.0.3@sha256:250bc6ce70788207608ef74cef4397230ff2e8481218da74d6093e4bd9101132"},{"image":"node:lts-alpine","digest":"sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53","pinned_image":"node:lts-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53"}],"mcp_servers":[{"name":"context7","tools":["*"]},{"name":"github","tools":["get_commit","get_file_contents","get_latest_release","get_me","get_pull_request","get_pull_request_comments","get_pull_request_diff","get_pull_request_files","get_pull_request_review_comments","get_pull_request_reviews","get_pull_request_status","get_release_by_tag","get_tag","issue_read","list_branches","list_commits","list_issue_types","list_issues","list_pull_requests","list_releases","list_starred_repositories","list_tags","pull_request_read","search_code","search_issues","search_pull_requests","search_repositories"]},{"name":"microsoft-learn","tools":["*"]},{"name":"safeoutputs","tools":["add_comment","create_pull_request","noop","report_incomplete","report_missing_data","report_missing_tool"]}],"threat_detection":{"mode":"enabled"},"admission":false}
+# gh-aw-metadata: {"schema_version":"v4","frontmatter_hash":"57f3c16bbd6425ba1c2794f216da75f7a1dccb5b24253249f20c5b7a05b7a259","body_hash":"537a65b5a28ef74a4450aa95992cf3e8d51287a812578347a4f42c09f2e71cfd","compiler_version":"v1.0.1","strict":true,"agent_id":"copilot","engine_versions":{"copilot":"1.0.103","copilot-sdk":"1.0.16"}}
+# gh-aw-manifest: {"version":1,"secrets":["APP_PRIVATE_KEY","COPILOT_GITHUB_TOKEN","GH_AW_CI_TRIGGER_TOKEN","GH_AW_DEFAULT_OTLP_ENDPOINT","GH_AW_DEFAULT_OTLP_HEADERS","GH_AW_GITHUB_MCP_SERVER_TOKEN","GH_AW_GITHUB_TOKEN","GITHUB_TOKEN"],"actions":[{"repo":"actions/checkout","sha":"11d5960a326750d5838078e36cf38b85af677262","version":"v4"},{"repo":"actions/checkout","sha":"3d3c42e5aac5ba805825da76410c181273ba90b1","version":"v7.0.1"},{"repo":"actions/create-github-app-token","sha":"64ab729a6294000f5aa4a4bc0b73d1f32bc45510","version":"v3.3.0"},{"repo":"actions/create-github-app-token","sha":"fee1f7d63c2ff003460e3d139729b119787bc349","version":"v2"},{"repo":"actions/download-artifact","sha":"9000827ccba6bdab643e8b6fd33ac0654aef8333","version":"v8.0.2"},{"repo":"actions/github-script","sha":"3a2844b7e9c422d3c10d287c895573f7108da1b3","version":"v9.0.0"},{"repo":"actions/setup-node","sha":"949feb2413d6458794dcd2491c4babbbce0c15c1","version":"v7.1.0"},{"repo":"actions/upload-artifact","sha":"cf430e030ddbb5b0abf93d22962f4752f3646cd9","version":"v7.0.2"},{"repo":"github/gh-aw-actions/setup","sha":"221ba4f4319de6b8e809d1a15528b3ae6a818aa5","version":"v1.0.1"}],"containers":[{"image":"ghcr.io/github/gh-aw-firewall/agent:0.29.0","digest":"sha256:b14bd399376180b5649a9324be3b50fbfc82bfe8f0c80045840416b5a4e65b96","pinned_image":"ghcr.io/github/gh-aw-firewall/agent:0.29.0@sha256:b14bd399376180b5649a9324be3b50fbfc82bfe8f0c80045840416b5a4e65b96"},{"image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.29.0","digest":"sha256:baff00b856a4bdc93bce134928c70af3d3492f2e518757115042040674d56b0b","pinned_image":"ghcr.io/github/gh-aw-firewall/api-proxy:0.29.0@sha256:baff00b856a4bdc93bce134928c70af3d3492f2e518757115042040674d56b0b"},{"image":"ghcr.io/github/gh-aw-firewall/squid:0.29.0","digest":"sha256:6e0cbf7f980beb78b5461563a8164f6439ca959bc93733d5a6b52972e523ed50","pinned_image":"ghcr.io/github/gh-aw-firewall/squid:0.29.0@sha256:6e0cbf7f980beb78b5461563a8164f6439ca959bc93733d5a6b52972e523ed50"},{"image":"ghcr.io/github/gh-aw-mcpg:v0.5.0","digest":"sha256:d3544a4222e7efeeeb38669d8a1af0c72691c55b8f6506b15aa5920f7f31b7bc","pinned_image":"ghcr.io/github/gh-aw-mcpg:v0.5.0@sha256:d3544a4222e7efeeeb38669d8a1af0c72691c55b8f6506b15aa5920f7f31b7bc"},{"image":"ghcr.io/github/gh-aw-node","digest":"sha256:2c2ea524e648b91c8333ce246e3838fcf5b19ac70e45baac1a51b9207299749f","pinned_image":"ghcr.io/github/gh-aw-node@sha256:2c2ea524e648b91c8333ce246e3838fcf5b19ac70e45baac1a51b9207299749f"},{"image":"ghcr.io/github/github-mcp-server:v2.0.3","digest":"sha256:250bc6ce70788207608ef74cef4397230ff2e8481218da74d6093e4bd9101132","pinned_image":"ghcr.io/github/github-mcp-server:v2.0.3@sha256:250bc6ce70788207608ef74cef4397230ff2e8481218da74d6093e4bd9101132"},{"image":"node:lts-alpine","digest":"sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53","pinned_image":"node:lts-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53"}],"mcp_servers":[{"name":"context7","tools":["*"]},{"name":"github","tools":["get_commit","get_file_contents","get_latest_release","get_me","get_pull_request","get_pull_request_comments","get_pull_request_diff","get_pull_request_files","get_pull_request_review_comments","get_pull_request_reviews","get_pull_request_status","get_release_by_tag","get_tag","issue_read","list_branches","list_commits","list_issue_types","list_issues","list_pull_requests","list_releases","list_starred_repositories","list_tags","pull_request_read","search_code","search_issues","search_pull_requests","search_repositories"]},{"name":"microsoft-learn","tools":["*"]},{"name":"safeoutputs","tools":["add_comment","create_pull_request","noop","report_incomplete","report_missing_data","report_missing_tool"]}],"threat_detection":{"mode":"enabled"},"admission":false}
 # This file was automatically generated by gh-aw (v1.0.1). DO NOT EDIT. To debug this workflow, load the skill at https://github.com/github/gh-aw/blob/main/debug.md
 #
 #    ___                   _   _
@@ -38,6 +38,7 @@
 #   - actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 #   - actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 #   - actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+#   - actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
 #   - actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
 #   - actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
 #   - actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -628,25 +629,45 @@ jobs:
         env:
           GH_AW_SKILL_DIR: ".github/skills"
         run: bash "${RUNNER_TEMP}/gh-aw/actions/restore_inline_skills.sh"
+      - id: factory_token
+        name: Mint the factory read token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          owner: johnhain-msft
+          permission-contents: read
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: ai-sdlc-factory
+      - env:
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+          GIT_TERMINAL_PROMPT: "0"
+        name: Install the factory
+        run: npm ci --ignore-scripts
       - env:
           CONFIGURED_TARGET_REPO: ms-mfg-community/day-in-the-life-copilot-lab
           CORRELATION_ID: ${{ inputs.correlation_id }}
           DRY_RUN: ${{ inputs.dry_run }}
         name: Prepare run context
-        run: node "$GITHUB_WORKSPACE/src/drift/prepare-run.mjs" --out /tmp/gh-aw/agent --correlation-id "$CORRELATION_ID" --dry-run "$DRY_RUN"
+        run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/prepare-run.mjs" --out /tmp/gh-aw/agent --correlation-id "$CORRELATION_ID" --dry-run "$DRY_RUN" --factory-dir node_modules/ai-sdlc-factory --stage-scripts scripts/validate-copilot-lab-audit.mjs
       - env:
           APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           CONFIGURED_TARGET_REPO: ms-mfg-community/day-in-the-life-copilot-lab
           REPORT_ISSUE: ${{ inputs.report_issue }}
         name: Read the drift report
-        run: node "$GITHUB_WORKSPACE/src/drift/read-report.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --report-issue "$REPORT_ISSUE" --project-key copilot-lab --author 'mfg-msft-ai-sdlc[bot]'
+        run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/read-report.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --report-issue "$REPORT_ISSUE" --project-key copilot-lab --author 'mfg-msft-ai-sdlc[bot]'
       - env:
           APP_CLIENT_ID: ${{ vars.APP_CLIENT_ID }}
           APP_PRIVATE_KEY: ${{ secrets.APP_PRIVATE_KEY }}
           CONFIGURED_TARGET_REPO: ms-mfg-community/day-in-the-life-copilot-lab
         name: Deduplicate open pull requests
-        run: node "$GITHUB_WORKSPACE/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --upkeep-strategy content-and-docs-sync --implementation
+        run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/dedupe-open-prs.mjs" --out /tmp/gh-aw/agent --target-repo "$CONFIGURED_TARGET_REPO" --upkeep-strategy content-and-docs-sync --implementation --project copilot-lab
 
       - name: Download container images
         run: bash "${RUNNER_TEMP}/gh-aw/actions/download_docker_images.sh" ghcr.io/github/gh-aw-firewall/agent:0.29.0@sha256:b14bd399376180b5649a9324be3b50fbfc82bfe8f0c80045840416b5a4e65b96 ghcr.io/github/gh-aw-firewall/api-proxy:0.29.0@sha256:baff00b856a4bdc93bce134928c70af3d3492f2e518757115042040674d56b0b ghcr.io/github/gh-aw-firewall/squid:0.29.0@sha256:6e0cbf7f980beb78b5461563a8164f6439ca959bc93733d5a6b52972e523ed50 ghcr.io/github/gh-aw-mcpg:v0.5.0@sha256:d3544a4222e7efeeeb38669d8a1af0c72691c55b8f6506b15aa5920f7f31b7bc ghcr.io/github/gh-aw-node@sha256:2c2ea524e648b91c8333ce246e3838fcf5b19ac70e45baac1a51b9207299749f ghcr.io/github/github-mcp-server:v2.0.3@sha256:250bc6ce70788207608ef74cef4397230ff2e8481218da74d6093e4bd9101132 node:lts-alpine@sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53
@@ -1390,8 +1411,8 @@ jobs:
           if [ ! -f /tmp/gh-aw/agent_output.json ]; then
             echo '{"items":[]}' > /tmp/gh-aw/agent_output.json
           fi
-      - name: ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" || { echo "src/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/drift/lib" "$GITHUB_WORKSPACE/src/drift/lib" >&2 || { echo "src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" )
-        run: ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" || { echo "src/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/drift/lib" "$GITHUB_WORKSPACE/src/drift/lib" >&2 || { echo "src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$GITHUB_WORKSPACE/src/validate-copilot-lab-audit.mjs" )
+      - name: ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/scripts/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/scripts/validate-copilot-lab-audit.mjs" || { echo "scripts/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; cmp -s "$copy/node_modules/ai-sdlc-factory/package.json" "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory"/package.json || { echo "node_modules/ai-sdlc-factory/package.json is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/node_modules/ai-sdlc-factory/src/drift/lib" "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory"/src/drift/lib >&2 || { echo "node_modules/ai-sdlc-factory/src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; ! test -e "$GITHUB_WORKSPACE/scripts/node_modules" || { echo "scripts/node_modules is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$copy/scripts/validate-copilot-lab-audit.mjs" )
+        run: ( set -euo pipefail; copy="${RUNNER_TEMP:?RUNNER_TEMP is not set}/gh-aw/sdlc-validator"; cmp -s "$copy/scripts/validate-copilot-lab-audit.mjs" "$GITHUB_WORKSPACE/scripts/validate-copilot-lab-audit.mjs" || { echo "scripts/validate-copilot-lab-audit.mjs is not the copy that prepare-run made before the agent started" >&2; exit 1; }; cmp -s "$copy/node_modules/ai-sdlc-factory/package.json" "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory"/package.json || { echo "node_modules/ai-sdlc-factory/package.json is not the copy that prepare-run made before the agent started" >&2; exit 1; }; diff -rq "$copy/node_modules/ai-sdlc-factory/src/drift/lib" "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory"/src/drift/lib >&2 || { echo "node_modules/ai-sdlc-factory/src/drift/lib is not the copy that prepare-run made before the agent started" >&2; exit 1; }; ! test -e "$GITHUB_WORKSPACE/scripts/node_modules" || { echo "scripts/node_modules is not the copy that prepare-run made before the agent started" >&2; exit 1; }; node "$copy/scripts/validate-copilot-lab-audit.mjs" )
         working-directory: day-in-the-life-copilot-lab
       - env:
           GH_TOKEN: ${{ github.token }}
@@ -2215,11 +2236,32 @@ jobs:
         with:
           persist-credentials: false
           sparse-checkout: |-
-            src
-            schemas
-      - run: npm ci --ignore-scripts
+            /package.json
+            /package-lock.json
+            /sdlc.yaml
+          sparse-checkout-cone-mode: false
+      - name: Mint the factory read token
+        id: factory_token
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ vars.APP_CLIENT_ID }}
+          owner: johnhain-msft
+          permission-contents: read
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+          repositories: ai-sdlc-factory
+      - name: Install the factory
+        run: npm ci --ignore-scripts
+        env:
+          GIT_CONFIG_COUNT: "3"
+          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
+          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
+          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
+          GIT_TERMINAL_PROMPT: "0"
       - name: Escalate gate failure
-        run: node "$GITHUB_WORKSPACE/src/drift/escalate-gate-failure.mjs" --workflow-id "$WORKFLOW_ID" --target-repo "$TARGET_REPO" --correlation-id "$CORRELATION_ID" --run-url "$RUN_URL"
+        run: node "$GITHUB_WORKSPACE/node_modules/ai-sdlc-factory/src/drift/escalate-gate-failure.mjs" --workflow-id "$WORKFLOW_ID" --target-repo "$TARGET_REPO" --correlation-id "$CORRELATION_ID" --run-url "$RUN_URL"
         env:
           CORRELATION_ID: ${{ inputs.correlation_id }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -7,10 +7,10 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
+import { engineFile, expandFactoryCommand, FACTORY_DIR } from "../../helpers/instance.mjs";
 import {
   abs,
   customJobsOf,
-  minimalManifest,
   mutate,
   parseWorkflow,
   presetManifest,
@@ -22,7 +22,7 @@ import {
   toYaml,
 } from "../../s1/helpers/fixtures.mjs";
 
-export { abs, customJobsOf, minimalManifest, mutate, parseWorkflow, presetManifest, projectOf, readText, readWorkflow, referenceRequest, REPO_ROOT, toYaml };
+export { abs, customJobsOf, expandFactoryCommand, FACTORY_DIR, mutate, parseWorkflow, presetManifest, projectOf, readText, readWorkflow, referenceRequest, REPO_ROOT, toYaml };
 
 export const S2_ROOT = fileURLToPath(new URL("../", import.meta.url));
 export const FIXTURES = path.join(S2_ROOT, "fixtures");
@@ -34,7 +34,12 @@ export const fixture = (...parts) => path.join(FIXTURES, ...parts);
 export const readJson = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 export const readYaml = (file) => YAML.parse(fs.readFileSync(file, "utf8"));
 export const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
-export const script = (...parts) => path.join(REPO_ROOT, "src", ...parts);
+/** A script of the installed engine package: `engineScript("drift", "dedupe-open-prs.mjs")` is <engine>/src/drift/dedupe-open-prs.mjs. */
+export const engineScript = (...parts) => engineFile("src", ...parts);
+/** A script of this repository: `instanceScript("validate-copilot-lab-audit.mjs")` is scripts/validate-copilot-lab-audit.mjs. */
+export const instanceScript = (name) => abs("scripts", name);
+/** The verifyCommands of a project as the renderer writes them into its post-steps: the manifest's engine placeholders expanded. */
+export const renderedVerifyCommands = (projectKey) => projectOf(presetManifest(), projectKey).driftAudit.verifyCommands.map(expandFactoryCommand);
 
 /** The committed workflow of a project: frontmatter, text of the frontmatter and Markdown body. */
 export const driftWorkflow = (projectKey) => readWorkflow(`drift-${projectKey}.md`);
@@ -144,11 +149,3 @@ export function writeTree(root, files) {
 
 /** The step of a job or section whose `run` contains the text. */
 export const stepWith = (steps, text) => steps.find((step) => typeof step.run === "string" && step.run.includes(text));
-
-/** A drift workflow rendered from a manifest in a fixture directory (no file is written). */
-export async function renderIn(directory, request = referenceRequest()) {
-  const { renderFleet } = await import("../../../src/reconcile.mjs");
-  const result = renderFleet(request, { cwd: directory });
-  if (!result.ok) throw new Error(JSON.stringify(result.result));
-  return result;
-}

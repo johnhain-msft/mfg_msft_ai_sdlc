@@ -3,7 +3,7 @@
 //  - createFakeFetch(handler): an in-process `fetch` that opens no socket. It records every request and the greatest number
 //    of requests that were in flight together, so that a test can assert that the scripts issue requests serially. The
 //    suite uses it wherever it can: a TCP connect can kill a Windows process on Node.js 24.0 to 24.15 (libuv
-//    uv_tcp_connect, fixed in 24.16), see tests/s5/helpers/no-network.mjs.
+//    uv_tcp_connect, fixed in 24.16), see tests/s5/helpers/no-network.mjs of the engine package.
 //  - startStubServer(handler): a real HTTP server bound to 127.0.0.1, for the few tests that run a script as a command and
 //    let that child process connect to it. The test process only accepts connections; a child that dies of the libuv
 //    defect (exit code 3221226505) is started again by runNode.
@@ -153,8 +153,9 @@ const CREDENTIAL_VARIABLES = [
   "GITHUB_RUN_ATTEMPT",
   "CONFIGURED_TARGET_REPO",
   "GH_DATA_DIR",
-  // where gh finds its extensions. A shell that runs the suite may export it (the maintainer's workstation points it at an isolated gh-aw install for
-  // the reconciler), and the lab gate of AC24 sets it itself, so a test that asks what the parent had must not see the shell's value.
+  // where gh finds its extensions. A shell that runs the suite may export it (a machine whose global gh-aw is too old points it at an isolated gh-aw install for
+  // the reconciler), and the lab gate of AC24 sets it itself, so a test that asks what the parent had must not see the shell's value. SDLC_GH_AW_DATA_HOME, from
+  // which the reconciler derives the same default, is not listed: a child inherits it and the reconciler applies that default in the child.
   "XDG_DATA_HOME",
   // the switch that asks for the real gh-aw compiler (`SDLC_REAL_GH_AW=1 npm test`). The gh of a child of this suite is a shim that cannot compile, so a
   // child that inherited it would try the real compiler through the shim and fail (the version probe finds the real gh.exe further down PATH on Windows,
