@@ -4,7 +4,7 @@
 
 SHOW: The ledger of six identifiers on the left and the interactive six-step telemetry viewer on the right, starting on Step 1.
 
-The viewer on the right steps through six production milestones from the administration pilot, and the link below opens the full eight-frame animated SVG. Because these repositories are private, collaborators with repository access can inspect each run and pull request directly by the identifiers on the left.
+The viewer on the right steps through six production milestones from the administration pilot. Because these repositories are private, collaborators with repository access can inspect each run and pull request directly by the identifiers on the left.
 
 Step one, already on screen, is the dry run ending in nine-oh-eight-seven. The dry-run flag is true, so it snapshots all seven sources, runs the agent and the seven post-steps, and skips safe outputs with zero writes to the remote. Do this first when you wire up a new repository.
 
@@ -36,7 +36,7 @@ ASK: What would you want to see on a screen like this before you let it touch yo
 
 > This deck is itself a repository in the fleet. Here's the wiring.
 
-SOURCE: docs/media/gh-admin-sdlc-pipeline-demo.svg · https://github.com/johnhain-msft/gh-admin-msft/pull/19 · https://github.com/johnhain-msft/portfolio/pull/1 · https://github.com/johnhain-msft/mfg_msft_ai_sdlc/actions/runs/42531290378 · https://github.com/johnhain-msft/mfg_msft_ai_sdlc/actions/runs/42532946999
+SOURCE: docs/media/gh-admin-sdlc-pipeline-demo.svg · sdlc.yaml · .github/workflows/drift-gh-admin-msft.md · .github/workflows/cascade-router.yml · .github/workflows/cascade-mechanical-ghec-admin.md
 
 ## [self-cascade-onboard] S5 · Self-Cascade & Two-Command Onboarding
 
@@ -52,7 +52,7 @@ The YAML on the right is the self-cascade edge, ai-sdlc, and it's registered in 
 
 > Let us see whether the security story stuck.
 
-SOURCE: README.md · bin/sdlc-bootstrap.mjs · bin/sdlc-onboard.mjs · bin/lib/ghaw-version.mjs · specs/05-packaging-bootstrap-and-governance.md
+SOURCE: README.md · sdlc.yaml · .github/workflows/sdlc-bridge-dispatch.yml · specs/05-packaging-bootstrap-and-governance.md
 
 ## [knowledge-check] Architecture Check: Who Grades the Agent?
 
@@ -76,7 +76,7 @@ Locked covers three things. First, paths that must show zero diff. Second, the c
 
 > Three rules to take with you.
 
-SOURCE: src/verify-immutable-gates.mjs · src/update-poll-state.mjs · specs/02-upstream-drift-automation.md · specs/04-ai-downstream-adaptation.md
+SOURCE: sdlc.yaml · specs/02-upstream-drift-automation.md · specs/03-event-routing-and-mechanical-cascade.md · specs/04-ai-downstream-adaptation.md
 
 ## [takeaways] Declarative, Sandboxed, Self-Cascading
 
@@ -90,7 +90,7 @@ Never let an agent grade its own homework, and never hand it the write token. Bo
 
 And match the cascade mode to the job. If a script can do the import, let the script do it, and spend the agent only where judgment is needed.
 
-Each card names the specification that owns that rule; in the hosted portfolio reader those links open the specification pages directly, and in the standalone deck they open the files on GitHub for collaborators. The plan file holds the whole plan, with every claim traced to a source.
+Each card names the specification that owns that rule; in the standalone deck those references open the files on GitHub for collaborators. The plan file holds the whole plan, with every claim traced to a source.
 
 ASK: Open the floor. What would you want to put under this kind of control first?
 

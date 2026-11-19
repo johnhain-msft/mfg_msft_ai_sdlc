@@ -155,22 +155,24 @@ const svgIcon = (name, cls) => `<svg class="${cls}" viewBox="0 0 48 48" width="4
 const calloutIcon = (kind) => `<svg class="callout-icon" viewBox="0 0 28 28" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${CALLOUT_ICONS[kind] || CALLOUT_ICONS.note}</svg>`;
 
 const GLYPHS = {
-  // five repositories around the orchestrator hub: four upstreams flow in, one downstream receives
+  // eight repositories around the orchestrator hub: six upstreams flow in, two downstreams receive
   fleet: `<svg class="glyph-svg" viewBox="0 0 640 640" width="640" height="640" aria-hidden="true" focusable="false">
 <circle class="g-ring" cx="320" cy="320" r="268"/>
 <circle class="g-ring g-ring-inner" cx="320" cy="320" r="176"/>
 <g class="g-edges">
-<path d="M122 132L320 320"/><path d="M70 286L320 320"/><path d="M96 468L320 320"/><path d="M208 580L320 320"/>
-<path class="g-edge-out" d="M320 320L548 320"/>
+<path d="M194 83L320 320"/><path d="M107 158L320 320"/><path d="M58 262L320 320"/><path d="M58 378L320 320"/><path d="M107 482L320 320"/><path d="M194 557L320 320"/>
+<path class="g-edge-out" d="M320 320L538 240"/><path class="g-edge-out" d="M320 320L538 400"/>
 </g>
-<g class="g-dots"><circle cx="221" cy="226" r="7"/><circle cx="195" cy="303" r="7"/><circle cx="208" cy="394" r="7"/><circle cx="264" cy="450" r="7"/><circle cx="434" cy="320" r="7"/></g>
+<g class="g-dots"><circle cx="257" cy="202" r="7"/><circle cx="214" cy="239" r="7"/><circle cx="189" cy="291" r="7"/><circle cx="189" cy="349" r="7"/><circle cx="214" cy="401" r="7"/><circle cx="257" cy="439" r="7"/><circle cx="446" cy="274" r="7"/><circle cx="446" cy="366" r="7"/></g>
 <g class="g-nodes">
-<circle class="g-node" cx="122" cy="132" r="30"/><circle class="g-node" cx="70" cy="286" r="30"/><circle class="g-node" cx="96" cy="468" r="30"/><circle class="g-node" cx="208" cy="580" r="30"/>
+<circle class="g-node" cx="194" cy="83" r="26"/><circle class="g-node" cx="107" cy="158" r="26"/><circle class="g-node" cx="58" cy="262" r="26"/><circle class="g-node" cx="58" cy="378" r="26"/><circle class="g-node" cx="107" cy="482" r="26"/><circle class="g-node" cx="194" cy="557" r="26"/>
 <circle class="g-hub" cx="320" cy="320" r="58"/><circle class="g-hub-core" cx="320" cy="320" r="18"/>
-<circle class="g-node g-node-out" cx="548" cy="320" r="42"/>
+<circle class="g-node-bg" cx="572" cy="228" r="36"/><circle class="g-node-bg" cx="572" cy="412" r="36"/>
+<circle class="g-node g-node-out" cx="572" cy="228" r="36"/><circle class="g-node g-node-out" cx="572" cy="412" r="36"/>
 </g>
-<text class="d-mono d-sub" x="320" y="408" font-size="22" text-anchor="middle">sdlc.yaml</text>
-<text class="d-mono d-sub" x="548" y="392" font-size="22" text-anchor="middle">portfolio</text>
+<text class="g-label g-label-mono" x="320" y="408" font-size="22" text-anchor="middle">sdlc.yaml</text>
+<text class="g-label" x="628" y="178" font-size="22" text-anchor="end">ai_asset_management</text>
+<text class="g-label" x="628" y="478" font-size="22" text-anchor="end">portfolio</text>
 </svg>`,
 };
 

@@ -183,8 +183,12 @@ body.presenting #stage { box-shadow: none; }
 .glyph-svg .g-dots circle { fill: var(--accent); }
 .glyph-svg .g-node { fill: var(--surface); stroke: var(--accent); stroke-width: 4; }
 .glyph-svg .g-node-out { fill: var(--accent-soft); stroke-width: 6; }
+.glyph-svg .g-node-bg { fill: var(--surface); }      /* opaque base under the tinted downstream nodes, so the ring does not show through */
 .glyph-svg .g-hub { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 6; }
 .glyph-svg .g-hub-core { fill: var(--accent); }
+/* labels: muted text (7.9:1 dark, 6.6:1 light) with a background-coloured halo, so the rings and edges that cross them are knocked out */
+.glyph-svg .g-label { fill: var(--muted); font-family: var(--font-sans); paint-order: stroke; stroke: var(--bg); stroke-width: 8px; stroke-linejoin: round; }
+.glyph-svg .g-label-mono { font-family: var(--font-mono); }
 
 .layout-section { justify-content: center; }
 .layout-section h1 { font-size: 92px; max-width: 1400px; }

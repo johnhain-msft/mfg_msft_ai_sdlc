@@ -1,6 +1,6 @@
 # AI SDLC Orchestrator: architecture briefing deck
 
-`dist/index.html` is the briefing: one self-contained HTML file (about 3.5 MB, because it embeds the real pipeline walkthrough), no server, no dependencies. It is generated from the Markdown under `content/` by `build.mjs`, which also writes the read-aloud script to `../presenter/PRESENTER-SCRIPT.md`. Edit the sources, rebuild, commit both outputs.
+`dist/index.html` is the briefing: one self-contained HTML file (about 230 KB, with the production walkthrough drawn inline), no server, no dependencies. It is generated from the Markdown under `content/` by `build.mjs`, which also writes the read-aloud script to `../presenter/PRESENTER-SCRIPT.md`. Edit the sources, rebuild, commit both outputs.
 
 12 slides, 30 minutes. The deck follows the specs in `../specs/` and the plan in `../plan.md`; every spec path on a slide is a real file in this repository.
 
@@ -73,7 +73,7 @@ Containers open with `:::name` and close with `:::`. `:::diagram`, `:::spec` and
 
 Inline SVG or HTML fragments styled with the `d-*` classes in `src/styles.css`, so they follow the theme. Every SVG `<text>` is at least 22px (the build checks it) so labels stay near 18px on screen. Elements with `data-hl="group"` highlight together on hover or focus: give the group's main box the `d-panel` class and it takes a heavier outline while the other groups stay at full strength (text is never faded below 5:1). A heading inside a diagram follows the slide's `h1` as an `h2`, as `cascade-decision.html` does, so the outline never skips a level. `cascade-decision.html` holds the `[data-decision]` tree as an embedded JSON object.
 
-`live-pipeline-demo.html` embeds `docs/media/gh-admin-sdlc-pipeline-demo.svg` as a data URI with `{{data-uri:path|transform}}`. The `legible-captions` transform runs on a build-time copy: it enlarges the 16–17px captions to 22px and moves the step-pager bars below the caption line. Frames, timing and wording are untouched, and the file in `docs/media/` is never modified.
+`live-pipeline-demo.html` is the six-step production walkthrough of slide 9, drawn as inline SVG: the `data-pilot` stepper in `src/app.js` shows one `data-pilot-panel` at a time and keeps it in step with the ledger rows. It does not embed `docs/media/gh-admin-sdlc-pipeline-demo.svg`. A fragment that does want a repository file inlined can use `{{data-uri:path|transform}}`; the `legible-captions` transform then enlarges that SVG's 16–17px captions to 22px on a build-time copy, and the file in `docs/media/` is never modified.
 
 ### Script: `content/script/NN-name.md`
 

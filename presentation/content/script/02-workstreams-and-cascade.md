@@ -18,7 +18,7 @@ That's why the other workstreams stay consistent. Nobody hand-edits a workflow, 
 
 > S1 produces the workflows. Next, the first one it produces: the drift audit.
 
-SOURCE: src/reconcile.mjs · schemas/sdlc.schema.json · specs/01-manifest-and-reconciler.md
+SOURCE: sdlc.yaml · specs/01-manifest-and-reconciler.md · README.md
 
 ## [s2-drift-harness] S2 · Upstream Drift & Remote-Only Harness
 
@@ -46,7 +46,7 @@ If everything passes, and only then, safe outputs opens one pull request. Auto-m
 
 > The audit opens a pull request upstream. When a person merges it, how does the portfolio find out?
 
-SOURCE: .github/workflows/drift-gh-admin-msft.md · src/snapshot-watch-sources.mjs · specs/02-upstream-drift-automation.md · https://github.com/johnhain-msft/gh-admin-msft/blob/main/.github/sdlc/AGENTS.md
+SOURCE: .github/workflows/drift-gh-admin-msft.md · sdlc.yaml · specs/02-upstream-drift-automation.md · README.md
 
 ## [s3-event-router] S3 · Hybrid Push + ETag Event Router
 
@@ -66,7 +66,7 @@ The router has two safeguards. Runs are serialized per edge, in a concurrency gr
 
 > The router has decided a cascade is needed. Now, which kind?
 
-SOURCE: src/route-upstream.mjs · src/update-poll-state.mjs · .github/workflows/cascade-router.yml · specs/03-event-routing-and-mechanical-cascade.md · .github/workflows/sdlc-bridge-dispatch.yml
+SOURCE: .github/workflows/cascade-router.yml · .github/workflows/sdlc-bridge-dispatch.yml · specs/03-event-routing-and-mechanical-cascade.md · README.md
 
 ## [s4-cascade-modes] S4 · Mechanical vs AI-Adaptation Cascade
 
@@ -84,7 +84,7 @@ CLICK: Press Start over. Answer No, then Yes.
 
 With no single import script, the answer is usually AI-adaptation, because the upstream change needs editing across files: workshop pages, lab pages, and tests that pin a revision. The agent may edit only the files on that edge's allowed list. Afterward the immutable-gates script checks that locked files show zero diff and that protected blocks in the companion tests are byte for byte identical.
 
-The Copilot lab, the pipeline showcase and the intermediate template are AI-adaptation edges. The administration workshop and this orchestrator repository are mechanical.
+The Copilot lab, the pipeline showcase and the intermediate template are AI-adaptation edges. The administration workshop, the Copilot config repository and this orchestrator repository are mechanical.
 
 CLICK: Press Start over. Answer No, then No.
 
@@ -94,4 +94,4 @@ ASK: Think of one repository in your own organization. Which mode would it be? S
 
 > Now the same pipeline, running in production.
 
-SOURCE: bin/lib/synthesize.mjs · .github/workflows/cascade-mechanical-ghec-admin.md · .github/workflows/cascade-ai-pipeline-showcase.md · src/verify-immutable-gates.mjs · specs/04-ai-downstream-adaptation.md
+SOURCE: sdlc.yaml · .github/workflows/cascade-mechanical-ghec-admin.md · .github/workflows/cascade-ai-pipeline-showcase.md · specs/04-ai-downstream-adaptation.md · specs/05-packaging-bootstrap-and-governance.md

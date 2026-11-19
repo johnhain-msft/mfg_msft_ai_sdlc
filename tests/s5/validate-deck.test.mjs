@@ -5,6 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import vm from "node:vm";
+import YAML from "yaml";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -60,6 +61,86 @@ test("AI SDLC presentation deck is built from its current sources", () => {
   for (const part of read("presentation", "src", "shell.html").split(/\{\{[A-Z_]+\}\}/)) {
     assert.ok(html.includes(part.trim()), `dist/index.html carries the shell markup: ${part.trim().slice(0, 48)}...`);
   }
+});
+
+// Facts that the deck states about this repository are derived from the repository, not retyped:
+// the counts come from sdlc.yaml, the source lines from the files that exist, the size from the build.
+const content = (...parts) => read("presentation", "content", ...parts);
+
+function fleetOf(manifest) {
+  const edges = manifest.dependencyEdges;
+  const upstreams = new Set(edges.map((e) => e.upstreamRepo));
+  const downstreams = new Set(edges.map((e) => e.downstreamRepo));
+  return {
+    edges,
+    upstreams,
+    downstreams,
+    repos: new Set([...manifest.projects.map((p) => p.repo), ...upstreams, ...downstreams]),
+    self: edges.find((e) => e.edgeId === "ai-sdlc"), // this repository, cascading itself (slides 3 and 10)
+  };
+}
+
+test("deck states the fleet that sdlc.yaml declares: the slide 2 tile, the slide 3 diagram and the cover glyph", () => {
+  const { edges, upstreams, downstreams, repos, self } = fleetOf(YAML.parse(read("sdlc.yaml")));
+  assert.ok(self, "sdlc.yaml has the ai-sdlc self-cascade edge that slides 3 and 10 describe");
+
+  const tile = content("slides", "01-overview-and-security.md").match(/^(\d+) \| Tracked Fleet Repos \| (.+)$/m);
+  assert.ok(tile, "slide 2 has the Tracked Fleet Repos tile");
+  assert.equal(Number(tile[1]), repos.size, `sdlc.yaml tracks ${repos.size} repositories`);
+  assert.equal(tile[2], `${upstreams.size} upstreams + ${downstreams.size} downstreams`);
+
+  // slide 3 lists the upstreams other than this repository, which S5 names as the sixth, and every downstream
+  const svg = content("diagrams", "fleet-topology.html");
+  const labels = [...svg.matchAll(/<text\b[^>]*>([^<]*)<\/text>/g)].map((m) => m[1].trim());
+  const listed = edges.filter((e) => e !== self);
+  const downNames = [...downstreams].map((r) => r.split("/")[1]);
+  assert.ok(labels.includes(`${listed.length} upstream repos:`), `slide 3 labels its upstream group "${listed.length} upstream repos:"`);
+  assert.ok(labels.includes(`${downstreams.size} downstream repos:`), `slide 3 labels its downstream group "${downstreams.size} downstream repos:"`);
+  const alternatives = [...svg.matchAll(/aria-label="([^"]*)"/g)].map((m) => m[1]).join(" | ");
+  for (const name of [...listed.map((e) => e.upstreamKey), ...downNames]) {
+    assert.ok(labels.includes(name), `slide 3 draws ${name}`);
+    assert.ok(alternatives.includes(name), `slide 3's text alternatives name ${name}`);
+  }
+  assert.ok(labels.some((t) => t.includes(self.upstreamRepo.split("/")[1])), "S5 names this repository as the sixth upstream");
+  assert.equal(listed.length + 1, upstreams.size, "the drawn upstreams plus this repository are all of the manifest's upstreams");
+
+  const html = read("presentation", "dist", "index.html");
+  assert.equal((html.match(/<circle class="g-node" /g) || []).length, upstreams.size, "the cover glyph has a node for every upstream");
+  assert.equal((html.match(/<circle class="g-node g-node-out" /g) || []).length, downstreams.size, "the cover glyph has a node for every downstream");
+});
+
+test("script sources are files of this repository, with no private repository links, engine paths or retracted claims", () => {
+  const scriptDir = path.join(ROOT, "presentation", "content", "script");
+  let cited = 0;
+  for (const file of fs.readdirSync(scriptDir).filter((f) => f.endsWith(".md"))) {
+    for (const line of content("script", file).split("\n").filter((l) => /^SOURCE:/i.test(l))) {
+      for (const item of line.replace(/^SOURCE:\s*/i, "").split(" · ").map((s) => s.trim()).filter(Boolean)) {
+        assert.equal(/github\.com\/johnhain-msft\//i.test(item), false, `${file}: ${item} points at a private repository; the hosted notes show it, so cite the file instead`);
+        if (!/^https?:/i.test(item)) assert.ok(fs.existsSync(path.join(ROOT, item)), `${file}: source ${item} is not a file of this repository`);
+        cited += 1;
+      }
+    }
+  }
+  assert.ok(cited >= 12, `every script section cites its sources (${cited})`);
+
+  // the engine is the ai-sdlc-factory package now: its files are no longer paths of this repository
+  const enginePath = /\b(?:bin\/(?:lib\/)?[\w.-]+|src\/[\w./-]+\.mjs|schemas\/[\w.-]+\.json)\b/;
+  const claims = [/hosted portfolio reader/i, /eight-frame animated SVG/i];
+  for (const [dir, ext] of [["slides", ".md"], ["script", ".md"], ["diagrams", ".html"]]) {
+    for (const file of fs.readdirSync(path.join(ROOT, "presentation", "content", dir)).filter((f) => f.endsWith(ext))) {
+      const text = content(dir, file);
+      assert.equal(enginePath.test(text), false, `${dir}/${file} names ${text.match(enginePath)?.[0]}, which is not a path of this repository`);
+      for (const claim of claims) assert.equal(claim.test(text), false, `${dir}/${file} still says "${text.match(claim)?.[0]}"`);
+    }
+  }
+});
+
+test("the presentation README states the size of the built deck", () => {
+  const claim = read("presentation", "README.md").match(/\babout (\d+(?:\.\d+)?) (KB|MB)\b/);
+  assert.ok(claim, "the README says about how large dist/index.html is");
+  const claimed = Number(claim[1]) * (claim[2] === "MB" ? 1024 * 1024 : 1024);
+  const actual = fs.statSync(path.join(ROOT, "presentation", "dist", "index.html")).size;
+  assert.ok(Math.abs(actual - claimed) / actual < 0.15, `the README says ${claim[0]}, dist/index.html is ${Math.round(actual / 1024)} KB`);
 });
 
 // Run the entire shipped IIFE, not extracted/reimplemented handlers. This deliberately small DOM
