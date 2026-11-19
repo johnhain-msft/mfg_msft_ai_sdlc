@@ -1,3 +1,0 @@
-Source revision: 2108ac9a1e9eff96e97b500117b0de4a546768c3
-Inputs checked: 41; changed 0, new 0, gone 0
-In sync: every cited input exists, every cited heading resolves, nothing changed since the content was written.

@@ -1,5 +1,5 @@
 // A local stand-in for the GitHub REST API, in process (SPEC-03 AC67). It opens no socket: `stub.fetch` is handed to the scripts as `io.fetch`, so a
-// test makes no TCP connection at all (a connect can kill a Windows process on Node.js 24.0 to 24.15, see tests/s5/helpers/no-network.mjs) and no
+// test makes no TCP connection at all (a connect can kill a Windows process on Node.js 24.0 to 24.15, see tests/s5/helpers/no-network.mjs of the engine package) and no
 // request can leave the machine. Every request is recorded; a request to a path that the stub does not model is answered 404 and listed in `unhandled`.
 //
 // The world is plain data: the repositories (their head, ETags, closed and open pull requests, files, runs), the variables, the issues of the orchestrator

@@ -11,7 +11,6 @@ import { engineFile, expandFactoryCommand, FACTORY_DIR } from "../../helpers/ins
 import {
   abs,
   customJobsOf,
-  minimalManifest,
   mutate,
   parseWorkflow,
   presetManifest,
@@ -23,7 +22,7 @@ import {
   toYaml,
 } from "../../s1/helpers/fixtures.mjs";
 
-export { abs, customJobsOf, expandFactoryCommand, FACTORY_DIR, minimalManifest, mutate, parseWorkflow, presetManifest, projectOf, readText, readWorkflow, referenceRequest, REPO_ROOT, toYaml };
+export { abs, customJobsOf, expandFactoryCommand, FACTORY_DIR, mutate, parseWorkflow, presetManifest, projectOf, readText, readWorkflow, referenceRequest, REPO_ROOT, toYaml };
 
 export const S2_ROOT = fileURLToPath(new URL("../", import.meta.url));
 export const FIXTURES = path.join(S2_ROOT, "fixtures");

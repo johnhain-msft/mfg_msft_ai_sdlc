@@ -138,36 +138,3 @@ export function jsonOf(stdout) {
     return null;
   }
 }
-
-/** The files of a Vitest stand-in for a checkout without dependencies: it writes the report that the test gives it, to --outputFile or standard output. */
-export function installVitestStub(directory, report) {
-  writeFiles(directory, {
-    "node_modules/vitest/package.json": `${JSON.stringify({ name: "vitest", version: "0.0.0-fixture", type: "module", bin: { vitest: "vitest.mjs" } })}\n`,
-    "node_modules/vitest/report.json": `${JSON.stringify(report)}\n`,
-    "node_modules/vitest/vitest.mjs": [
-      'import fs from "node:fs";',
-      "const report = fs.readFileSync(new URL('./report.json', import.meta.url), 'utf8');",
-      "const out = process.argv.slice(2).find((argument) => argument.startsWith('--outputFile='));",
-      "if (out) fs.writeFileSync(out.slice('--outputFile='.length), report); else process.stdout.write(report);",
-      "process.exitCode = JSON.parse(report).success ? 0 : 1;",
-      "",
-    ].join("\n"),
-  });
-}
-
-/** A Vitest report in which every locked block of the given `lockedTestBlocks` ran and passed (one child test under each locked describe). */
-export function passingReport(lockedTestBlocks, root = "/work/portfolio") {
-  const testResults = lockedTestBlocks.map(({ file, blocks }) => ({
-    name: `${root}/${file}`,
-    status: "passed",
-    message: "",
-    startTime: 0,
-    endTime: 1,
-    assertionResults: blocks.map(({ kind, title }) =>
-      kind === "it"
-        ? { ancestorTitles: ["suite"], fullName: `suite ${title}`, status: "passed", title, failureMessages: [], meta: {} }
-        : { ancestorTitles: [title], fullName: `${title} child`, status: "passed", title: "child", failureMessages: [], meta: {} },
-    ),
-  }));
-  return { numTotalTestSuites: testResults.length, numFailedTests: 0, success: true, testResults };
-}

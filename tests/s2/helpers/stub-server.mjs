@@ -3,7 +3,7 @@
 //  - createFakeFetch(handler): an in-process `fetch` that opens no socket. It records every request and the greatest number
 //    of requests that were in flight together, so that a test can assert that the scripts issue requests serially. The
 //    suite uses it wherever it can: a TCP connect can kill a Windows process on Node.js 24.0 to 24.15 (libuv
-//    uv_tcp_connect, fixed in 24.16), see tests/s5/helpers/no-network.mjs.
+//    uv_tcp_connect, fixed in 24.16), see tests/s5/helpers/no-network.mjs of the engine package.
 //  - startStubServer(handler): a real HTTP server bound to 127.0.0.1, for the few tests that run a script as a command and
 //    let that child process connect to it. The test process only accepts connections; a child that dies of the libuv
 //    defect (exit code 3221226505) is started again by runNode.

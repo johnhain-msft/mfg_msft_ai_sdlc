@@ -1,136 +1,121 @@
 # mfg_msft_ai_sdlc
 
-A self-hostable, repository-agnostic AI SDLC orchestrator that runs entirely on GitHub: a GitHub App, GitHub Actions and
-[`gh-aw`](https://github.com/github/gh-aw) (GitHub Agentic Workflows). No webhook server, no database and no
-non-GitHub compute are involved.
+The live AI SDLC orchestrator of `johnhain-msft`: a GitHub App, GitHub Actions and [`gh-aw`](https://github.com/github/gh-aw) (GitHub Agentic Workflows)
+that keep a fleet of repositories current. No webhook server, no database and no non-GitHub compute are involved.
 
-The fleet is declared as data in `sdlc.yaml` (projects and the dependency edges between them). `src/reconcile.mjs`
-turns that manifest into the generated workflows under `.github/workflows/`, and this package adds the two commands that
-set the orchestrator up and point it at new repositories:
+This repository is an **instance** of `ai-sdlc-factory`. The factory is the engine: it turns a fleet manifest into generated workflows, compiles
+them in strict mode, and ships the commands and the scripts that those workflows run. It is an npm dependency of this repository (`package.json`,
+pinned to one commit by `package-lock.json`), not a copy in it. What is in this repository is what only this fleet has: the manifest
+([`sdlc.yaml`](sdlc.yaml)), the workflows generated from it, the instructions of the agents, the helper scripts of the fleet, the specifications and
+the briefing deck.
 
-| Command | What it does |
-|---|---|
-| `node bin/sdlc-bootstrap.mjs` | Registers (or reuses) the GitHub App, verifies its installations, writes the Actions variables and secrets, hands `sdlc.yaml` to the reconciler and checks readiness. |
-| `node bin/sdlc-onboard.mjs --repo <owner/repo-or-path>` | Inspects a repository and writes its `projects[]` and `dependencyEdges[]` entries and `instructions/<projectKey>.md`. |
+## What is here
 
-## Prerequisite: gh-aw >= v1.0.1
+| Path | What it is | Written by |
+|---|---|---|
+| `sdlc.yaml` | The fleet as data: the projects with their drift upkeep, the dependency edges between them, and the data of the fleet's own scripts. The `factory` block says where the engine is installed from. | you |
+| `.github/workflows/` | The generated workflows (`*.md` sources, their compiled `*.lock.yml`, `cascade-router.yml`, `aw.json`), and two that are written by hand: `sdlc-bridge-dispatch.yml` and `instance-ci.yml`. | `sdlc-reconcile`, and you |
+| `.github/aw/actions-lock.json` | The commit that each action of the generated workflows is pinned to. | `gh aw` |
+| `instructions/` | One file per drift project: what the agent is told about that repository. | you, or `sdlc-onboard` |
+| `scripts/` | The helper scripts of this fleet, which `sdlc.yaml` names: the classifiers of the preflight checks, the Studio drift and revision-pin helpers, and the validator of the lab audit. They import the engine only through its public API. | you |
+| `tests/` | The tests of the instance: its own data and scripts, and `parity.test.mjs`. | you |
+| `plan.md`, `specs/` | The plan and the five workstream specifications. | you |
+| `presentation/`, `presenter/`, `docs/media/` | The briefing deck and its generator, the presenter script and the media of the walkthrough. | you |
+| `package.json`, `package-lock.json` | The dependency on the engine, and the commands of this repository. | you |
 
-Both commands refuse to run unless the local CLI reports **`gh-aw >= v1.0.1`**. Older releases are affected by
-`GHSA-8h78-hpm7-29gg` (gh-aw `>= 0.83.3` and `< 0.85.4` wrote raw process output into the safe-outputs artifact, which can
-expose CI trigger tokens). To upgrade:
+Nothing generated is edited by hand. A workflow under `.github/workflows/` that is not one of the two written by hand is the output of the engine, and
+`tests/parity.test.mjs` fails when what the pinned engine renders from `sdlc.yaml` is not what is committed.
 
-```
-gh extension install github/gh-aw        # or: gh extension upgrade gh-aw
-gh aw upgrade                            # regenerates the .lock.yml files
-```
+## Prerequisites
 
-Commit the regenerated `.lock.yml` files: upgrading the CLI alone does not replace the SHA-pinned action references in
-existing lock files.
+* **Node.js 22 or newer** and **git**. The generated workflows run Node.js 24, and so does CI.
+* **gh-aw >= v1.0.1.** Older releases are affected by `GHSA-8h78-hpm7-29gg` (gh-aw `>= 0.83.3` and `< 0.85.4` wrote raw process output into the
+  safe-outputs artifact, which can expose CI trigger tokens), and the engine's commands refuse to run with one. To upgrade:
 
-## Install as a gh-aw package
+  ```
+  gh extension install github/gh-aw        # or: gh extension upgrade gh-aw
+  gh aw upgrade                            # regenerates the .lock.yml files
+  ```
 
-The repository is a `gh-aw` package (`aw.yml`). Consumers install the onboarding workflow with either form:
+  Commit the regenerated `.lock.yml` files: upgrading the CLI alone does not replace the SHA-pinned action references in existing lock files. On a
+  machine whose global `gh aw` is older and cannot be replaced, install a newer one into a directory of its own and set `SDLC_GH_AW_DATA_HOME` to it
+  (see Environment).
+* **Read access to the engine's repository.** It is private. The generated workflows and `instance-ci.yml` mint a read token for that one repository
+  from the GitHub App; on a workstation, npm needs the same rewrite while it installs (see Bump the engine).
 
-```
-gh aw add owner/repo
-gh aw add owner/repo/path/to/package
-```
-
-## Quick start
-
-Fork or copy this repository, clone it, run `npm ci`, and then:
-
-```
-node bin/sdlc-bootstrap.mjs
-node bin/sdlc-onboard.mjs --repo <owner/repo-or-path>
-```
-
-The bootstrap opens one browser confirmation (the GitHub App registration) and one installation page per target account.
-Nothing is ever placed in a file, a command-line flag or a log: secrets come from the environment or a prompt that does
-not echo.
-
-## Bootstrap
+## Everyday commands
 
 ```
-node bin/sdlc-bootstrap.mjs [--manifest sdlc.yaml] [--owner <user-or-org>] [--app-name <up to 34 characters>]
-  [--engine copilot|claude|codex|gemini|pi] [--deconflict-upstream-schedules] [--non-interactive]
+npm ci --ignore-scripts                      # install the dependencies, the engine among them
+npm test                                     # the tests of the instance
+npx sdlc-reconcile --request tests/fixtures/request.reference.json
+node presentation/build.mjs                  # build the briefing deck
 ```
 
-* The central orchestrator repository is `<owner>/<repo>` of the `origin` remote of the working copy that holds
-  `--manifest`; no repository name is hard-coded.
-* **Existing App:** with both `APP_CLIENT_ID` and `APP_PRIVATE_KEY` in the environment no App is registered; `appId` and
-  `appSlug` come from `GET /app`, authenticated with a JSON Web Token signed by the key. `--non-interactive` requires this
-  (it never starts a listener or opens a browser).
-* **New App:** a short-lived listener on `127.0.0.1` (an operating-system assigned port) serves `/register` and
-  `/callback`, the browser posts the manifest to GitHub, and the temporary code is exchanged once for the App. The App's
-  permissions are exactly `bin/lib/app-permissions.json`; an App or installation that holds a key or a level above that
-  map is rejected. `SDLC_BOOTSTRAP_NO_OPEN_BROWSER` keeps the browser closed (the URL is printed).
-* **Installations:** every required repository (the central repository, every drift-enabled project and every downstream
-  repository) must be covered by an installation that holds the permission map. Every `downstreamRepo` must share the
-  owner of the central repository, because one installation token is scoped to one owner.
-* **Variables:** `APP_CLIENT_ID` is upserted; `SDLC_SYNC_STATE_<SLUG>` is created for each edge only when it does not
-  exist (`404`) and is seeded from the edge's `initialBaselineSha`.
-* **Secrets:** `APP_PRIVATE_KEY` and the engine credential (`COPILOT_GITHUB_TOKEN` for a PAT, or the engine's API key from
-  `bin/lib/engine-secrets.json`) are encrypted locally as libsodium sealed boxes before upload. A value that contains
-  `gho_` (the OAuth token of `gh auth login`) is rejected.
-* **Deconfliction (opt-in):** only with `--deconflict-upstream-schedules` and only for upstreams whose
-  `deconflictInRepoSchedules` is `disable-workflow-schedules`, the workflow IDs listed in `sdlc.yaml` are disabled with
-  `gh workflow disable` under your own credentials. Nothing else is sent to an upstream repository.
-* Afterwards `src/reconcile.mjs` validates the manifest and compiles the workflows (`gh aw compile --strict --purge
-  --json`), then `gh aw validate` and `gh aw doctor` run.
+**Test.** `npm test` runs every `*.test.mjs` under `tests/`, in `--test-concurrency=4`. The tests start real `bash` and `git`, so they take a while:
+run the one that you are working on with `node --test tests/s2/open-pr-dedup.test.mjs`. `SDLC_REAL_GH_AW=1 npm test` also compiles the committed
+workflow sources with the real gh-aw (v1.0.1 or newer) and compares the hashes of the committed locks (`tests/parity.test.mjs`).
 
-Progress goes to stderr. A run that reaches the readiness checks prints exactly one `BootstrapSummaryReport` JSON
-document (`schemas/bootstrap-summary-report.schema.json`) on stdout and exits non-zero when `doctorStatus` is `fail`.
+**Regenerate the workflows.** After you change `sdlc.yaml`, `instructions/` or the engine, run `npx sdlc-reconcile --request
+tests/fixtures/request.reference.json` from the root of the repository (`npm run reconcile -- --request tests/fixtures/request.reference.json` is the
+same). The request is the one that the bootstrap sends: the App's slug, the engine authentication, the security baseline. The command renders the
+workflows, compiles them with `gh aw compile --strict --purge --json`, prints the result as JSON, and puts every file back as it was if anything fails. Review
+`git diff`, and commit `sdlc.yaml`, `instructions/` and `.github/workflows/` together.
+
+**Build the briefing.** `node presentation/build.mjs` writes `presentation/dist/index.html`, the self-contained
+[briefing](presentation/dist/index.html). It is committed, and `tests/s5/validate-deck.test.mjs` fails when it is not what the sources in
+`presentation/` build.
+
+### Bump the engine
+
+An update of the engine is one pull request: the tag in `package.json` is readable, and the lock pins the commit that it pointed at.
+
+```powershell
+$repo = 'johnhain-msft/ai-sdlc-factory'
+$token = gh auth token
+$env:GIT_CONFIG_COUNT = '3'
+0..2 | ForEach-Object { Set-Item "env:GIT_CONFIG_KEY_$_" "url.https://x-access-token:$token@github.com/$repo.insteadOf" }
+$env:GIT_CONFIG_VALUE_0 = "ssh://git@github.com/$repo"; $env:GIT_CONFIG_VALUE_1 = "git@github.com:$repo"; $env:GIT_CONFIG_VALUE_2 = "https://github.com/$repo"
+npm install "github:$repo#vX.Y.Z" --ignore-scripts
+Remove-Item env:GIT_CONFIG_COUNT, env:GIT_CONFIG_KEY_*, env:GIT_CONFIG_VALUE_*
+npx sdlc-reconcile --request tests/fixtures/request.reference.json
+npm test
+```
+
+The rewrite lives in the environment of that shell only; nothing is written to `~/.gitconfig`. Read the Breaking and Migration notes of every release between
+the old tag and the new one in `node_modules/ai-sdlc-factory/CHANGELOG.md`, review `git diff --stat`, and commit `package.json`, `package-lock.json` and
+`.github/workflows/` together: `parity` fails the pull request if they do not agree. Do not update `.github/workflows/sdlc-onboard.md` with `gh aw update`:
+the reconciler renders it, with the App's slug in it.
 
 ### Environment
 
 | Variable | Used for |
 |---|---|
-| `APP_CLIENT_ID`, `APP_PRIVATE_KEY` | An existing GitHub App (both, or neither). |
-| `COPILOT_GITHUB_TOKEN` | A fine-grained PAT owned by a user account; without it `--engine copilot` uses the Actions token (`copilot-requests`). |
-| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `CODEX_API_KEY`, `GEMINI_API_KEY` | The API key of the selected engine. |
-| `GH_TOKEN` / `GITHUB_TOKEN` | The REST credential for variables and secrets (default: `gh auth token`). It needs the `Variables` and `Secrets` repository permissions (write). |
-| `GITHUB_API_URL` | API base URL (default `https://api.github.com`; plain `http` only for loopback addresses). |
-| `SDLC_BOOTSTRAP_NO_OPEN_BROWSER` | Do not open a browser; print the URLs. |
-| `SDLC_GH_AW_DATA_HOME` | Directory used as `XDG_DATA_HOME` for `gh` when `XDG_DATA_HOME` is unset and the directory exists: an isolated gh-aw install, for a machine whose global `gh aw` is older than the required version. An explicit `XDG_DATA_HOME` wins. |
+| `SDLC_GH_AW_DATA_HOME` | Directory used as `XDG_DATA_HOME` for `gh` when `XDG_DATA_HOME` is unset and the directory exists: an isolated gh-aw install, for a machine whose global `gh aw` is older than the required version. An explicit `XDG_DATA_HOME` wins. Set it in the shell that runs `sdlc-reconcile` or the tests; never write it into a file. |
+| `SDLC_REAL_GH_AW` | `1` makes the tests that need the real gh-aw CLI run: the compile of the committed sources in `tests/parity.test.mjs`. |
+| `APP_CLIENT_ID`, `APP_PRIVATE_KEY` | The GitHub App: the variable and the secret of this repository's Actions, and the environment of `sdlc-bootstrap` and `sdlc-onboard` when the App exists. |
+| `COPILOT_GITHUB_TOKEN` | The fine-grained personal access token of the Copilot engine (secret `COPILOT_GITHUB_TOKEN`). |
+| `GH_TOKEN` / `GITHUB_TOKEN` | The REST credential for the variables and secrets that the bootstrap writes (default: `gh auth token`). |
 
-## Onboard
+## Set up and onboard
+
+The two commands that set the orchestrator up and point it at new repositories are the engine's, and they are installed with it:
 
 ```
-node bin/sdlc-onboard.mjs --repo <owner/repo-or-path> [--downstream <owner/repo>]
-  [--strategy auto|content-and-docs-sync|dependency-and-pattern-modernization|code-quality-and-improvement-scan|custom]
-  [--watch-url <url>]... [--schedule <cron>] [--mode auto|mechanical|ai-adaptation]
-  [--instructions <text-or-path>] [--manifest sdlc.yaml]
+npx sdlc-bootstrap
+npx sdlc-onboard --repo <owner/repo-or-path>
 ```
 
-The repository may also be given as one positional `<owner/repo>`. Without `--schedule` the project's upkeep runs on
-Mondays at 06:23 UTC (`23 6 * * 1`), off the top of the hour (see "Change detection: the router polls"). The command inspects the target read-only
-(`package.json` and other language manifests, `.github/workflows/`, test and build scripts, provenance files and
-`.github/CODEOWNERS`), then writes the project entry, an optional dependency edge and `instructions/<projectKey>.md`. It never
-invents a command: a command is only written when it is a script of the target's manifest. Existing entries are preserved
-byte for byte; re-onboarding changes only the fields whose flags you pass. `sdlc.yaml` is then validated and the
-workflows are recompiled through `src/reconcile.mjs`, and the new edge's `SDLC_SYNC_STATE_<SLUG>` variable is created
-if missing. `.github/workflows/sdlc-onboard.md`, a workflow with one `workflow_dispatch` input per flag, tells its agent to run the same
-command and to open a pull request that a human must review and merge: `auto-merge` is never enabled. As SPEC-01 renders it
-today that workflow installs neither the `gh aw` CLI nor the npm dependencies and passes `APP_CLIENT_ID` and
-`APP_PRIVATE_KEY` only to its token-minting steps, so its agent cannot run the command yet (open question OQ51 in
-`specs/05-packaging-bootstrap-and-governance.md`); run the command from a working copy of this repository, as above.
+The bootstrap registers (or reuses) the GitHub App, verifies its installations, writes the Actions variables and secrets, hands `sdlc.yaml` to the
+reconciler and checks readiness. The onboarding command inspects a repository and writes its `projects[]` and `dependencyEdges[]` entries and
+`instructions/<projectKey>.md`. Their flags, the environment that they read and the exit codes are in `node_modules/ai-sdlc-factory/README.md` and
+`node_modules/ai-sdlc-factory/docs/`. Nothing is ever placed in a file, a command-line flag or a log: secrets come from the environment or a prompt that
+does not echo.
 
-A `--downstream` repository must be under the same owner as this repository; the check is repeated on the name that GitHub
-resolves it to, so a transferred or renamed repository under another owner is refused. `--instructions` is read as a file
-only when the value is an existing file inside this working copy; a file outside it, a file that is a secret by name
-(`.env*`, `*.pem`, `id_rsa`, `credentials`, ...) and any text that holds a credential are refused before anything is written.
-An update that cannot be made in place, such as a field that a YAML alias supplies, is refused as well, with the file left
-as it was, instead of rewriting the file.
-
-The onboarding command needs `APP_CLIENT_ID` and `APP_PRIVATE_KEY` (to resolve the App slug for the reconciler) and the
-same engine credential environment as the bootstrap, because the engine authentication mode is part of what the
-reconciler renders.
-
-A target without a `test` script gets an empty `verifyCommands` and a warning. A drift-enabled project needs at least one
-verify command, so the reconciler then rejects the entry (`drift-verify-commands-missing`) and the command puts
-`sdlc.yaml` and `instructions/<projectKey>.md` back as they were. Add a `test` script to the target, or write the project's
-entry in `sdlc.yaml` yourself with its `verifyCommands`; a later run keeps what you wrote.
+`.github/workflows/sdlc-onboard.md` is a workflow with one `workflow_dispatch` input per flag, whose agent is told to run the same command and to open a
+pull request that a human must review and merge: `auto-merge` is never enabled. As the reconciler renders it today that workflow installs neither the
+`gh aw` CLI nor the npm dependencies and passes `APP_CLIENT_ID` and `APP_PRIVATE_KEY` only to its token-minting steps, so its agent cannot run the command
+yet (open question OQ51 in `specs/05-packaging-bootstrap-and-governance.md`); run the command from a working copy of this repository.
 
 ## Sync state and resets
 
@@ -140,7 +125,7 @@ by editing a `SDLC_SYNC_STATE_<SLUG>` variable.
 
 ## Change detection: the router polls
 
-`cascade-router.yml` polls every upstream of `sdlc.yaml` on the schedules of its edges (`17 */6 * * *` in the preset:
+`cascade-router.yml` polls every upstream of `sdlc.yaml` on the schedules of its edges (`17 */6 * * *` in this fleet:
 four times a day, at 17 minutes past the hour), with one matrix job per edge. GitHub delays scheduled runs when Actions is
 busy, most at the start of every hour, and may drop some of them, so no schedule of the fleet starts on the hour; even so a
 scheduled run can start hours late. To route at once instead of waiting for the next poll:
@@ -154,6 +139,10 @@ self-cascade of the `ai-sdlc` edge), where the App's credentials already are. Do
 private key, into an upstream repository: the key can mint a token for every installation of the App, so each copy would
 hand the whole fleet to everyone who can run a workflow in that repository, and a personal access token in its place would
 need `Contents: write` on this repository. Upstream repositories need no credential of the orchestrator; they are polled.
+
+What a drift of an upstream means is declared by the edge in `sdlc.yaml`: its `preflightCommands`, and next to them its `preflightChecks`, the scope that a
+drift of each command asks the dispatch for and the classifier (a script of `scripts/`) that judges a command whose output is a report. The router runs the
+commands and the classifiers, and knows no kind of command of its own.
 
 ## Drift upkeep: what the agent sees and what it reports
 
@@ -174,7 +163,9 @@ Each `drift-<projectKey>` workflow, on its schedule or dispatched by hand:
 * opens a pull request only for the changes that a source corroborates. An earlier drift pull request stays open: the
   next run no longer lists its items, so closing it would drop them. A second run on the same day does not replace the
   first run's branch; its changes are filed as an issue instead. A run whose pull request has nothing committed fails,
-  so it is not a baseline and its items come back in the next run.
+  so it is not a baseline and its items come back in the next run. Whether an open pull request is a duplicate is decided
+  by the `dedupe` block of `sdlc.yaml`: the branch prefixes and the labels of the target's own scheduled workflows, and the
+  upkeep that each strategy does;
 * files one issue in the target repository, `[sdlc-drift] Drift report: <projectKey> <date>`, when at least one item of
   the work list is recommended or could not be confirmed, or when a source could not be fetched or a possible gap could
   not be closed; otherwise it files none (the agent calls `noop` and says how many items it triaged). The report lists
@@ -184,7 +175,7 @@ Each `drift-<projectKey>` workflow, on its schedule or dispatched by hand:
 
 Filing a report starts its implementation. The drift workflow's `implement_report` job dispatches
 `implement-<projectKey>` with the number of the report, using the job's `GITHUB_TOKEN`. That workflow reads the report
-(`src/drift/read-report.mjs` checks that it is an open report of this project that the App filed and that no
+(the engine's `drift/read-report.mjs` checks that it is an open report of this project that the App filed and that no
 implementation of it is open), researches every item under `## Recommended` and `## Could not confirm` again with
 `curl` and the Microsoft Learn and Context7 servers, changes what the sources support, runs the project's build and
 verification commands, and opens one pull request on `sdlc/implement-report-<number>` whose body ends with `Closes
@@ -207,22 +198,6 @@ keeps what it would have filed (the pull request under `proposal`, the drift rep
 `/tmp/gh-aw/agent/dry-run-proposal.json` on the runner, which no artifact includes: download the run's `agent` artifact
 and read the agent's edit of that file in its session log, `sandbox/agent/logs/copilot-session-state/*/events.jsonl`.
 
-## Tests
+## License
 
-```
-npm test                       # tests/s1 and tests/s5, offline
-node --test tests/s5/*.test.mjs
-```
-
-The S5 suites are hermetic: a no-network guard, an in-memory fake GitHub API, a fake `gh` and a recording reconciler stand
-in for everything outside the process. `SDLC_REAL_GH_AW=1 npm test` also runs the checks that need the real gh-aw CLI
-(v1.0.1 or newer): the real compiler on `aw.yml` and on the onboarding workflow. One test is reported as `todo` on purpose:
-`AC53 (gated by OQ51)` asserts what the onboarding workflow needs in order to run its own instruction and fails until
-SPEC-01 renders it (see Onboard above).
-
-## Layout
-
-| Path | Owner |
-|---|---|
-| `sdlc.yaml`, `schemas/sdlc.schema.json`, `src/reconcile.mjs`, `.github/workflows/**` | The manifest and reconciler (S1). |
-| `aw.yml`, `README.md`, `bin/`, `schemas/bootstrap-summary-report.schema.json`, `tests/s5/` | Packaging and bootstrap (S5). |
+MIT. See the `LICENSE` file.

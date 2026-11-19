@@ -1,7 +1,7 @@
 // The permanent compatibility check of this repository (design G.8): what the pinned engine renders from sdlc.yaml is what is committed under .github/workflows.
 //
 // It is the check that the migration to the engine package was proved with, made standing. Bumping the engine without regenerating fails it, and regenerating shows the
-// difference in the pull request: the same render-and-compare as the proof, forever. To fix a failure here, run `npm run reconcile` (gh-aw >= 1.0.1; set SDLC_GH_AW_DATA_HOME
+// difference in the pull request: the same render-and-compare as the proof, forever. To fix a failure here, run `npm run reconcile -- --request tests/fixtures/request.reference.json` (gh-aw >= 1.0.1; set SDLC_GH_AW_DATA_HOME
 // to an isolated install of it on a machine whose global `gh aw` is older), review `git diff`, and commit sdlc.yaml, package.json, package-lock.json and .github/workflows together.
 //
 //   SDLC_REAL_GH_AW=1 npm test   also compiles the committed sources with the real gh-aw and compares the hashes of the committed locks.
@@ -30,7 +30,7 @@ test("every workflow source and the router that the engine renders equals the co
   const names = [...rendered.files.keys()].filter((file) => file !== AW).sort();
   assert.equal(names.length, 14);
   for (const file of names) {
-    assert.equal(readText(abs(file)), rendered.files.get(file), `${file} is not what the pinned engine renders: run npm run reconcile and commit the result`);
+    assert.equal(readText(abs(file)), rendered.files.get(file), `${file} is not what the pinned engine renders: run npm run reconcile -- --request tests/fixtures/request.reference.json and commit the result`);
   }
 });
 
