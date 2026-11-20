@@ -23,12 +23,12 @@ const header = (text) => /^# gh-aw-metadata: (\{.*\})$/m.exec(text);
 
 test("the pinned engine renders the fleet of sdlc.yaml", () => {
   assert.equal(rendered.ok, true, JSON.stringify(rendered.result?.validationResults ?? rendered.result));
-  assert.equal(rendered.files.size, 15, "the 13 workflow sources, cascade-router.yml and aw.json");
+  assert.equal(rendered.files.size, 14, "the 12 workflow sources, cascade-router.yml and aw.json");
 });
 
 test("every workflow source and the router that the engine renders equals the committed file, byte for byte", () => {
   const names = [...rendered.files.keys()].filter((file) => file !== AW).sort();
-  assert.equal(names.length, 14);
+  assert.equal(names.length, 13);
   for (const file of names) {
     assert.equal(readText(abs(file)), rendered.files.get(file), `${file} is not what the pinned engine renders: run npm run reconcile -- --request tests/fixtures/request.reference.json and commit the result`);
   }

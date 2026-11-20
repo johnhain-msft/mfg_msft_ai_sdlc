@@ -40,8 +40,8 @@ Nothing generated is edited by hand. A workflow under `.github/workflows/` that 
   Commit the regenerated `.lock.yml` files: upgrading the CLI alone does not replace the SHA-pinned action references in existing lock files. On a
   machine whose global `gh aw` is older and cannot be replaced, install a newer one into a directory of its own and set `SDLC_GH_AW_DATA_HOME` to it
   (see Environment).
-* **Read access to the engine's repository.** It is private. The generated workflows and `instance-ci.yml` mint a read token for that one repository
-  from the GitHub App; on a workstation, npm needs the same rewrite while it installs (see Bump the engine).
+* **Access to the engine's repository.** It is public, so the generated workflows, `instance-ci.yml`, and `npm ci --ignore-scripts` on a workstation
+  install it directly over HTTPS without a token rewrite (see Bump the engine).
 
 ## Everyday commands
 

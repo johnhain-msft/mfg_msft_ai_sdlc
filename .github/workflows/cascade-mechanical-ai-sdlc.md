@@ -246,26 +246,7 @@ jobs:
             /sdlc.yaml
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - name: Mint the factory read token
-        id: factory_token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: johnhain-msft
-          repositories: ai-sdlc-factory
-          permission-contents: read
-      - name: Install the factory
-        env:
-          GIT_TERMINAL_PROMPT: "0"
-          GIT_CONFIG_COUNT: "3"
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
-          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
-          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
-          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
-          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
-          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
-        run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts
       - uses: actions/download-artifact@v4
         with:
           name: sdlc-cascade-shas-${{ github.run_id }}
@@ -317,26 +298,7 @@ jobs:
             /sdlc.yaml
           sparse-checkout-cone-mode: false
           persist-credentials: false
-      - name: Mint the factory read token
-        id: factory_token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ vars.APP_CLIENT_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-          owner: johnhain-msft
-          repositories: ai-sdlc-factory
-          permission-contents: read
-      - name: Install the factory
-        env:
-          GIT_TERMINAL_PROMPT: "0"
-          GIT_CONFIG_COUNT: "3"
-          GIT_CONFIG_KEY_0: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
-          GIT_CONFIG_VALUE_0: ssh://git@github.com/johnhain-msft/ai-sdlc-factory
-          GIT_CONFIG_KEY_1: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
-          GIT_CONFIG_VALUE_1: git@github.com:johnhain-msft/ai-sdlc-factory
-          GIT_CONFIG_KEY_2: url.https://x-access-token:${{ steps.factory_token.outputs.token }}@github.com/johnhain-msft/ai-sdlc-factory.insteadOf
-          GIT_CONFIG_VALUE_2: https://github.com/johnhain-msft/ai-sdlc-factory
-        run: npm ci --ignore-scripts
+      - run: npm ci --ignore-scripts
       - name: Record the failure
         if: inputs.dry_run != 'true'
         env:

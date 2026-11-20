@@ -37,9 +37,9 @@ const BROWSER_GATE = "npx playwright test tests/browser/sites.spec.ts";
 
 test("ae32bf1: drift-gh-admin-msft installs the dependencies of its target after the snapshot and before the agent starts, so that the validators run inside the sandbox", () => {
   for (const [label, workflow] of versions("drift-gh-admin-msft.md")) {
-    // the engine is installed first (a read token for its repository, then npm ci): the steps after it are the six of the drift pipeline
+    // the engine is installed first (npm ci): the steps after it are the six of the drift pipeline
     const { install, rest: steps } = splitFactoryInstall(workflow.frontmatter["pre-agent-steps"]);
-    assert.equal(install.length, 2, `${label}: the engine install comes first`);
+    assert.equal(install.length, 1, `${label}: the engine install comes first`);
     assert.equal(steps.length, 6, label);
     assert.ok(steps[3].run.includes("snapshot-watch-sources.mjs"), `${label}: the snapshot is the fourth step`);
     assert.equal(steps[4].name, UPLOAD_STEP_NAME, `${label}: the upload of the watch index follows it`);
@@ -58,7 +58,7 @@ test("ae32bf1: the drift workflows of the projects that did not ask for the inst
   for (const key of ["copilot-lab", "self-improving-agents"]) {
     for (const [label, workflow] of versions(`drift-${key}.md`)) {
       const { install, rest } = splitFactoryInstall(workflow.frontmatter["pre-agent-steps"]);
-      assert.equal(install.length, 2, `${key} ${label}: the engine install comes first`);
+      assert.equal(install.length, 1, `${key} ${label}: the engine install comes first`);
       assert.equal(rest.length, 5, `${key} ${label}`);
     }
     assert.equal(agentSteps(`drift-${key}`).some((step) => step.run === "npm ci --ignore-scripts" && step["working-directory"] !== undefined), false, `${key}: the lock installs nothing`);
@@ -109,53 +109,8 @@ test("9a49f71: the mechanical cascades run the browser gate that ubuntu-latest c
   }
   const router = YAML.parse(readText(abs(W, "cascade-router.yml")));
   const mechanical = router.jobs.route.strategy.matrix.include.filter((edge) => edge.mode === "mechanical");
-  assert.deepEqual(mechanical.map((edge) => edge.edgeId), ["ghec-admin", "ai-sdlc", "copilot-config"]);
+  assert.deepEqual(mechanical.map((edge) => edge.edgeId), ["ghec-admin", "ai-sdlc"]);
   for (const edge of mechanical.filter((e) => e.downstreamRepo === "johnhain-msft/portfolio")) assert.equal(edge.verifyCommands.at(-1), BROWSER_GATE, edge.edgeId);
-  assert.deepEqual(mechanical.find((e) => e.edgeId === "copilot-config").verifyCommands, [
-    "aiam validate",
-    "python -m pytest -q",
-    "aiam release build --out /tmp/aiam-verify-dist",
-  ]);
-});
-
-// Runs 43645598635 and 43647886060, the first cascades of the copilot-config edge, show three more gates that only the first live import reaches. The downstream's
-// tests import a top-level module that only `python -m pytest` puts on sys.path, as its own CI runs them. Its importer writes files with protected names, which the
-// blocking protected-files policy refuses whatever allowed-files says: .github/CODEOWNERS and README.md files in the first import (12 deleted with retired skills, 1
-// added), and the catalog's one DESIGN.md and one requirements.txt in any later import that changes them. And its first import changes 170 files, past the
-// handler's default of 100.
-const COPILOT_CONFIG_PATH_EXCLUDES = [
-  ".github/CODEOWNERS",
-  "assets/skills/ai-landing-zone-design/DESIGN.md",
-  "assets/skills/slide-review/scripts/requirements.txt",
-];
-test("43645598635: the copilot-config cascade runs pytest as the downstream's CI does, un-protects the files its importer writes and allows a whole-catalog patch", () => {
-  const id = "cascade-mechanical-copilot-config";
-  for (const [label, workflow] of versions(`${id}.md`)) {
-    const handler = workflow.frontmatter["safe-outputs"]["create-pull-request"];
-    assert.deepEqual(handler["protected-files"], { policy: "blocked", exclude: [...COPILOT_CONFIG_PATH_EXCLUDES.map((path) => `/${path}`), "README.md"] }, label);
-    assert.equal(handler["max-patch-files"], 1000, label);
-    const runs = workflow.frontmatter["post-steps"].map((step) => step.run);
-    assert.ok(runs.includes("python -m pytest -q"), label);
-    assert.equal(runs.includes("pytest -q"), false, `${label}: the console script leaves the repository root off sys.path`);
-  }
-  const steps = agentSteps(id);
-  assert.ok(steps.some((step) => step.run === "python -m pytest -q" && step["working-directory"] === "ai_asset_management"), "the lock runs the module form");
-  assert.equal(steps.some((step) => step.run === "pytest -q"), false);
-  const lock = lockOf(id);
-  for (const [job, key] of [
-    ["agent", "GH_AW_SAFE_OUTPUTS_CONFIG"],
-    ["safe_outputs", "GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG"],
-  ]) {
-    const [config] = lock.jobs[job].steps.filter((step) => Object.hasOwn(step.env ?? {}, key)).map((step) => JSON.parse(step.env[key]).create_pull_request);
-    assert.equal(config.max_patch_files, 1000, `${id}: ${key}`);
-  }
-  const [handler] = lock.jobs.safe_outputs.steps
-    .filter((step) => Object.hasOwn(step.env ?? {}, "GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG"))
-    .map((step) => JSON.parse(step.env.GH_AW_SAFE_OUTPUTS_HANDLER_CONFIG).create_pull_request);
-  assert.equal(handler.protected_files_policy, "blocked");
-  assert.deepEqual(handler.protected_files_path_exclude, COPILOT_CONFIG_PATH_EXCLUDES, "each protected file the catalog holds, by its exact path");
-  assert.equal(handler.protected_files.includes("README.md"), false, "README.md is writable, within allowed-files");
-  for (const name of ["CODEOWNERS", "DESIGN.md", "requirements.txt"]) assert.ok(handler.protected_files.includes(name), `a ${name} at any other path stays protected`);
 });
 
 test("9a49f71: the AI cascades also run the narrowed browser gate that ubuntu-latest can run, without the full Segoe UI browser suite", () => {
@@ -204,7 +159,7 @@ test("43926158616: the safe-outputs token of every drift and implementation work
 
 test("43926158616: the cascades, whose token has the orchestrator's owner, still name the central repository and the downstream one", () => {
   const names = [...rendered.files.keys()].filter((name) => /\/cascade-(?:ai|mechanical)-[^/]+\.md$/.test(name));
-  assert.equal(names.length, 6, "all six cascade workflows are covered");
+  assert.equal(names.length, 5, "all five cascade workflows are covered");
   for (const name of names) {
     const id = name.split("/").pop().replace(/\.md$/, "");
     const downstream = parseWorkflow(rendered.files.get(name)).frontmatter["safe-outputs"]["create-pull-request"]["target-repo"].split("/")[1];
@@ -278,9 +233,6 @@ test("43926158616 (AC69): the spec and the generator say what the token of a dri
   for (const text of ["Detection Runs", "given up", "AC69"]) assert.ok(generator.includes(text), `the comments of the generator name ${text}`);
 });
 
-// Run 43933185358 of cascade-mechanical-copilot-config: the agent opened with `cd "$GITHUB_WORKSPACE/ai_asset_management" && echo ... && git status --short | head && git branch
-// --show-current && command -v aiam`, and then with `cd ... && git branch --show-current; echo "$UPSTREAM_SHA"; command -v aiam`. Copilot runs with --no-ask-user and refused both calls
-// (denied-no-approval-rule-and-could-not-request-from-user), because `command` was not on the allowlist, and the agent called report_incomplete without running `aiam sync-upstream`.
 /** The commands that the lock of a cascade (the Copilot engine without the SDK) lets its agent run: the `--allow-tool 'shell(<command>)'` arguments of the step that starts it. */
 function cascadeShellCommands(id) {
   const step = agentSteps(id).find((candidate) => String(candidate.run ?? "").includes("--allow-tool"));
@@ -290,20 +242,19 @@ function cascadeShellCommands(id) {
 
 test("43933185358: every mechanical cascade lets its agent run command -v, in the workflow and in its lock, so that the agent can look for the importer before it runs it", () => {
   const ids = [...rendered.files.keys()].filter((name) => /\/cascade-mechanical-[^/]+\.md$/.test(name)).map((name) => name.split("/").pop().replace(/\.md$/, ""));
-  assert.deepEqual(ids.sort(), ["cascade-mechanical-ai-sdlc", "cascade-mechanical-copilot-config", "cascade-mechanical-ghec-admin"]);
+  assert.deepEqual(ids.sort(), ["cascade-mechanical-ai-sdlc", "cascade-mechanical-ghec-admin"]);
   for (const id of ids) {
     for (const [label, workflow] of versions(`${id}.md`)) assert.ok(workflow.frontmatter.tools.bash.includes("command"), `${id} ${label}`);
     assert.ok(cascadeShellCommands(id).includes("command"), `${id}: the lock lets the agent run command`);
   }
-  // every command of the two calls that the run refused is now allowed: cd, echo, git, head and command (the importer, aiam, is the first word of the edge's import command)
-  const commands = cascadeShellCommands("cascade-mechanical-copilot-config");
-  for (const word of ["cd", "echo", "git", "head", "command", "aiam"]) assert.ok(commands.includes(word), `the lock of copilot-config lets the agent run ${word}`);
+  const commands = cascadeShellCommands("cascade-mechanical-ghec-admin");
+  for (const word of ["cd", "echo", "git", "head", "command", "npm"]) assert.ok(commands.includes(word), `the lock of ghec-admin lets the agent run ${word}`);
   for (const word of ["gh", "curl", "wget"]) assert.equal(commands.includes(word), false, `and not ${word}`);
 });
 
 test("QA: every rendered and compiled drift or cascade disables automatic failure issues and carries the generated-bundle patch limit", () => {
   const names = [...rendered.files.keys()].filter((name) => /\/(?:drift-|cascade-(?:ai-|mechanical-)).*\.md$/.test(name));
-  assert.equal(names.length, 9, "all three drift and six cascade workflows are covered");
+  assert.equal(names.length, 8, "all three drift and five cascade workflows are covered");
   for (const name of names) {
     const id = name.split("/").pop().replace(/\.md$/, "");
     for (const [label, workflow] of versions(`${id}.md`)) {

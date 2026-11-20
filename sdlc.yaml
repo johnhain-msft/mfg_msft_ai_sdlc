@@ -16,12 +16,12 @@
 # the order listed here; a post-run check only stays out of the verification gate
 # that the reconciler reports for the AI adaptation workflows (SPEC-01 AC50, AC53).
 
-# Where the engine runs from. It is an npm dependency of this repository (package.json, pinned to a commit by the lockfile) and the engine repository is private,
-# so every job that installs it first mints a read token for that one repository from the GitHub App.
+# Where the engine runs from. It is an npm dependency of this repository (package.json, pinned to a commit by the lockfile) and the engine repository is public,
+# so every job installs it directly with npm ci --ignore-scripts.
 factory:
   package: ai-sdlc-factory
   source: github:johnhain-msft/ai-sdlc-factory
-  private: true
+  private: false
 
 # What used to be built into the engine for this fleet is data of this manifest. Each block below is what the engine did on its own before it became a package:
 # the generic engine reads it, and the rendered workflows come out the same (the proof is the render-diff of the migration: only the paths of scripts change).
@@ -313,46 +313,6 @@ projects:
   # It has no drift audit of its own, so the reconciler renders no drift workflow for it.
   - projectKey: ai-sdlc
     repo: johnhain-msft/mfg_msft_ai_sdlc
-    defaultBranch: main
-    deconflictInRepoSchedules: none
-    deconflictWorkflowIds: []
-    driftAudit:
-      enabled: false
-      schedule: "0 6 * * 1"
-      upkeepStrategy: content-and-docs-sync
-      instructions: ""
-      instructionsFile: null
-      knowledgeSources:
-        watchUrls: []
-        packageManifests: []
-        mcpServers: {}
-      buildCommands: []
-      verifyCommands: []
-      draft: false
-      reviewers: []
-
-  - projectKey: copilot-config
-    repo: johnhain-msft/copilot-config
-    defaultBranch: main
-    deconflictInRepoSchedules: none
-    deconflictWorkflowIds: []
-    driftAudit:
-      enabled: false
-      schedule: "0 6 * * 1"
-      upkeepStrategy: content-and-docs-sync
-      instructions: ""
-      instructionsFile: null
-      knowledgeSources:
-        watchUrls: []
-        packageManifests: []
-        mcpServers: {}
-      buildCommands: []
-      verifyCommands: []
-      draft: false
-      reviewers: []
-
-  - projectKey: ai-asset-management
-    repo: johnhain-msft/ai_asset_management
     defaultBranch: main
     deconflictInRepoSchedules: none
     deconflictWorkflowIds: []
@@ -972,56 +932,6 @@ dependencyEdges:
     allowedFiles:
       - public/ai-sdlc/**
     protectedFilesExclude: []
-    autoMerge: false
-    immutableGates:
-      zeroDiffPaths: []
-
-  - edgeId: copilot-config
-    upstreamRepo: johnhain-msft/copilot-config
-    upstreamKey: copilot-config
-    upstreamSlug: COPILOT_CONFIG
-    upstreamDefaultBranch: main
-    initialBaselineSha: d47e218e9d5cff8741c687c72b2c12df1bf53905
-    downstreamRepo: johnhain-msft/ai_asset_management
-    mode: mechanical
-    schedule: "17 */6 * * *"
-    onCommitOnlyAdvance: noop
-    stateVariable: SDLC_SYNC_STATE_COPILOT_CONFIG
-    provenanceFile: governance/upstream-provenance.json
-    provenanceJsonPointer: /commit
-    branchName: sdlc/cascade-copilot-config
-    closeOlderKey: sdlc-cascade-copilot-config
-    reviewers:
-      - johnhain-msft
-    pythonVersion: "3.12"
-    importCommands:
-      - aiam sync-upstream --from <checkout>
-    preflightCommands: []
-    acceptCommands: []
-    buildCommands: []
-    # `python -m pytest`, as the repository's own CI runs it: its tests import the top-level demo module, which the bare `pytest` script leaves off sys.path.
-    verifyCommands:
-      - aiam validate
-      - python -m pytest -q
-      - aiam release build --out /tmp/aiam-verify-dist
-    adaptationInstructions: ""
-    allowedFiles:
-      - assets/**
-      - governance/upstream-provenance.json
-      - governance/cowork-preferences-source.md
-      - .github/CODEOWNERS
-    # The importer writes files with protected names, which the blocking policy refuses whatever allowedFiles says. It regenerates .github/CODEOWNERS
-    # and adds or deletes README.md files as skills change (the first import deletes 12 with retired skills and adds 1), so README.md is released by
-    # name. The catalog's other protected names, one DESIGN.md and one requirements.txt, are released by exact path, so those names stay protected at
-    # every other path. allowedFiles still confines all of them to the paths above. A protected name that a later skill brings fails the cascade closed
-    # until its path is added here.
-    protectedFilesExclude:
-      - /.github/CODEOWNERS
-      - /assets/skills/ai-landing-zone-design/DESIGN.md
-      - /assets/skills/slide-review/scripts/requirements.txt
-      - README.md
-    # A catch-up import rewrites much of the catalog (170 files for the first one, about 500 if every asset changed); the handler's own limit is 100.
-    maxPatchFiles: 1000
     autoMerge: false
     immutableGates:
       zeroDiffPaths: []
