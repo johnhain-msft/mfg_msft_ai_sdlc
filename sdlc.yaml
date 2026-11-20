@@ -270,7 +270,7 @@ projects:
       reviewers: []
 
   - projectKey: github-intermediate
-    repo: githubschool/gh-github-intermediate-template
+    repo: johnhain-msft/gh-github-intermediate
     defaultBranch: main
     deconflictInRepoSchedules: none
     deconflictWorkflowIds: []
@@ -799,24 +799,22 @@ dependencyEdges:
           export: findCustomerTerms
 
   - edgeId: github-intermediate
-    upstreamRepo: githubschool/gh-github-intermediate-template
+    upstreamRepo: johnhain-msft/gh-github-intermediate
     upstreamKey: github-intermediate
     upstreamSlug: GITHUB_INTERMEDIATE
     upstreamDefaultBranch: main
-    initialBaselineSha: 03b997f220a6ecaf60c8c8cbc63fc1154077a686
+    initialBaselineSha: a5234874a0f708f81661a22e83e498bf1d047401
     downstreamRepo: johnhain-msft/portfolio
-    mode: ai-adaptation
+    mode: mechanical
     schedule: "17 */6 * * *"
     onCommitOnlyAdvance: noop
     stateVariable: SDLC_SYNC_STATE_GITHUB_INTERMEDIATE
-    provenanceFile: experiences/github-intermediate-labs/provenance.json
+    provenanceFile: public/github-intermediate/source.json
     provenanceJsonPointer: /commit
     branchName: sdlc/cascade-github-intermediate
     closeOlderKey: sdlc-cascade-github-intermediate
     reviewers:
       - johnhain-msft
-    syncScopes:
-      - github-intermediate
     installDirectories:
       - .
       - apps/lab-studio
@@ -824,109 +822,27 @@ dependencyEdges:
       - name: Install Microsoft Edge
         run: npx playwright install --with-deps msedge
         workingDirectory: .
-    importCommands: []
-    preflightCommands:
-      - git -C <checkout> diff --quiet "$LAST_MERGED_SHA" "$TARGET_SHA" -- labs solutions src style index.html README.md
-    # A plain git diff --quiet: its exit code is the verdict, and a difference asks for the one scope of this edge.
-    preflightChecks:
-      - scope: github-intermediate
-    acceptCommands:
-      - |-
-        node --input-type=module -e 'import { writeFileSync } from "node:fs"; writeFileSync("experiences/github-intermediate-labs/provenance.json", JSON.stringify({ repository: "githubschool/gh-github-intermediate-template", commit: process.env.UPSTREAM_SHA }, null, 2) + "\n");'
+    importCommands:
+      - npm run import:github-intermediate -- <checkout>
+    preflightCommands: []
+    acceptCommands: []
     buildCommands:
-      - npm run build:experiences
-    verifyCommands:
-      - npm run build:workshop
-      - npm run build:experiences
-      - git -C "$GITHUB_WORKSPACE/portfolio" status --porcelain
       - npm run build
       - STUDIO_ORIGIN=https://studio.example.com npm run build:catalog
+    # The browser gate is the specification that covers the pages that this edge imports, as on the ghec-admin edge: the full suite of the portfolio needs the Segoe UI font, which the ubuntu-latest runner does not have.
+    verifyCommands:
       - npm run typecheck
       - npm run lint
       - npm test
       - npm run test:studio
       - npx playwright test tests/browser/sites.spec.ts
-      - |
-        # post-run check: a dry run must not leave a commit
-        if [ "${DRY_RUN:-}" = "true" ] && [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then
-          echo "dry_run is true but the agent committed $BASE_SHA..$AGENT_HEAD_SHA" >&2
-          exit 1
-        fi
-      - |
-        # post-run check: committed provenance records upstream_sha
-        if [ "$AGENT_HEAD_SHA" != "$BASE_SHA" ]; then
-          node --input-type=module -e '
-          import { readFileSync } from "node:fs";
-          const file = process.env.GITHUB_WORKSPACE + "/portfolio/experiences/github-intermediate-labs/provenance.json";
-          let doc;
-          try { doc = JSON.parse(readFileSync(file, "utf8")); }
-          catch { console.error("provenance.json is missing or unparseable"); process.exit(1); }
-          const keys = Object.keys(doc).sort().join(",");
-          if (keys !== "commit,repository" || doc.repository !== "githubschool/gh-github-intermediate-template" || doc.commit !== process.env.UPSTREAM_SHA) {
-            console.error("provenance.json does not record the upstream sha");
-            process.exit(1);
-          }
-          '
-        fi
-      - |
-        # post-run check: the upstream checkout stays read-only
-        test -z "$(git -C <checkout> status --porcelain)"
-    adaptationInstructions: >-
-      Diff the cumulative upstream range previous_sha..upstream_sha (upstream-diff.txt lists the changed files and dispatch-inputs.json holds both revisions)
-      and adapt only what that change requires: experiences/github-intermediate-labs/**, experiences/github-intermediate-workshop/**
-      and tests/github-intermediate-labs.test.ts and tests/github-intermediate-workshop.test.ts, within the allowed files below and without customer-specific authoring tools.
-      In both test files keep the lines before the first describe(, every describe( header and the locked it(...) blocks byte for byte.
-      When no adaptation is required, leave the worktree exactly as it is and make no commit, so that the run ends with outcome noop-no-changes and no pull request.
-      Otherwise write { "repository": "githubschool/gh-github-intermediate-template", "commit": "$UPSTREAM_SHA" } to experiences/github-intermediate-labs/provenance.json,
-      run npm run build:experiences, and commit provenance.json, experiences/**, tests/github-intermediate-*.test.ts and public/github-intermediate/** before the pull request is created.
+    adaptationInstructions: ""
     allowedFiles:
-      - experiences/github-intermediate-labs/provenance.json
-      - experiences/github-intermediate-labs/src/**
-      - experiences/github-intermediate-workshop/content/**
       - public/github-intermediate/**
-      - tests/github-intermediate-labs.test.ts
-      - tests/github-intermediate-workshop.test.ts
     protectedFilesExclude: []
     autoMerge: false
     immutableGates:
-      zeroDiffPaths:
-        - experiences/copilot-workshop/content/rules.ts
-        - experiences/copilot-workshop/content/source.ts
-        - experiences/copilot-workshop/content/types.ts
-        - experiences/copilot-workshop/src
-        - src
-        - scripts
-        - tests/auth.test.ts
-        - tests/runtime.test.ts
-        - tests/catalog.test.ts
-        - tests/copilot-workshop-geometry.test.ts
-        - tests/copilot-workshop-runtime.test.ts
-        - apps/lab-studio/server/src/index.ts
-        - apps/lab-studio/server/src/copilot-bridge.ts
-        - apps/lab-studio/server/src/sandbox.ts
-        - apps/lab-studio/server/src/sim-terminal.ts
-        - apps/lab-studio/server/src/skills.ts
-        - apps/lab-studio/server/tests/sandbox.test.ts
-      generatedPaths:
-        - public/**
-      lockedTestBlocks:
-        - file: tests/github-intermediate-labs.test.ts
-          blocks:
-            - kind: it
-              title: Lab 0 HTTPS prompts accept only simulated credentials and do not retain them
-        - file: tests/github-intermediate-workshop.test.ts
-          blocks:
-            - kind: it
-              title: gives every slide a title and non-empty, original speaker notes
-            - kind: it
-              title: contains no customer names, private framing, personal paths or real emails
-      inProcessInvariants:
-        frozenModules:
-          - experiences/copilot-workshop/content/rules.ts
-          - tests/support/customer-terms.ts
-        customerTerms:
-          module: tests/support/customer-terms.ts
-          export: findCustomerTerms
+      zeroDiffPaths: []
 
   # Self-cascade: the orchestrator is the upstream and the portfolio the downstream. The portfolio's importer (npm run import:ai-sdlc) pins the
   # briefing SPA, the specification reader and a copy of this manifest to the revision that the cascade delivers, in public/ai-sdlc/source.json.
