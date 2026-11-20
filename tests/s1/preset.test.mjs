@@ -45,7 +45,7 @@ test("AC5: git ls-files lists sdlc.yaml", () => {
   assert.deepEqual(trackedFiles("sdlc.yaml"), ["sdlc.yaml"]);
 });
 
-test("AC5: nine project entries with the named keys and repositories", () => {
+test("AC5: seven project entries with the named keys and repositories", () => {
   assert.deepEqual(
     manifest.projects.map((project) => [project.projectKey, project.repo]),
     [
@@ -56,8 +56,6 @@ test("AC5: nine project entries with the named keys and repositories", () => {
       ["github-intermediate", "githubschool/gh-github-intermediate-template"],
       ["portfolio", "johnhain-msft/portfolio"],
       ["ai-sdlc", "johnhain-msft/mfg_msft_ai_sdlc"],
-      ["copilot-config", "johnhain-msft/copilot-config"],
-      ["ai-asset-management", "johnhain-msft/ai_asset_management"],
     ],
   );
 });
@@ -98,15 +96,13 @@ test("AC5: reviewers are non-empty for gh-admin-msft and every project defaults 
   }
 });
 
-test("AC6: six edges, with the named modes, slugs, state variables and files", () => {
+test("AC6: five edges, with the named modes, slugs, state variables and files", () => {
   const edges = manifest.dependencyEdges;
-  assert.deepEqual(edges.map((edge) => edge.edgeId), ["ghec-admin", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc", "copilot-config"]);
-  for (const edge of edges.filter((e) => e.edgeId !== "copilot-config")) assert.equal(edge.downstreamRepo, "johnhain-msft/portfolio");
-  assert.equal(edgeOf(manifest, "copilot-config").downstreamRepo, "johnhain-msft/ai_asset_management");
+  assert.deepEqual(edges.map((edge) => edge.edgeId), ["ghec-admin", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc"]);
+  for (const edge of edges) assert.equal(edge.downstreamRepo, "johnhain-msft/portfolio");
   for (const [edgeId, repo, key, slug] of [
     ["ghec-admin", "johnhain-msft/gh-admin-msft", "gh-admin-msft", "GH_ADMIN_MSFT"],
     ["ai-sdlc", "johnhain-msft/mfg_msft_ai_sdlc", "ai-sdlc", "AI_SDLC"],
-    ["copilot-config", "johnhain-msft/copilot-config", "copilot-config", "COPILOT_CONFIG"],
   ]) {
     const edge = edgeOf(manifest, edgeId);
     assert.equal(edge.mode, "mechanical", edgeId);
@@ -118,7 +114,6 @@ test("AC6: six edges, with the named modes, slugs, state variables and files", (
   }
   assert.deepEqual(edgeOf(manifest, "ghec-admin").allowedFiles, ["public/ghec-admin/**"]);
   assert.deepEqual(edgeOf(manifest, "ai-sdlc").allowedFiles, ["public/ai-sdlc/**"]);
-  assert.deepEqual(edgeOf(manifest, "copilot-config").allowedFiles, ["assets/**", "governance/upstream-provenance.json", "governance/cowork-preferences-source.md", ".github/CODEOWNERS"]);
   for (const [edgeId, slug] of [["copilot-lab", "COPILOT_LAB"], ["pipeline-showcase", "PIPELINE_SHOWCASE"], ["github-intermediate", "GITHUB_INTERMEDIATE"]]) {
     const edge = edgeOf(manifest, edgeId);
     assert.equal(edge.mode, "ai-adaptation", edgeId);
@@ -149,7 +144,7 @@ test("every schedule of the preset that GitHub runs (each edge and each enabled 
     ...manifest.dependencyEdges.filter((edge) => edge.schedule !== null).map((edge) => [`edge ${edge.edgeId}`, edge.schedule]),
     ...manifest.projects.filter((project) => project.driftAudit.enabled).map((project) => [`drift ${project.projectKey}`, project.driftAudit.schedule]),
   ];
-  assert.ok(schedules.length >= 9, "six edges and three drift audits");
+  assert.ok(schedules.length >= 8, "five edges and three drift audits");
   for (const [owner, cron] of schedules) {
     const minute = cron.split(" ")[0];
     assert.match(minute, /^\d+$/, `${owner}: '${cron}' names one minute`);
@@ -216,19 +211,14 @@ test("AC7: the ai-sdlc edge imports through <checkout> and records its provenanc
   assert.deepEqual(edge.verifyCommands, gatesOf(edge), "the gates of the portfolio, in order, and nothing after them");
 });
 
-test("AC7: every portfolio edge's verifyCommands list the five portfolio gates in order, and copilot-config runs the Python aiam gates", () => {
+test("AC7: every portfolio edge's verifyCommands list the five portfolio gates in order", () => {
   for (const edge of manifest.dependencyEdges.filter((e) => e.downstreamRepo === "johnhain-msft/portfolio")) {
     assert.notEqual(indexOfSequence(edge.verifyCommands, gatesOf(edge)), null, `${edge.edgeId} lists the five gates in order`);
   }
-  assert.deepEqual(edgeOf(manifest, "copilot-config").verifyCommands, [
-    "aiam validate",
-    "python -m pytest -q",
-    "aiam release build --out /tmp/aiam-verify-dist",
-  ]);
 });
 
 test("AC7: every portfolio cascade edge runs the narrowed browser gate that ubuntu-latest can run, and no edge runs the full suite", () => {
-  assert.deepEqual(manifest.dependencyEdges.filter((edge) => edge.mode === "mechanical").map((edge) => edge.edgeId), ["ghec-admin", "ai-sdlc", "copilot-config"]);
+  assert.deepEqual(manifest.dependencyEdges.filter((edge) => edge.mode === "mechanical").map((edge) => edge.edgeId), ["ghec-admin", "ai-sdlc"]);
   for (const edge of manifest.dependencyEdges.filter((e) => e.downstreamRepo === "johnhain-msft/portfolio")) {
     assert.equal(edge.verifyCommands.includes(NARROWED_BROWSER_GATE), true, `${edge.edgeId}: the narrowed gate`);
     assert.equal(edge.verifyCommands.includes("npm run test:browser"), false, `${edge.edgeId}: the full suite`);
@@ -262,7 +252,7 @@ test("AC7: no importCommands or preflightCommands entry spells the upstream path
 });
 
 test("the engine is an npm dependency that the manifest declares: package, source and private (no dir: node_modules/<package>), and package.json depends on it", () => {
-  assert.deepEqual(manifest.factory, { package: "ai-sdlc-factory", source: "github:johnhain-msft/ai-sdlc-factory", private: true });
+  assert.deepEqual(manifest.factory, { package: "ai-sdlc-factory", source: "github:johnhain-msft/ai-sdlc-factory", private: false });
   assert.ok(readJson(abs("package.json")).dependencies[manifest.factory.package], "package.json has the dependency that the manifest names");
 });
 

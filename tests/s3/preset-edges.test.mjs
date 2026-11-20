@@ -23,7 +23,6 @@ const WORKFLOW_FILE = {
   "pipeline-showcase": "cascade-ai-pipeline-showcase.lock.yml",
   "github-intermediate": "cascade-ai-github-intermediate.lock.yml",
   "ai-sdlc": "cascade-mechanical-ai-sdlc.lock.yml",
-  "copilot-config": "cascade-mechanical-copilot-config.lock.yml",
 };
 const MAIN = sha("downstream-main");
 const headOf = (key) => sha(`head-of-${key}`);
@@ -48,8 +47,8 @@ function world(key, { stored, upstream = {}, downstream = {} } = {}) {
   });
 }
 
-test("AC66 the committed router has the six preset edges, and the workflow file of each dispatch exists on disk", () => {
-  assert.deepEqual(matrix.map((entry) => entry.upstreamKey), ["gh-admin-msft", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc", "copilot-config"]);
+test("AC66 the committed router has the five preset edges, and the workflow file of each dispatch exists on disk", () => {
+  assert.deepEqual(matrix.map((entry) => entry.upstreamKey), ["gh-admin-msft", "copilot-lab", "pipeline-showcase", "github-intermediate", "ai-sdlc"]);
   assert.deepEqual(matrix.map((entry) => entry.upstreamKey), manifest.map((entry) => entry.upstreamKey));
   for (const [key, file] of Object.entries(WORKFLOW_FILE)) assert.equal(fs.existsSync(abs(".github", "workflows", file)), true, `${key}: ${file}`);
 });
@@ -204,8 +203,8 @@ for (const [key, cases] of Object.entries(PREFLIGHT)) {
   });
 }
 
-test("AC34 the edges that declare no preflight run nothing: the three mechanical edges", async (t) => {
-  for (const key of ["gh-admin-msft", "ai-sdlc", "copilot-config"]) {
+test("AC34 the edges that declare no preflight run nothing: the two mechanical edges", async (t) => {
+  for (const key of ["gh-admin-msft", "ai-sdlc"]) {
     const entry = byKey[key];
     assert.deepEqual([declaredOf(entry).preflightCommands, declaredOf(entry).preflightChecks ?? []], [[], []], key);
     const w = world(key);
