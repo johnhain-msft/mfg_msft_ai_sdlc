@@ -1,4 +1,4 @@
-// The three AI adaptation workflows of the preset, as the committed files, with the identities of SPEC-04 AC5 and the small readers that the static tests share.
+// The two AI adaptation workflows of the preset, as the committed files, with the identities of SPEC-04 AC5 and the small readers that the static tests share.
 import YAML from "yaml";
 import { abs, readText } from "./fixtures.mjs";
 import { customJobsOf, globMatches, parseWorkflow, presetManifest, readWorkflow, referenceRequest, stepWithRun, stepsOf } from "../../s1/helpers/fixtures.mjs";
@@ -35,24 +35,11 @@ export const AI = [
     scopes: ["showcase-runs"],
     provenanceFile: "experiences/pipeline-showcase/content/provenance.json",
   },
-  {
-    edgeId: "github-intermediate",
-    id: "cascade-ai-github-intermediate",
-    upstreamKey: "github-intermediate",
-    upstreamSlug: "GITHUB_INTERMEDIATE",
-    upstreamRepo: "githubschool/gh-github-intermediate-template",
-    repo: "gh-github-intermediate-template",
-    branchName: "sdlc/cascade-github-intermediate",
-    closeOlderKey: "sdlc-cascade-github-intermediate",
-    group: "sdlc-state-github-intermediate",
-    scopes: ["github-intermediate"],
-    provenanceFile: "experiences/github-intermediate-labs/provenance.json",
-  },
 ];
 
 export const WORKFLOW_IDS = AI.map((spec) => spec.id);
-/** The sync scopes of this fleet: the engine has no list of them (a scope is any id that an edge declares), so these are the ones that this repository's three AI edges use. */
-export const ALL_SCOPES = ["both", "workshop-only", "studio-only", "showcase-runs", "github-intermediate"];
+/** The sync scopes of this fleet: the engine has no list of them (a scope is any id that an edge declares), so these are the ones that this repository's two AI edges use. */
+export const ALL_SCOPES = ["both", "workshop-only", "studio-only", "showcase-runs"];
 
 /** The commands of the first fenced bash block of a prompt, as one script. */
 export function promptBlock(body) {

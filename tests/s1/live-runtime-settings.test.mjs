@@ -97,7 +97,7 @@ test("61f0678: the other drift workflows keep the allowlist that cd, git, node a
 });
 
 test("9a49f71: the mechanical cascades run the browser gate that ubuntu-latest can run, in the workflow, in its lock and in the router that dispatches them", () => {
-  for (const id of ["cascade-mechanical-ghec-admin", "cascade-mechanical-ai-sdlc"]) {
+  for (const id of ["cascade-mechanical-ghec-admin", "cascade-mechanical-github-intermediate", "cascade-mechanical-ai-sdlc"]) {
     for (const [label, workflow] of versions(`${id}.md`)) {
       const posts = workflow.frontmatter["post-steps"];
       assert.deepEqual(posts.at(-1), { name: BROWSER_GATE, run: BROWSER_GATE, "working-directory": "portfolio" }, `${id} ${label}`);
@@ -109,12 +109,12 @@ test("9a49f71: the mechanical cascades run the browser gate that ubuntu-latest c
   }
   const router = YAML.parse(readText(abs(W, "cascade-router.yml")));
   const mechanical = router.jobs.route.strategy.matrix.include.filter((edge) => edge.mode === "mechanical");
-  assert.deepEqual(mechanical.map((edge) => edge.edgeId), ["ghec-admin", "ai-sdlc"]);
+  assert.deepEqual(mechanical.map((edge) => edge.edgeId), ["ghec-admin", "github-intermediate", "ai-sdlc"]);
   for (const edge of mechanical.filter((e) => e.downstreamRepo === "johnhain-msft/portfolio")) assert.equal(edge.verifyCommands.at(-1), BROWSER_GATE, edge.edgeId);
 });
 
 test("9a49f71: the AI cascades also run the narrowed browser gate that ubuntu-latest can run, without the full Segoe UI browser suite", () => {
-  for (const key of ["copilot-lab", "pipeline-showcase", "github-intermediate"]) {
+  for (const key of ["copilot-lab", "pipeline-showcase"]) {
     for (const [label, workflow] of versions(`cascade-ai-${key}.md`)) {
       assert.ok(workflow.frontmatter["post-steps"].some((step) => step.run === BROWSER_GATE), `${key} ${label}`);
       assert.equal(JSON.stringify(workflow.frontmatter["post-steps"]).includes("test:browser"), false, `${key} ${label}`);
@@ -242,7 +242,7 @@ function cascadeShellCommands(id) {
 
 test("43933185358: every mechanical cascade lets its agent run command -v, in the workflow and in its lock, so that the agent can look for the importer before it runs it", () => {
   const ids = [...rendered.files.keys()].filter((name) => /\/cascade-mechanical-[^/]+\.md$/.test(name)).map((name) => name.split("/").pop().replace(/\.md$/, ""));
-  assert.deepEqual(ids.sort(), ["cascade-mechanical-ai-sdlc", "cascade-mechanical-ghec-admin"]);
+  assert.deepEqual(ids.sort(), ["cascade-mechanical-ai-sdlc", "cascade-mechanical-ghec-admin", "cascade-mechanical-github-intermediate"]);
   for (const id of ids) {
     for (const [label, workflow] of versions(`${id}.md`)) assert.ok(workflow.frontmatter.tools.bash.includes("command"), `${id} ${label}`);
     assert.ok(cascadeShellCommands(id).includes("command"), `${id}: the lock lets the agent run command`);

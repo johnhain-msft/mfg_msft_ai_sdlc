@@ -84,7 +84,7 @@ CLICK: Press Start over. Answer No, then Yes.
 
 With no single import script, the answer is usually AI-adaptation, because the upstream change needs editing across files: workshop pages, lab pages, and tests that pin a revision. The agent may edit only the files on that edge's allowed list. Afterward the immutable-gates script checks that locked files show zero diff and that protected blocks in the companion tests are byte for byte identical.
 
-The Copilot lab, the pipeline showcase and the intermediate template are AI-adaptation edges. The administration workshop, the Copilot config repository and this orchestrator repository are mechanical.
+The Copilot lab and the pipeline showcase are AI-adaptation edges. The administration workshop, the GitHub Intermediate workshop and this orchestrator repository are mechanical.
 
 CLICK: Press Start over. Answer No, then No.
 

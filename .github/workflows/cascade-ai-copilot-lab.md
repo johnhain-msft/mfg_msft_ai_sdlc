@@ -250,6 +250,29 @@ post-steps:
         node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$UPSTREAM_SHA"
       fi
     working-directory: portfolio
+  - name: "post-run check: Studio UI preserves hosted session and lesson wiring"
+    run: |-
+      # post-run check: Studio UI preserves hosted session and lesson wiring
+      node --input-type=module -e '
+      import { readFileSync } from "node:fs";
+      const root = process.env.GITHUB_WORKSPACE + "/portfolio/";
+      const plain = (s) => s.replace(/\{"([^"]*)"\}/g, "$1").replace(/<[^>]+>/g, "").replace(/\s+/g, " ");
+      const checks = [
+        ["apps/lab-studio/client/src/components/Home.tsx", false, ["loadWebsiteSession()", "/workspace/status", "resumePlace(", "sourceRevisionUrl()", "SOURCE_ONLY_EXERCISES", "setupGuideUrl()", "SETUP_GUIDE.note"]],
+        ["apps/lab-studio/client/src/components/Manual.tsx", false, ["MarkReadCard", "sourceLabUrl(", "sourceLabPath("]],
+        ["apps/lab-studio/client/src/labs/lab05.tsx", true, ["consolidate-lessons skill", "it is a command skill", "/consolidate-lessons", "compares this wiki with github copilot memory", "custom memory service", "(lab 10, step 5)"]],
+      ];
+      const missing = [];
+      for (const [file, asPlain, tokens] of checks) {
+        let text;
+        try { text = readFileSync(root + file, "utf8"); }
+        catch { missing.push(file + " (unreadable)"); continue; }
+        const hay = asPlain ? plain(text).toLowerCase() : text;
+        for (const token of tokens) if (!hay.includes(token)) missing.push(file + ": " + token);
+      }
+      if (missing.length > 0) { console.error("Studio UI wiring missing: " + missing.join(", ")); process.exit(1); }
+      '
+    working-directory: portfolio
   - name: "post-run check: the upstream checkout stays read-only"
     run: |-
       # post-run check: the upstream checkout stays read-only
@@ -298,8 +321,11 @@ safe-outputs:
       - tests/copilot-workshop.test.ts
       - apps/lab-studio/lab-sources.json
       - apps/lab-studio/README.md
-      - apps/lab-studio/client/src/labs/source.ts
-      - apps/lab-studio/client/src/labs/lab*.tsx
+      - apps/lab-studio/client/src/labs/**
+      - apps/lab-studio/client/src/components/Home.tsx
+      - apps/lab-studio/client/src/components/Manual.tsx
+      - apps/lab-studio/client/src/components/Rail.tsx
+      - apps/lab-studio/client/src/styles.css
       - apps/lab-studio/server/src/verify.ts
       - apps/lab-studio/server/tests/source.test.ts
       - apps/lab-studio/server/tests/lab-drift.test.ts
@@ -438,7 +464,7 @@ Adapt the downstream checkout `portfolio/` of `johnhain-msft/portfolio` to the u
 
 ## Adaptation instructions
 
-Adapt the Copilot workshop pages and the hosted Lab Studio labs to the cumulative upstream change. Read the drift reports under /tmp/gh-aw/agent/ first (workshop-drift.txt, lab-studio-drift.txt and upstream-diff.txt) and change only what the evidence supports. Treat the workshop report as opaque text and never assume that its exit code distinguishes drift from a crash. Changes are required when the workshop report lists changed, new or gone inputs or PROBLEM lines, or when lab-studio-drift.txt lists a lab in changedLabs. Update the workshop pages (experiences/copilot-workshop/content/index.ts, interludes.ts, lab-pace.ts and the m*.ts modules), experiences/copilot-workshop/public/LICENSE, experiences/copilot-workshop/public/NOTICE.txt, README.md, public/copilot-project.html and tests/copilot-workshop.test.ts. Keep every page inside the content rules of the locked rules module: speech counted at 140 words a minute (SPEAKING_WPM) plus the live cues (LIVE_SECONDS), the audience-word limits, no hollow cards, cue discipline, source links pinned to the new revision and the 227 of 240 minute budget. The workshop sync command writes none of content/*.ts, lab-pace.ts or public/LICENSE, so update lab-pace.ts, public/LICENSE and the page content yourself, and keep every source-lab link pointing at the pinned revision. In tests/copilot-workshop.test.ts keep the lines before the first describe(, every describe( header and the five locked it(...) blocks byte for byte. Update the Studio labs (apps/lab-studio/client/src/labs/labNN.tsx), apps/lab-studio/README.md, apps/lab-studio/server/src/verify.ts and the Studio tests source.test.ts, lab-drift.test.ts and lesson-content.test.ts, and never edit sandbox.test.ts. Hosted authentication and sandbox isolation must be preserved: the authentication and runtime tests and the gateway, bridge, sandbox, terminal and skills sources of the Studio server stay zero-diff. Never touch the locked rule, runtime, authentication and sandbox files.
+Adapt the Copilot workshop pages and the hosted Lab Studio labs to the cumulative upstream change. Read the drift reports under /tmp/gh-aw/agent/ first (workshop-drift.txt, lab-studio-drift.txt and upstream-diff.txt) and change only what the evidence supports. Treat the workshop report as opaque text and never assume that its exit code distinguishes drift from a crash. Changes are required when the workshop report lists changed, new or gone inputs or PROBLEM lines, or when lab-studio-drift.txt lists a lab in changedLabs. Update the workshop pages (experiences/copilot-workshop/content/index.ts, interludes.ts, lab-pace.ts and the m*.ts modules), experiences/copilot-workshop/public/LICENSE, experiences/copilot-workshop/public/NOTICE.txt, README.md, public/copilot-project.html and tests/copilot-workshop.test.ts. Keep every page inside the content rules of the locked rules module: speech counted at 140 words a minute (SPEAKING_WPM) plus the live cues (LIVE_SECONDS), the audience-word limits, no hollow cards, cue discipline, source links pinned to the new revision and the 227 of 240 minute budget. The workshop sync command writes none of content/*.ts, lab-pace.ts or public/LICENSE, so update lab-pace.ts, public/LICENSE and the page content yourself, and keep every source-lab link pointing at the pinned revision. In tests/copilot-workshop.test.ts keep the lines before the first describe(, every describe( header and the five locked it(...) blocks byte for byte. Update the Studio labs and UI (apps/lab-studio/client/src/labs/**, apps/lab-studio/client/src/components/{Home,Manual,Rail}.tsx and apps/lab-studio/client/src/styles.css), apps/lab-studio/README.md, apps/lab-studio/server/src/verify.ts and the Studio tests source.test.ts, lab-drift.test.ts and lesson-content.test.ts, and never edit sandbox.test.ts. When porting upstream Studio UI and track changes into apps/lab-studio/client/src/labs/**, components/{Home,Manual,Rail}.tsx and styles.css, preserve: (i) in Home.tsx: loadWebsiteSession() and the /workspace/status check, resumePlace(), sourceRevisionUrl(), and the "three more exercises" (SOURCE_ONLY_EXERCISES) and setupGuideUrl() / SETUP_GUIDE.note sections required by source.test.ts; (ii) in Manual.tsx: MarkReadCard and sourceLabUrl() / sourceLabPath(); (iii) in lab05.tsx: the final <Note> naming consolidate-lessons skill, It is a command skill, and /consolidate-lessons (required by lesson-content.test.ts) together with compares this wiki with GitHub Copilot Memory, custom memory service, and (Lab 10, step 5) (required by memory-sync.test.ts); (iv) in apps/lab-studio/README.md: update the 40-hex Pinned to <sha> revision to $UPSTREAM_SHA (since apps/lab-studio/README.md is not in revisionPins.files); (v) in public/copilot-project.html: update the 7-hex short revision in prose that bump-studio-revision-pins.mjs reports on stderr as unreplaced-short-sha; (vi) flag any upstream changes to locked server files (sim-terminal.ts, sandbox.ts, copilot-bridge.ts, skills.ts, index.ts) in the pull request body for human review. Hosted authentication and sandbox isolation must be preserved: the authentication and runtime tests, hosted.ts, AccountBar.tsx, and the gateway, bridge, sandbox, terminal and skills sources of the Studio server stay zero-diff. Never touch the locked rule, runtime, authentication and sandbox files.
 
 ## Evidence
 
@@ -479,8 +505,11 @@ Only these paths (the pull request is refused for any other file):
 - `tests/copilot-workshop.test.ts`
 - `apps/lab-studio/lab-sources.json`
 - `apps/lab-studio/README.md`
-- `apps/lab-studio/client/src/labs/source.ts`
-- `apps/lab-studio/client/src/labs/lab*.tsx`
+- `apps/lab-studio/client/src/labs/**`
+- `apps/lab-studio/client/src/components/Home.tsx`
+- `apps/lab-studio/client/src/components/Manual.tsx`
+- `apps/lab-studio/client/src/components/Rail.tsx`
+- `apps/lab-studio/client/src/styles.css`
 - `apps/lab-studio/server/src/verify.ts`
 - `apps/lab-studio/server/tests/source.test.ts`
 - `apps/lab-studio/server/tests/lab-drift.test.ts`
@@ -507,12 +536,12 @@ A difference in any of them fails the verification that runs after you finish, a
 - `apps/lab-studio/server/src/sim-terminal.ts`
 - `apps/lab-studio/server/src/skills.ts`
 - `apps/lab-studio/server/tests/sandbox.test.ts`
+- `apps/lab-studio/client/src/hosted.ts`
+- `apps/lab-studio/client/src/components/AccountBar.tsx`
 
 The companion test files of the other adaptation workflows are theirs alone:
 
 - `tests/pipeline-showcase.test.ts`
-- `tests/github-intermediate-labs.test.ts`
-- `tests/github-intermediate-workshop.test.ts`
 
 ## Test blocks that stay byte for byte
 
@@ -535,7 +564,7 @@ node "$GITHUB_WORKSPACE/scripts/bump-studio-revision-pins.mjs" --portfolio "$GIT
 npm run sync:workshop-source -- "$UPSTREAM_DIR" --accept
 node "$GITHUB_WORKSPACE/scripts/lab-studio-drift.mjs" --portfolio "$GITHUB_WORKSPACE/portfolio" --upstream "$UPSTREAM_DIR" --commit "$UPSTREAM_SHA" --accept
 npm run build:workshop
-git add -- README.md apps/lab-studio/README.md apps/lab-studio/client/src/labs apps/lab-studio/client/src/labs/source.ts apps/lab-studio/lab-sources.json apps/lab-studio/server/src/verify.ts apps/lab-studio/server/tests/lab-drift.test.ts apps/lab-studio/server/tests/lesson-content.test.ts apps/lab-studio/server/tests/source.test.ts experiences/copilot-workshop/content experiences/copilot-workshop/content/index.ts experiences/copilot-workshop/content/interludes.ts experiences/copilot-workshop/content/lab-pace.ts experiences/copilot-workshop/provenance.json experiences/copilot-workshop/public/LICENSE experiences/copilot-workshop/public/NOTICE.txt experiences/copilot-workshop/source-inputs.json public/copilot-project.html public/workshop tests/copilot-workshop.test.ts
+git add -- README.md apps/lab-studio/README.md apps/lab-studio/client/src/components/Home.tsx apps/lab-studio/client/src/components/Manual.tsx apps/lab-studio/client/src/components/Rail.tsx apps/lab-studio/client/src/labs apps/lab-studio/client/src/styles.css apps/lab-studio/lab-sources.json apps/lab-studio/server/src/verify.ts apps/lab-studio/server/tests/lab-drift.test.ts apps/lab-studio/server/tests/lesson-content.test.ts apps/lab-studio/server/tests/source.test.ts experiences/copilot-workshop/content experiences/copilot-workshop/content/index.ts experiences/copilot-workshop/content/interludes.ts experiences/copilot-workshop/content/lab-pace.ts experiences/copilot-workshop/provenance.json experiences/copilot-workshop/public/LICENSE experiences/copilot-workshop/public/NOTICE.txt experiences/copilot-workshop/source-inputs.json public/copilot-project.html public/workshop tests/copilot-workshop.test.ts
 git commit -m "feat(cascade): adapt copilot-lab to $UPSTREAM_SHA"
 ```
 
