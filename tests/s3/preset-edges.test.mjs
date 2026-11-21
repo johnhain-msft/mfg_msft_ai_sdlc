@@ -21,7 +21,7 @@ const WORKFLOW_FILE = {
   "gh-admin-msft": "cascade-mechanical-ghec-admin.lock.yml",
   "copilot-lab": "cascade-ai-copilot-lab.lock.yml",
   "pipeline-showcase": "cascade-ai-pipeline-showcase.lock.yml",
-  "github-intermediate": "cascade-ai-github-intermediate.lock.yml",
+  "github-intermediate": "cascade-mechanical-github-intermediate.lock.yml",
   "ai-sdlc": "cascade-mechanical-ai-sdlc.lock.yml",
 };
 const MAIN = sha("downstream-main");
@@ -160,10 +160,6 @@ const PREFLIGHT = {
     { changes: [false], noop: "noop-unchanged-snapshot" },
     { changes: [true], scope: "showcase-runs" },
   ],
-  "github-intermediate": [
-    { changes: [false], noop: "noop-no-material-drift" },
-    { changes: [true], scope: "github-intermediate" },
-  ],
 };
 
 for (const [key, cases] of Object.entries(PREFLIGHT)) {
@@ -203,8 +199,8 @@ for (const [key, cases] of Object.entries(PREFLIGHT)) {
   });
 }
 
-test("AC34 the edges that declare no preflight run nothing: the two mechanical edges", async (t) => {
-  for (const key of ["gh-admin-msft", "ai-sdlc"]) {
+test("AC34 the edges that declare no preflight run nothing: the three mechanical edges", async (t) => {
+  for (const key of ["gh-admin-msft", "github-intermediate", "ai-sdlc"]) {
     const entry = byKey[key];
     assert.deepEqual([declaredOf(entry).preflightCommands, declaredOf(entry).preflightChecks ?? []], [[], []], key);
     const w = world(key);

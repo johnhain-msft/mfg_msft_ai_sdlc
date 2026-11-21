@@ -1,5 +1,9 @@
-// AC2, AC12-AC15 (data), AC24 (scopes), AC51 (provenance files) and AC60-AC68 (commands of the edges): the three ai-adaptation edges of the preset sdlc.yaml.
+// AC2, AC12-AC15 (data), AC24 (scopes), AC51 (provenance files) and AC60-AC68 (commands of the edges): the two ai-adaptation edges of the preset sdlc.yaml.
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import test from "node:test";
 import { engineFile } from "../helpers/instance.mjs";
 import { readJson } from "./helpers/fixtures.mjs";
@@ -25,6 +29,8 @@ const ZERO_DIFF = [
   "apps/lab-studio/server/src/sim-terminal.ts",
   "apps/lab-studio/server/src/skills.ts",
   "apps/lab-studio/server/tests/sandbox.test.ts",
+  "apps/lab-studio/client/src/hosted.ts",
+  "apps/lab-studio/client/src/components/AccountBar.tsx",
 ];
 
 const ALLOWED = {
@@ -43,8 +49,11 @@ const ALLOWED = {
     "tests/copilot-workshop.test.ts",
     "apps/lab-studio/lab-sources.json",
     "apps/lab-studio/README.md",
-    "apps/lab-studio/client/src/labs/source.ts",
-    "apps/lab-studio/client/src/labs/lab*.tsx",
+    "apps/lab-studio/client/src/labs/**",
+    "apps/lab-studio/client/src/components/Home.tsx",
+    "apps/lab-studio/client/src/components/Manual.tsx",
+    "apps/lab-studio/client/src/components/Rail.tsx",
+    "apps/lab-studio/client/src/styles.css",
     "apps/lab-studio/server/src/verify.ts",
     "apps/lab-studio/server/tests/source.test.ts",
     "apps/lab-studio/server/tests/lab-drift.test.ts",
@@ -56,14 +65,6 @@ const ALLOWED = {
     "experiences/pipeline-showcase/content/run-data.json",
     "public/pipeline-showcase/**",
     "tests/pipeline-showcase.test.ts",
-  ],
-  "github-intermediate": [
-    "experiences/github-intermediate-labs/provenance.json",
-    "experiences/github-intermediate-labs/src/**",
-    "experiences/github-intermediate-workshop/content/**",
-    "public/github-intermediate/**",
-    "tests/github-intermediate-labs.test.ts",
-    "tests/github-intermediate-workshop.test.ts",
   ],
 };
 
@@ -81,19 +82,23 @@ const TEN_COMMANDS = [
 ];
 
 const POST_RUN = {
-  "copilot-lab": ["a dry run must not leave a commit", "committed provenance records upstream_sha", "the upstream checkout stays read-only"],
+  "copilot-lab": [
+    "a dry run must not leave a commit",
+    "committed provenance records upstream_sha",
+    "Studio UI preserves hosted session and lesson wiring",
+    "the upstream checkout stays read-only",
+  ],
   "pipeline-showcase": [
     "a dry run must not leave a commit",
     "a changed RUNS list needs a re-captured run-data.json",
     "committed provenance records upstream_sha",
     "the upstream checkout stays read-only",
   ],
-  "github-intermediate": ["a dry run must not leave a commit", "committed provenance records upstream_sha", "the upstream checkout stays read-only"],
 };
 
-test("AC2: the preset has exactly three ai-adaptation edges, all into johnhain-msft/portfolio, with the keys, slugs and upstream repositories of the spec", () => {
+test("AC2: the preset has exactly two ai-adaptation edges, both into johnhain-msft/portfolio, with the keys, slugs and upstream repositories of the spec", () => {
   const edges = aiEdges();
-  assert.equal(edges.length, 3);
+  assert.equal(edges.length, 2);
   assert.deepEqual(edges.map((edge) => edge.edgeId), AI.map((spec) => spec.edgeId));
   for (const spec of AI) {
     const edge = edgeOf(spec);
@@ -136,10 +141,10 @@ test("AC12-AC14: the allowed files of each edge are exactly the lists of the spe
   for (const spec of AI) {
     assert.deepEqual([...edgeOf(spec).allowedFiles].sort(), [...ALLOWED[spec.edgeId]].sort(), spec.id);
   }
-  assert.equal(ALLOWED["copilot-lab"].length, 20);
+  assert.equal(ALLOWED["copilot-lab"].length, 23);
 });
 
-test("AC24: the sync scopes of each edge are the ones that its workflow accepts: ids that the installed engine's schema takes for a scope, and members of this fleet's five", () => {
+test("AC24: the sync scopes of each edge are the ones that its workflow accepts: ids that the installed engine's schema takes for a scope, and members of this fleet's four", () => {
   // a scope is a free-form id in the engine's schemas (the router dispatches one of the edge's, the workflow refuses any other), so the engine fixes only the shape of one
   const pattern = new RegExp(readJson(engineFile("schemas", "sdlc.schema.json")).definitions.scopeId.pattern);
   for (const spec of AI) {
@@ -153,9 +158,9 @@ test("AC24: the sync scopes of each edge are the ones that its workflow accepts:
   assert.deepEqual([...new Set(AI.flatMap((spec) => edgeOf(spec).syncScopes))].sort(), [...ALL_SCOPES].sort(), "and the fleet uses no other");
 });
 
-test("AC41/AC15: the seventeen locked paths are the same, in order, for the three edges", () => {
+test("AC41/AC15: the nineteen locked paths are the same, in order, for the two edges", () => {
   for (const spec of AI) assert.deepEqual(edgeOf(spec).immutableGates.zeroDiffPaths, ZERO_DIFF, spec.id);
-  assert.equal(ZERO_DIFF.length, 17);
+  assert.equal(ZERO_DIFF.length, 19);
 });
 
 test("AC68: each edge's verifyCommands are the ten commands that follow the helper, then the post-run checks of AC28, AC66 (showcase only), AC69 and AC77", () => {
@@ -170,8 +175,55 @@ test("AC68: each edge's verifyCommands are the ten commands that follow the help
     );
     for (const command of checks) assert.match(command, /^# post-run check: /, spec.id);
   }
-  assert.equal(edgeOf(AI[0]).verifyCommands.length, 13);
+  assert.equal(edgeOf(AI[0]).verifyCommands.length, 14);
   assert.equal(edgeOf(AI[1]).verifyCommands.length, 14);
+});
+
+test("AC62/AC68: the copilot-lab Studio UI post-run check executes and fails when hosted session or lesson wiring is dropped", () => {
+  const step = edgeOf(AI[0]).verifyCommands.find((cmd) => cmd.startsWith("# post-run check: Studio UI preserves hosted session and lesson wiring"));
+  assert.ok(step, "the Studio UI post-run check exists in copilot-lab.verifyCommands");
+  const scriptMatch = step.match(/node --input-type=module -e '([\s\S]*?)'/);
+  assert.ok(scriptMatch, "extracts the inline node script");
+  const script = scriptMatch[1];
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "sdlc-studio-wiring-"));
+  try {
+    const portfolio = path.join(scratch, "portfolio");
+    const writeFile = (rel, content) => {
+      const full = path.join(portfolio, ...rel.split("/"));
+      fs.mkdirSync(path.dirname(full), { recursive: true });
+      fs.writeFileSync(full, content);
+    };
+    const homeGood = 'loadWebsiteSession(); fetch("/workspace/status"); resumePlace(labs); sourceRevisionUrl(); SOURCE_ONLY_EXERCISES; setupGuideUrl(); SETUP_GUIDE.note;';
+    const manualGood = "MarkReadCard; sourceLabUrl(lab.number); sourceLabPath(lab.number);";
+    const lab05Good = '<code>consolidate-lessons</code>{" "}skill. It is a command skill, <code>/consolidate-lessons</code> (Lab 10, step 5) compares this wiki with GitHub Copilot Memory and a custom memory service.';
+    writeFile("apps/lab-studio/client/src/components/Home.tsx", homeGood);
+    writeFile("apps/lab-studio/client/src/components/Manual.tsx", manualGood);
+    writeFile("apps/lab-studio/client/src/labs/lab05.tsx", lab05Good);
+
+    const runCheck = () =>
+      spawnSync(process.execPath, ["--input-type=module", "-e", script], {
+        env: { ...process.env, GITHUB_WORKSPACE: scratch },
+        encoding: "utf8",
+      });
+
+    const passRun = runCheck();
+    assert.equal(passRun.status, 0, passRun.stderr);
+
+    // Negative controls across all three guarded files
+    for (const [rel, good, broken, expected] of [
+      ["apps/lab-studio/client/src/components/Home.tsx", homeGood, homeGood.replace("loadWebsiteSession()", "void 0"), /Home\.tsx: loadWebsiteSession\(\)/],
+      ["apps/lab-studio/client/src/components/Manual.tsx", manualGood, manualGood.replace("MarkReadCard", "div"), /Manual\.tsx: MarkReadCard/],
+      ["apps/lab-studio/client/src/labs/lab05.tsx", lab05Good, lab05Good.replace("skill.", "pack."), /lab05\.tsx: consolidate-lessons skill/],
+    ]) {
+      writeFile(rel, broken);
+      const failRun = runCheck();
+      assert.equal(failRun.status, 1, `dropping token in ${rel} must fail the post-run check`);
+      assert.match(failRun.stderr, expected);
+      writeFile(rel, good);
+    }
+  } finally {
+    fs.rmSync(scratch, { recursive: true, force: true });
+  }
 });
 
 test("AC60/AC63: the copilot-lab accept commands run the revision bump first, then the two --accept commands, then the build", () => {
@@ -188,18 +240,13 @@ test("AC60/AC63: the copilot-lab accept commands run the revision bump first, th
   ]);
 });
 
-test("AC64-AC67: the showcase and intermediate edges write the exact provenance object, and the showcase captures run data and builds", () => {
+test("AC64-AC66: the showcase edge writes the exact provenance object, captures run data and builds", () => {
   const showcase = edgeOf(AI[1]);
   assert.equal(showcase.acceptCommands.length, 1);
   assert.ok(showcase.acceptCommands[0].includes('JSON.stringify({ repository: "ms-mfg-community/github-pipeline-showcase", commit: process.env.UPSTREAM_SHA }, null, 2)'));
   assert.ok(showcase.acceptCommands[0].includes('"experiences/pipeline-showcase/content/provenance.json"'));
   assert.deepEqual(showcase.buildCommands, ["node experiences/pipeline-showcase/capture/fetch-run-data.mjs", "npm run build:experiences"]);
   assert.deepEqual(showcase.preflightCommands, ['gh api "repos/ms-mfg-community/github-pipeline-showcase/actions/runs?per_page=100"']);
-  const intermediate = edgeOf(AI[2]);
-  assert.equal(intermediate.acceptCommands.length, 1);
-  assert.ok(intermediate.acceptCommands[0].includes('JSON.stringify({ repository: "githubschool/gh-github-intermediate-template", commit: process.env.UPSTREAM_SHA }, null, 2)'));
-  assert.ok(intermediate.acceptCommands[0].includes('"experiences/github-intermediate-labs/provenance.json"'));
-  assert.deepEqual(intermediate.buildCommands, ["npm run build:experiences"]);
 });
 
 test("AC2: the adaptation data of the edges is the data that the helpers and the run report read (SPEC-04 schema field): the engine's own keys, and the data of the helpers under adaptation.helpers", () => {
@@ -224,5 +271,4 @@ test("AC2: the adaptation data of the edges is the data that the helpers and the
   assert.equal("labStudioDrift" in lab || "revisionPins" in lab, false, "and neither is a key of adaptation any more: the engine's schema does not know them");
   assert.deepEqual(lab.pullRequestResult, { adaptedModules: "experiences/copilot-workshop/content/m*.ts", adaptedStudioLabs: "apps/lab-studio/client/src/labs/lab*.tsx" });
   assert.deepEqual(edgeOf(AI[1]).adaptation, { preflightReports: ["upstream-runs.json"] });
-  assert.equal(edgeOf(AI[2]).adaptation, undefined);
 });

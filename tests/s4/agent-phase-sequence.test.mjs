@@ -1,10 +1,10 @@
-// AC60-AC67 and AC75: the prompts of the three AI workflows, as the committed files render them: what the agent is told to edit, never to touch, to read, to run in
+// AC60-AC66 and AC75: the prompts of the two AI workflows, as the committed files render them: what the agent is told to edit, never to touch, to read, to run in
 // what order, and how to finish. The agent is a language model, so the contract is the text it is given; the commands in it are run for real by the other tests.
 import assert from "node:assert/strict";
 import test from "node:test";
 import { AI, edgeOf, promptBlock, workflowOf } from "./helpers/workflows.mjs";
 
-const [LAB, SHOWCASE, INTERMEDIATE] = AI;
+const [LAB, SHOWCASE] = AI;
 const bodyOf = (spec) => workflowOf(spec).body;
 /** The text of one `## ` section of a prompt. */
 function section(body, heading) {
@@ -71,11 +71,15 @@ test("AC61: the copilot-lab prompt lists the workshop pages, notices, README, pa
   assert.ok(rules.includes("keep every source-lab link pointing at the pinned revision"));
 });
 
-test("AC62: the copilot-lab prompt lists the Studio labs, README, verify.ts and three Studio tests as editable, the authentication, runtime and sandbox files as forbidden, and requires them to be preserved", () => {
+test("AC62: the copilot-lab prompt lists the Studio labs, UI components, styles, README, verify.ts and three Studio tests as editable, the authentication, runtime and sandbox files as forbidden, and requires them to be preserved", () => {
   const body = bodyOf(LAB);
   const editable = section(body, "Files you may change");
   for (const file of [
-    "apps/lab-studio/client/src/labs/lab*.tsx",
+    "apps/lab-studio/client/src/labs/**",
+    "apps/lab-studio/client/src/components/Home.tsx",
+    "apps/lab-studio/client/src/components/Manual.tsx",
+    "apps/lab-studio/client/src/components/Rail.tsx",
+    "apps/lab-studio/client/src/styles.css",
     "apps/lab-studio/README.md",
     "apps/lab-studio/server/src/verify.ts",
     "apps/lab-studio/server/tests/source.test.ts",
@@ -93,8 +97,29 @@ test("AC62: the copilot-lab prompt lists the Studio labs, README, verify.ts and 
     "apps/lab-studio/server/src/sim-terminal.ts",
     "apps/lab-studio/server/src/skills.ts",
     "apps/lab-studio/server/tests/sandbox.test.ts",
+    "apps/lab-studio/client/src/hosted.ts",
+    "apps/lab-studio/client/src/components/AccountBar.tsx",
   ]) assert.ok(forbidden.includes(`\`${file}\``), `forbidden: ${file}`);
-  assert.match(body.replace(/\s+/g, " "), /Hosted authentication and sandbox isolation must be preserved/);
+  const flat = body.replace(/\s+/g, " ");
+  assert.match(flat, /Hosted authentication and sandbox isolation must be preserved/);
+  for (const phrase of [
+    "loadWebsiteSession()",
+    "/workspace/status",
+    "resumePlace()",
+    "sourceRevisionUrl()",
+    "SOURCE_ONLY_EXERCISES",
+    "setupGuideUrl()",
+    "SETUP_GUIDE.note",
+    "MarkReadCard",
+    "sourceLabUrl()",
+    "sourceLabPath()",
+    "consolidate-lessons skill",
+    "It is a command skill",
+    "/consolidate-lessons",
+    "(Lab 10, step 5)",
+    "Pinned to <sha>",
+    "unreplaced-short-sha",
+  ]) assert.ok(flat.includes(phrase), `Studio preservation rule: ${phrase}`);
 });
 
 test("AC63: the copilot-lab prompt has the commands in the order bump, sync accept, studio accept, build:workshop, git commit and only then create_pull_request, and a failed command ends the run", () => {
@@ -141,26 +166,6 @@ test("AC66: the showcase prompt makes a failed capture a failed run and forbids 
   const body = bodyOf(SHOWCASE).replace(/\s+/g, " ");
   assert.ok(body.includes("Any non-zero exit of the capture script is a failed run: never commit run-data.json from a run that did not exit 0 (its sanitisation guard exits 1 before it writes)"));
   assert.match(section(bodyOf(SHOWCASE), "Deterministic commands"), /A non-zero exit of any command is a failed run/);
-});
-
-test("AC67: the github-intermediate prompt diffs the cumulative range, leaves the worktree alone when nothing is needed, and otherwise adapts, writes the provenance object, builds and commits before the pull request", () => {
-  const body = bodyOf(INTERMEDIATE);
-  const flat = body.replace(/\s+/g, " ");
-  assert.ok(flat.includes("Diff the cumulative upstream range previous_sha..upstream_sha"));
-  assert.ok(flat.includes("When no adaptation is required, leave the worktree exactly as it is and make no commit, so that the run ends with outcome noop-no-changes and no pull request."));
-  assert.ok(flat.includes("experiences/github-intermediate-labs/**, experiences/github-intermediate-workshop/** and tests/github-intermediate-labs.test.ts and tests/github-intermediate-workshop.test.ts"));
-  assert.ok(flat.includes("without customer-specific authoring tools"));
-  assert.ok(flat.includes('write { "repository": "githubschool/gh-github-intermediate-template", "commit": "$UPSTREAM_SHA" } to experiences/github-intermediate-labs/provenance.json'));
-  const locked = section(body, "Test blocks that stay byte for byte");
-  assert.ok(locked.includes("`tests/github-intermediate-labs.test.ts`") && locked.includes("`tests/github-intermediate-workshop.test.ts`"));
-  assert.ok(locked.includes('`it("Lab 0 HTTPS prompts accept only simulated credentials and do not retain them")`'));
-  const block = promptBlock(body);
-  inOrder(block, ["provenance.json", "npm run build:experiences", "git add", "git commit"], "the fenced block");
-  inOrder(body, ["npm run build:experiences", "git commit", "create_pull_request"], "AC67");
-  const add = block.split("\n").find((line) => line.startsWith("git add"));
-  for (const path of ["experiences/github-intermediate-labs/provenance.json", "experiences/github-intermediate-labs/src", "experiences/github-intermediate-workshop/content", "public/github-intermediate", "tests/github-intermediate-labs.test.ts", "tests/github-intermediate-workshop.test.ts"]) {
-    assert.ok(add.includes(path), `the commit stages ${path}`);
-  }
 });
 
 test("AC75: every prompt states the branch, the editable and the forbidden paths, the evidence, the order of the commands, the commit before the pull request, what to leave alone, and what the pull request body lists", () => {

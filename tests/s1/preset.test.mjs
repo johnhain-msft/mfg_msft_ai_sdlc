@@ -53,7 +53,7 @@ test("AC5: seven project entries with the named keys and repositories", () => {
       ["copilot-lab", "ms-mfg-community/day-in-the-life-copilot-lab"],
       ["self-improving-agents", "ms-mfg-community/day-in-the-life-copilot-lab"],
       ["pipeline-showcase", "ms-mfg-community/github-pipeline-showcase"],
-      ["github-intermediate", "githubschool/gh-github-intermediate-template"],
+      ["github-intermediate", "johnhain-msft/gh-github-intermediate"],
       ["portfolio", "johnhain-msft/portfolio"],
       ["ai-sdlc", "johnhain-msft/mfg_msft_ai_sdlc"],
     ],
@@ -102,6 +102,7 @@ test("AC6: five edges, with the named modes, slugs, state variables and files", 
   for (const edge of edges) assert.equal(edge.downstreamRepo, "johnhain-msft/portfolio");
   for (const [edgeId, repo, key, slug] of [
     ["ghec-admin", "johnhain-msft/gh-admin-msft", "gh-admin-msft", "GH_ADMIN_MSFT"],
+    ["github-intermediate", "johnhain-msft/gh-github-intermediate", "github-intermediate", "GITHUB_INTERMEDIATE"],
     ["ai-sdlc", "johnhain-msft/mfg_msft_ai_sdlc", "ai-sdlc", "AI_SDLC"],
   ]) {
     const edge = edgeOf(manifest, edgeId);
@@ -113,8 +114,9 @@ test("AC6: five edges, with the named modes, slugs, state variables and files", 
     assert.equal(edge.upstreamDefaultBranch, "main", edgeId);
   }
   assert.deepEqual(edgeOf(manifest, "ghec-admin").allowedFiles, ["public/ghec-admin/**"]);
+  assert.deepEqual(edgeOf(manifest, "github-intermediate").allowedFiles, ["public/github-intermediate/**"]);
   assert.deepEqual(edgeOf(manifest, "ai-sdlc").allowedFiles, ["public/ai-sdlc/**"]);
-  for (const [edgeId, slug] of [["copilot-lab", "COPILOT_LAB"], ["pipeline-showcase", "PIPELINE_SHOWCASE"], ["github-intermediate", "GITHUB_INTERMEDIATE"]]) {
+  for (const [edgeId, slug] of [["copilot-lab", "COPILOT_LAB"], ["pipeline-showcase", "PIPELINE_SHOWCASE"]]) {
     const edge = edgeOf(manifest, edgeId);
     assert.equal(edge.mode, "ai-adaptation", edgeId);
     assert.equal(edge.upstreamSlug, slug, edgeId);
@@ -200,7 +202,10 @@ test("AC7: the pipeline-showcase edge references fetch-run-data.mjs in one of it
 });
 
 test("AC7: the github-intermediate edge has its own provenance file", () => {
-  assert.equal(edgeOf(manifest, "github-intermediate").provenanceFile, "experiences/github-intermediate-labs/provenance.json");
+  const edge = edgeOf(manifest, "github-intermediate");
+  assert.ok(edge.importCommands.includes("npm run import:github-intermediate -- <checkout>"));
+  assert.equal(edge.provenanceFile, "public/github-intermediate/source.json");
+  assert.equal(edge.provenanceJsonPointer, "/commit");
 });
 
 test("AC7: the ai-sdlc edge imports through <checkout> and records its provenance in public/ai-sdlc/source.json", () => {
@@ -218,7 +223,7 @@ test("AC7: every portfolio edge's verifyCommands list the five portfolio gates i
 });
 
 test("AC7: every portfolio cascade edge runs the narrowed browser gate that ubuntu-latest can run, and no edge runs the full suite", () => {
-  assert.deepEqual(manifest.dependencyEdges.filter((edge) => edge.mode === "mechanical").map((edge) => edge.edgeId), ["ghec-admin", "ai-sdlc"]);
+  assert.deepEqual(manifest.dependencyEdges.filter((edge) => edge.mode === "mechanical").map((edge) => edge.edgeId), ["ghec-admin", "github-intermediate", "ai-sdlc"]);
   for (const edge of manifest.dependencyEdges.filter((e) => e.downstreamRepo === "johnhain-msft/portfolio")) {
     assert.equal(edge.verifyCommands.includes(NARROWED_BROWSER_GATE), true, `${edge.edgeId}: the narrowed gate`);
     assert.equal(edge.verifyCommands.includes("npm run test:browser"), false, `${edge.edgeId}: the full suite`);

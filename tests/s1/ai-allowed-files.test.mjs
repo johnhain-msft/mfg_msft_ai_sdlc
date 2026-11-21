@@ -24,8 +24,11 @@ const COPILOT_LAB = [
   "tests/copilot-workshop.test.ts",
   "apps/lab-studio/lab-sources.json",
   "apps/lab-studio/README.md",
-  "apps/lab-studio/client/src/labs/source.ts",
-  "apps/lab-studio/client/src/labs/lab*.tsx",
+  "apps/lab-studio/client/src/labs/**",
+  "apps/lab-studio/client/src/components/Home.tsx",
+  "apps/lab-studio/client/src/components/Manual.tsx",
+  "apps/lab-studio/client/src/components/Rail.tsx",
+  "apps/lab-studio/client/src/styles.css",
   "apps/lab-studio/server/src/verify.ts",
   "apps/lab-studio/server/tests/source.test.ts",
   "apps/lab-studio/server/tests/lab-drift.test.ts",
@@ -38,14 +41,7 @@ const SHOWCASE = [
   "public/pipeline-showcase/**",
   "tests/pipeline-showcase.test.ts",
 ];
-const INTERMEDIATE = [
-  "experiences/github-intermediate-labs/provenance.json",
-  "experiences/github-intermediate-labs/src/**",
-  "experiences/github-intermediate-workshop/content/**",
-  "public/github-intermediate/**",
-  "tests/github-intermediate-labs.test.ts",
-  "tests/github-intermediate-workshop.test.ts",
-];
+const INTERMEDIATE = ["public/github-intermediate/**"];
 const MECHANICAL = ["public/ghec-admin/**"];
 const ZERO_DIFF = [
   "experiences/copilot-workshop/content/rules.ts",
@@ -65,6 +61,8 @@ const ZERO_DIFF = [
   "apps/lab-studio/server/src/sim-terminal.ts",
   "apps/lab-studio/server/src/skills.ts",
   "apps/lab-studio/server/tests/sandbox.test.ts",
+  "apps/lab-studio/client/src/hosted.ts",
+  "apps/lab-studio/client/src/components/AccountBar.tsx",
 ];
 
 /** AC52 "includes": equal, beneath a directory entry, matched as a glob, or matched by it. */
@@ -75,24 +73,25 @@ function includes(pattern, locked) {
 }
 const overlaps = (a, b) => includes(a, b) || includes(b, a);
 
-test("AC46: the 20 entries of cascade-ai-copilot-lab allowed-files equal the list, in order", () => {
-  assert.equal(COPILOT_LAB.length, 20);
+test("AC46: the 23 entries of cascade-ai-copilot-lab allowed-files equal the list, in order", () => {
+  assert.equal(COPILOT_LAB.length, 23);
   assert.deepEqual(edgeOf(preset, "copilot-lab").allowedFiles, COPILOT_LAB);
   const handler = readWorkflow("cascade-ai-copilot-lab.md").frontmatter["safe-outputs"]["create-pull-request"];
   assert.deepEqual(handler["allowed-files"], COPILOT_LAB);
   assert.deepEqual(buildAcks(request).ai.allowedFilesByWorkflow["cascade-ai-copilot-lab"], COPILOT_LAB);
 });
 
-test("AC47: the zeroDiffPaths of every AI edge equal the seventeen entries, in order", () => {
-  assert.equal(ZERO_DIFF.length, 17);
-  for (const edgeId of ["copilot-lab", "pipeline-showcase", "github-intermediate"]) {
+test("AC47: the zeroDiffPaths of every AI edge equal the nineteen entries, in order", () => {
+  assert.equal(ZERO_DIFF.length, 19);
+  for (const edgeId of ["copilot-lab", "pipeline-showcase"]) {
     assert.deepEqual(edgeOf(preset, edgeId).immutableGates.zeroDiffPaths, ZERO_DIFF, edgeId);
   }
   assert.deepEqual(edgeOf(preset, "ghec-admin").immutableGates.zeroDiffPaths, []);
+  assert.deepEqual(edgeOf(preset, "github-intermediate").immutableGates.zeroDiffPaths, []);
 });
 
-test("AC47: none of the seventeen locked paths is included by any allowedFiles entry of any AI edge", () => {
-  for (const [edgeId, list] of [["copilot-lab", COPILOT_LAB], ["pipeline-showcase", SHOWCASE], ["github-intermediate", INTERMEDIATE]]) {
+test("AC47: none of the nineteen locked paths is included by any allowedFiles entry of any AI edge", () => {
+  for (const [edgeId, list] of [["copilot-lab", COPILOT_LAB], ["pipeline-showcase", SHOWCASE]]) {
     for (const locked of ZERO_DIFF) {
       for (const pattern of list) assert.equal(includes(pattern, locked), false, `${edgeId}: '${pattern}' includes locked '${locked}'`);
     }
@@ -111,6 +110,8 @@ test("AC47: cascade-ai-copilot-lab's allowed-files contains none of the locked g
     "apps/lab-studio/server/src/sandbox.ts",
     "apps/lab-studio/server/src/sim-terminal.ts",
     "apps/lab-studio/server/src/skills.ts",
+    "apps/lab-studio/client/src/hosted.ts",
+    "apps/lab-studio/client/src/components/AccountBar.tsx",
     "tests/github-intermediate-labs.test.ts",
     "tests/github-intermediate-workshop.test.ts",
     "tests/pipeline-showcase.test.ts",
@@ -121,7 +122,7 @@ test("AC47: cascade-ai-copilot-lab's allowed-files contains none of the locked g
 
 test("AC48: the showcase and intermediate workflows set allowed-files to exactly the lists, in order", () => {
   assert.deepEqual(readWorkflow("cascade-ai-pipeline-showcase.md").frontmatter["safe-outputs"]["create-pull-request"]["allowed-files"], SHOWCASE);
-  assert.deepEqual(readWorkflow("cascade-ai-github-intermediate.md").frontmatter["safe-outputs"]["create-pull-request"]["allowed-files"], INTERMEDIATE);
+  assert.deepEqual(readWorkflow("cascade-mechanical-github-intermediate.md").frontmatter["safe-outputs"]["create-pull-request"]["allowed-files"], INTERMEDIATE);
   assert.deepEqual(readWorkflow("cascade-mechanical-ghec-admin.md").frontmatter["safe-outputs"]["create-pull-request"]["allowed-files"], MECHANICAL);
 });
 
@@ -129,9 +130,10 @@ test("AC43/AC48: the allowed-files of the four cascade workflows are pairwise di
   const acks = buildAcks(request);
   const lists = {
     "cascade-mechanical-ghec-admin": MECHANICAL,
+    "cascade-mechanical-github-intermediate": INTERMEDIATE,
     ...acks.ai.allowedFilesByWorkflow,
   };
-  assert.deepEqual(Object.keys(lists), ["cascade-mechanical-ghec-admin", "cascade-ai-copilot-lab", "cascade-ai-pipeline-showcase", "cascade-ai-github-intermediate"]);
+  assert.deepEqual(Object.keys(lists), ["cascade-mechanical-ghec-admin", "cascade-mechanical-github-intermediate", "cascade-ai-copilot-lab", "cascade-ai-pipeline-showcase"]);
   const names = Object.keys(lists);
   for (let first = 0; first < names.length; first += 1) {
     for (let second = first + 1; second < names.length; second += 1) {

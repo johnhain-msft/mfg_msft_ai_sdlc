@@ -490,12 +490,12 @@ A difference in any of them fails the verification that runs after you finish, a
 - `apps/lab-studio/server/src/sim-terminal.ts`
 - `apps/lab-studio/server/src/skills.ts`
 - `apps/lab-studio/server/tests/sandbox.test.ts`
+- `apps/lab-studio/client/src/hosted.ts`
+- `apps/lab-studio/client/src/components/AccountBar.tsx`
 
 The companion test files of the other adaptation workflows are theirs alone:
 
 - `tests/copilot-workshop.test.ts`
-- `tests/github-intermediate-labs.test.ts`
-- `tests/github-intermediate-workshop.test.ts`
 
 ## Test blocks that stay byte for byte
 

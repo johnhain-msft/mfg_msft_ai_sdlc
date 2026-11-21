@@ -24,7 +24,7 @@ SOURCE: README.md · plan.md
 
 SHOW: Two columns of text, then three number tiles underneath.
 
-Picture five upstream repositories: a GitHub Enterprise administration workshop, a Copilot lab, a pipeline showcase, an intermediate GitHub template, and this orchestrator repository itself. They span three different GitHub accounts and organizations.
+Picture five upstream repositories: a GitHub Enterprise administration workshop, a Copilot lab, a pipeline showcase, a GitHub Intermediate workshop, and this orchestrator repository itself. They span a personal GitHub account and a community organization.
 
 Suppose each one ran its own cron job against vendor docs. You'd end up with five slightly different schedules, five sets of secrets, and five places for a failure to hide, and nobody would be watching the gaps between them. That's the left column.
 
