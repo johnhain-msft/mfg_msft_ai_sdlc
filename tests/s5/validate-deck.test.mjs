@@ -94,8 +94,9 @@ test("deck states the fleet that sdlc.yaml declares: the slide 2 tile, the slide
   const labels = [...svg.matchAll(/<text\b[^>]*>([^<]*)<\/text>/g)].map((m) => m[1].trim());
   const listed = edges.filter((e) => e !== self);
   const downNames = [...downstreams].map((r) => r.split("/")[1]);
-  assert.ok(labels.includes(`${listed.length} upstream repos:`), `slide 3 labels its upstream group "${listed.length} upstream repos:"`);
-  assert.ok(labels.includes(`${downstreams.size} downstream repos:`), `slide 3 labels its downstream group "${downstreams.size} downstream repos:"`);
+  const noun = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}:`; // "1 downstream repo:", "4 upstream repos:"
+  assert.ok(labels.includes(noun(listed.length, "upstream repo")), `slide 3 labels its upstream group "${noun(listed.length, "upstream repo")}"`);
+  assert.ok(labels.includes(noun(downstreams.size, "downstream repo")), `slide 3 labels its downstream group "${noun(downstreams.size, "downstream repo")}"`);
   const alternatives = [...svg.matchAll(/aria-label="([^"]*)"/g)].map((m) => m[1]).join(" | ");
   for (const name of [...listed.map((e) => e.upstreamKey), ...downNames]) {
     assert.ok(labels.includes(name), `slide 3 draws ${name}`);
@@ -109,13 +110,17 @@ test("deck states the fleet that sdlc.yaml declares: the slide 2 tile, the slide
   assert.equal((html.match(/<circle class="g-node g-node-out" /g) || []).length, downstreams.size, "the cover glyph has a node for every downstream");
 });
 
-test("script sources are files of this repository, with no private repository links, engine paths or retracted claims", () => {
+test("script sources are files of this repository or public repositories, with no engine paths or retracted claims", () => {
+  // The notes are shown to everyone, so a source may link only to a repository that is known to be public. The instance, the engine,
+  // the pilot's upstream and the portfolio are. Any other repository of the account is not on this list until it is made public.
+  const PUBLIC_REPOS = new Set(["mfg_msft_ai_sdlc", "ai-sdlc-factory", "gh-admin-msft", "portfolio"]);
   const scriptDir = path.join(ROOT, "presentation", "content", "script");
   let cited = 0;
   for (const file of fs.readdirSync(scriptDir).filter((f) => f.endsWith(".md"))) {
     for (const line of content("script", file).split("\n").filter((l) => /^SOURCE:/i.test(l))) {
       for (const item of line.replace(/^SOURCE:\s*/i, "").split(" · ").map((s) => s.trim()).filter(Boolean)) {
-        assert.equal(/github\.com\/johnhain-msft\//i.test(item), false, `${file}: ${item} points at a private repository; the hosted notes show it, so cite the file instead`);
+        const owned = item.match(/github\.com\/johnhain-msft\/([\w.-]+)/i);
+        assert.ok(!owned || PUBLIC_REPOS.has(owned[1].toLowerCase()), `${file}: ${item} points at a repository that is not known to be public; cite the file instead`);
         if (!/^https?:/i.test(item)) assert.ok(fs.existsSync(path.join(ROOT, item)), `${file}: source ${item} is not a file of this repository`);
         cited += 1;
       }
@@ -733,3 +738,279 @@ test("mobile: keyboard reads tall slides and pans figures before navigating and 
   h.resize(screen());
   assert.equal(s.getAttribute("tabindex"), "0"); assert.equal(fig.getAttribute("tabindex"), "0");
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The briefing for the public instance: what it says about the engine, the fleet and visibility, and the three widgets that
+// show it. The facts come from sdlc.yaml and package.json; the widgets run in the same shipped runtime as every test above.
+// ---------------------------------------------------------------------------------------------------------------------
+const WORD = /[A-Za-z0-9][A-Za-z0-9\-\u2019'.]*/g;
+/** The words a room can see at this moment: the same measure as the build's budget (no SVG, scripts or hidden elements). */
+function visibleWords(el) {
+  let n = 0;
+  (function walk(node) {
+    if (!(node instanceof DeckElement)) { n += (String(node.textContent).match(WORD) || []).length; return; }
+    if (["SVG", "SCRIPT", "STYLE"].includes(node.tagName) || node.hasAttribute("hidden")) return;
+    node.childNodes.forEach(walk);
+  })(el);
+  return n;
+}
+const embeddedJson = (name) => JSON.parse(content("diagrams", `${name}.html`).match(/<script\b[^>]*type="application\/json"[^>]*>([\s\S]*?)<\/script>/)[1]);
+const everyContentFile = () => [["slides", ".md"], ["script", ".md"], ["diagrams", ".html"]].flatMap(([dir, ext]) =>
+  fs.readdirSync(path.join(ROOT, "presentation", "content", dir)).filter((f) => f.endsWith(ext)).map((f) => ({ file: `${dir}/${f}`, text: content(dir, f) })));
+const semver = (v) => v.replace(/^v/, "").split(".").map(Number);
+const atLeast = (a, b) => { for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] > b[i]; return true; };
+
+test("the briefing is public: no GitHub App id, no private-repository or collaborator wording, and the engine install is explained both ways", () => {
+  for (const { file, text } of everyContentFile()) {
+    assert.doesNotMatch(text, /\b5671833\b|GitHub App #\d+/, `${file} states a GitHub App id`);
+    assert.doesNotMatch(text, /repositories are private|\bcollaborators?\b/i, `${file} still talks about private repositories or collaborators`);
+  }
+  const chips = content("slides", "01-overview-and-security.md").match(/:::chips\n([\s\S]*?)\n:::/)[1].split("\n");
+  assert.deepEqual(chips, ["- ai-sdlc-factory v0.2.0 Engine", "- Zero External Servers", "- Human-Merged PRs"]);
+  const spoken = content("script", "03-pilot-and-onboarding.md");
+  for (const phrase of ["These repositories are public", "the manifest says private is false", "plain npm ci that ignores install scripts", "No factory token is minted",
+    "you set private to true instead", "mints a read token from the App", "three git config URL rewrites"]) assert.ok(spoken.includes(phrase), `the S5 script says: ${phrase}`);
+  assert.match(content("slides", "03-pilot-and-onboarding.md"), /factory:\n {2}package: ai-sdlc-factory\n {2}private: false/, "slide 10 shows the factory block");
+});
+
+test("the deck names the engine ai-sdlc-factory and its version, never the old reconcile.mjs, and is never behind the pin in package.json", () => {
+  for (const { file, text } of everyContentFile()) assert.doesNotMatch(text, /reconcile\.mjs/, `${file} still names reconcile.mjs, which is now sdlc-reconcile of the engine`);
+  assert.ok(content("diagrams", "fleet-topology.html").includes("sdlc.yaml → sdlc-reconcile (ai-sdlc-factory v0.2.0)"), "the S1 band of the topology names the command and the engine version");
+  const s1 = content("slides", "02-workstreams-and-cascade.md").split("\n---\n")[1];
+  for (const name of ["Instance · This Repo", "Engine · Public Package", "`ai-sdlc-factory v0.2.0`", "`sdlc-reconcile`", "`sdlc-bootstrap`", "`sdlc-onboard`", "`.github/workflows/`"]) assert.ok(s1.includes(name), `slide 5 lists ${name}`);
+  const script = content("script", "02-workstreams-and-cascade.md");
+  for (const phrase of ["the instance, this repository", "a public package called ai-sdlc-factory", "plain npm ci"]) assert.ok(script.includes(phrase), `the S1 script says: ${phrase}`);
+  // the engine version that the briefing documents is the one that package.json pins, or newer while the bump is in flight
+  const pin = JSON.parse(read("package.json")).dependencies["ai-sdlc-factory"].match(/#v?(\d+\.\d+\.\d+)$/);
+  assert.ok(pin, "package.json pins ai-sdlc-factory at a tag");
+  const named = new Set((everyContentFile().map((f) => f.text).join("\n").match(/ai-sdlc-factory v(\d+\.\d+\.\d+)/g) || []).map((m) => m.match(/v(.+)$/)[1]));
+  assert.ok(named.size >= 1, "the deck states the engine version");
+  for (const version of named) assert.ok(atLeast(semver(version), semver(pin[1])), `the deck documents ai-sdlc-factory v${version}, which is older than the v${pin[1]} that package.json pins`);
+});
+
+test("slide 8 lists every edge of sdlc.yaml in the card of its mode, and the script gives the same counts", () => {
+  const { edges } = fleetOf(YAML.parse(read("sdlc.yaml")));
+  const html = content("diagrams", "cascade-decision.html");
+  const tree = embeddedJson("cascade-decision");
+  const [, mechanical, ai] = html.split(/data-outcome="(?:mechanical|ai)"/);
+  const chipsIn = (block) => [...block.matchAll(/data-edge="([^"]+)"/g)].map((m) => m[1]).sort();
+  const byMode = (mode) => edges.filter((e) => e.mode === mode).map((e) => e.edgeId).sort();
+  assert.deepEqual(chipsIn(mechanical), byMode("mechanical"), "the Mechanical card lists the mechanical edges");
+  assert.deepEqual(chipsIn(ai), byMode("ai-adaptation"), "the AI-Adaptation card lists the AI-adaptation edges");
+  for (const e of edges) {
+    const node = tree[`edge-${e.edgeId}`];
+    assert.ok(node, `a result for ${e.edgeId}`);
+    assert.equal(node.result, e.mode === "mechanical" ? "mechanical" : "ai"); assert.equal(node.edge, e.edgeId);
+  }
+  const words = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+  const script = content("script", "02-workstreams-and-cascade.md");
+  assert.ok(script.includes(`declares ${words[edges.length]} edges today: ${words[byMode("mechanical").length]} mechanical and ${words[byMode("ai-adaptation").length]} AI-adaptation`),
+    "the S4 script states how many edges sdlc.yaml declares, and how many are mechanical and AI-adaptation");
+});
+
+test("the changePolicy explorer files findings by the three policies, names real projects, and agrees with every changePolicy that sdlc.yaml declares", () => {
+  const manifest = YAML.parse(read("sdlc.yaml"));
+  const cfg = embeddedJson("upkeep-explorer");
+  assert.deepEqual(Object.keys(cfg.policies).sort(), ["corrections-and-additions", "corrections-only", "judgement-and-flag"]);
+  const projectKeys = new Set(manifest.projects.map((p) => p.projectKey));
+  for (const [name, p] of Object.entries(cfg.policies)) {
+    for (const key of p.projects) assert.ok(projectKeys.has(key), `${name} names ${key}, which is not a project of sdlc.yaml`);
+    for (const key of p.projects) {
+      const declared = manifest.projects.find((x) => x.projectKey === key).driftAudit.changePolicy;
+      if (declared !== undefined) assert.equal(declared, name, `sdlc.yaml gives ${key} the policy ${declared}, the explorer files it under ${name}`);
+    }
+    // the findings that a policy leaves for a human are exactly those that it does not file as recommended
+    const filed = new Set(p.recommended);
+    assert.deepEqual([...new Set([...p.recommended, ...p.human])].sort(), ["add", "fix", "judge"], `${name} accounts for every finding`);
+    assert.deepEqual(p.human.filter((k) => filed.has(k)), [], `${name} does not file a finding twice`);
+    assert.deepEqual(p.pr, p.recommended.filter((k) => !p.flag.includes(k)), `${name}: the pull request holds what is recommended, minus what it flags`);
+  }
+  for (const project of manifest.projects) {
+    const declared = project.driftAudit.changePolicy;
+    if (declared === undefined) continue;
+    assert.ok(cfg.policies[declared], `${project.projectKey} declares the unknown policy ${declared}`);
+    if (declared !== "corrections-only") assert.ok(cfg.policies[declared].projects.includes(project.projectKey), `the explorer names ${project.projectKey} under ${declared}`);
+  }
+  assert.deepEqual(cfg.policies["corrections-only"].projects, [], "the default policy is not claimed by any project");
+});
+
+test("workstream inspector: pinning S2 swaps the callout for its role, inputs and outputs and a link to its slide; a second press or Escape restores it", () => {
+  const h = mountDeck({ initialSlide: 3 });
+  const callout = h.$("#stage .callout"); const fig = h.$("#stage .diagram"); const slide = h.$("#stage .slide.active");
+  const nodes = h.doc.querySelectorAll("#stage [data-hl]"); assert.equal(nodes.length, 5);
+  for (const n of nodes) { assert.equal(n.getAttribute("role"), "button"); assert.equal(n.getAttribute("aria-pressed"), "false"); assert.equal(n.getAttribute("tabindex"), "0"); }
+  const panel = h.$("#stage .inspector"); assert.equal(panel.hidden, true); assert.equal(callout.hidden, false);
+  assert.equal(h.$("#stage .callout-title").textContent.includes("Zero-Infrastructure State"), true);
+  const s2 = h.$('#stage [data-hl="s2"]');
+  s2.click();
+  assert.equal(panel.hidden, false); assert.equal(callout.hidden, true); assert.equal(fig.classList.contains("is-inspecting"), true);
+  assert.equal(s2.getAttribute("aria-pressed"), "true"); assert.equal(s2.classList.contains("is-selected"), true);
+  assert.equal(nodes.filter((n) => n.getAttribute("aria-pressed") === "true").length, 1, "one group is pinned at a time");
+  for (const text of ["S2", "Upstream Drift", "watchUrls", "citedPages", "packageManifests", "drift report issue", "one reviewable PR"]) assert.ok(panel.textContent.includes(text), `the inspector shows ${text}`);
+  assert.equal(panel.querySelector("a.insp-go").getAttribute("href"), "#/s2-drift-harness");
+  assert.ok(visibleWords(slide) <= 70, `slide 3 shows ${visibleWords(slide)} words with S2 pinned`);
+  // another group replaces it; the same key (Enter or Space) or Escape closes it
+  h.$('#stage [data-hl="s5"]').click(); assert.equal(s2.getAttribute("aria-pressed"), "false"); assert.ok(panel.textContent.includes("Bootstrap & Self-Cascade"));
+  assert.equal(panel.querySelector("a.insp-go").getAttribute("href"), "#/self-cascade-onboard");
+  const enter = h.key("Enter", h.$('#stage [data-hl="s5"]')); assert.equal(enter.defaultPrevented, true); assert.equal(panel.hidden, true); assert.equal(callout.hidden, false);
+  h.key(" ", s2); assert.equal(panel.hidden, false);
+  h.key("Escape", s2); assert.equal(panel.hidden, true); assert.equal(callout.hidden, false); assert.equal(fig.classList.contains("is-inspecting"), false);
+  assert.equal(h.active(), h.data.slides[2].id, "pinning a workstream never changes slide");
+  for (const key of ["s1", "s2", "s3", "s4", "s5"]) {
+    h.$(`#stage [data-hl="${key}"]`).click(); assert.ok(visibleWords(slide) <= 70, `${key} pinned: ${visibleWords(slide)} words`);
+    assert.ok(h.data.slides.some((s) => `#/${s.id}` === panel.querySelector("a.insp-go").getAttribute("href")), `${key} links to a slide of the deck`);
+    h.$(`#stage [data-hl="${key}"]`).click();
+  }
+  const focus = h.$('#stage [data-hl="s3"]'); focus.fire("focus"); assert.equal(focus.classList.contains("is-hl"), true, "hover and focus highlight still work");
+});
+
+test("changePolicy explorer: each policy files the three findings under Recommended or For a human and shapes the pull request", () => {
+  const h = mountDeck({ initialSlide: 6 });
+  const box = h.$("#stage [data-upkeep]"); const slide = h.$("#stage .slide.active");
+  const items = (key) => box.querySelectorAll(`[data-uk-items="${key}"] .uk-item`).map((e) => e.textContent);
+  const human = box.querySelector('[data-uk-sec="human"]'); const flag = box.querySelector('[data-uk-sec="flag"]');
+  const pressed = () => box.querySelectorAll("[data-policy]").filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.dataset.policy);
+  assert.deepEqual(pressed(), ["corrections-only"]);
+  assert.deepEqual(items("recommended"), ["Correction"]); assert.deepEqual(items("human"), ["Addition", "Judgement call"]); assert.deepEqual(items("pr"), ["Correction"]);
+  assert.equal(flag.hidden, true); assert.equal(box.querySelector("[data-uk-used]").textContent, "Default when unset");
+  assert.equal(box.querySelector("[data-uk-note]").textContent, "Opens every source, then applies corrections.");
+  assert.ok(visibleWords(slide) <= 58, `the default state shows ${visibleWords(slide)} words`);
+  box.querySelector('[data-policy="corrections-and-additions"]').click();
+  assert.deepEqual(pressed(), ["corrections-and-additions"]);
+  assert.deepEqual(items("recommended"), ["Correction", "Addition"]); assert.deepEqual(items("human"), ["Judgement call"]); assert.deepEqual(items("pr"), ["Correction", "Addition"]);
+  assert.equal(flag.hidden, true); assert.equal(human.classList.contains("is-omitted"), false);
+  assert.equal(box.querySelector("[data-uk-used]").textContent, "Used by gh-admin-msft, copilot-lab, github-intermediate, pipeline-showcase");
+  assert.ok(visibleWords(slide) <= 70, `${visibleWords(slide)} words`);
+  box.querySelector('[data-policy="judgement-and-flag"]').click();
+  assert.deepEqual(pressed(), ["judgement-and-flag"]);
+  assert.deepEqual(items("recommended"), ["Correction", "Addition", "Judgement call"]); assert.deepEqual(items("pr"), ["Correction", "Addition"]);
+  assert.equal(human.classList.contains("is-omitted"), true); assert.ok(human.textContent.includes("Omitted when empty"), "an empty For a human is shown as omitted");
+  assert.equal(flag.hidden, false); assert.ok(flag.textContent.includes("## Judgement calls — review these")); assert.deepEqual(items("flag"), ["Judgement call"]);
+  assert.equal(box.querySelector("[data-uk-used]").textContent, "Used by ai-sdlc");
+  assert.ok(visibleWords(slide) <= 70, `${visibleWords(slide)} words`);
+  const key = h.key("Enter", box.querySelector('[data-policy="corrections-only"]'));
+  assert.equal(key.defaultPrevented, false, "a focused policy button keeps its native Enter"); assert.equal(h.active(), h.data.slides[5].id, "Enter and Space never change slide from inside the explorer");
+  box.querySelector('[data-policy="corrections-only"]').click();
+  assert.deepEqual(items("human"), ["Addition", "Judgement call"]); assert.equal(flag.hidden, true); assert.equal(flag.textContent, "");
+  // the markup that a static reader gets is the state that the script draws first
+  const staticDoc = new DeckElement("document", h.doc); parseMarkup(read("presentation", "dist", "index.html"), staticDoc);
+  const flat = (el) => el.textContent.replace(/\s+/g, " ").trim();
+  assert.equal(flat(staticDoc.querySelector("#stage [data-upkeep]")), flat(mountDeck({ initialSlide: 6 }).$("#stage [data-upkeep]")), "static markup and first render agree");
+});
+
+test("cascade decision: edge chips walk the tree to their edge's mode, explain it, and Start over resets them", () => {
+  const h = mountDeck({ initialSlide: 8 });
+  const tree = h.$("#stage [data-decision]");
+  const chip = (name) => tree.querySelector(`[data-edge="${name}"]`);
+  const outcome = (name) => tree.querySelector(`[data-outcome="${name}"]`);
+  const note = tree.querySelector("[data-dnote]"); const question = tree.querySelector("[data-dq]");
+  assert.equal(note.hidden, true);
+  assert.equal(tree.querySelectorAll("[data-edge]").length, 5);
+  chip("github-intermediate").click();
+  assert.equal(outcome("mechanical").classList.contains("is-picked"), true); assert.equal(outcome("ai").classList.contains("is-dim"), true);
+  assert.equal(chip("github-intermediate").getAttribute("aria-pressed"), "true"); assert.equal(chip("github-intermediate").classList.contains("is-picked"), true);
+  assert.equal(chip("copilot-lab").getAttribute("aria-pressed"), "false");
+  assert.equal(note.hidden, false); assert.ok(note.textContent.includes("It began as AI-adaptation"), "the note says why github-intermediate is mechanical");
+  assert.ok(note.textContent.includes("npm run import:github-intermediate"));
+  assert.equal(question.classList.contains("decision-result"), true);
+  assert.deepEqual(tree.querySelectorAll("[data-dactions] button").map((b) => b.textContent), ["Start over"]);
+  chip("copilot-lab").click();
+  assert.equal(outcome("ai").classList.contains("is-picked"), true); assert.equal(outcome("mechanical").classList.contains("is-dim"), true);
+  assert.equal(chip("github-intermediate").getAttribute("aria-pressed"), "false"); assert.equal(chip("copilot-lab").getAttribute("aria-pressed"), "true");
+  tree.querySelector("[data-dactions] button").click();
+  assert.equal(note.hidden, true); assert.equal(tree.querySelectorAll("[data-edge]").filter((c) => c.getAttribute("aria-pressed") === "true").length, 0);
+  assert.equal(outcome("mechanical").classList.contains("is-picked") || outcome("ai").classList.contains("is-picked"), false);
+  // the walk still ends where it did, and now says what the agent may run
+  tree.querySelector("[data-dactions] button").click();                    // Yes
+  assert.equal(outcome("mechanical").classList.contains("is-picked"), true);
+  tree.querySelector("[data-dactions] button").click();                    // Start over
+  const [, no] = tree.querySelectorAll("[data-dactions] button"); no.click();
+  tree.querySelector("[data-dactions] button").click();                    // second question: Yes
+  assert.equal(outcome("ai").classList.contains("is-picked"), true);
+  for (const phrase of ["`cd`", "`agentSandbox.bashCommands`", "`curl`, `gh` and `wget` stay refused"]) assert.ok(embeddedJson("cascade-decision").ai.note.includes(phrase), `the AI-adaptation note says ${phrase}`);
+  assert.ok(visibleWords(h.$("#stage .slide.active")) <= 70);
+});
+
+test("a11y: the new controls are disabled pictures in the speaker previews of slides 3, 6 and 8", () => {
+  const widgets = { 3: ["[data-hl]", 5], 6: ["[data-policy]", 3], 8: ["[data-edge]", 5] };
+  for (const [initialSlide, [selector, count]] of Object.entries(widgets)) {
+    const h = mountDeck({ speaker: true, initialSlide: Number(initialSlide) });
+    const wraps = h.doc.querySelectorAll("#speaker .sp-preview-wrap");
+    assert.equal(wraps[0].querySelectorAll(selector).length, count, `slide ${initialSlide} draws its ${selector} controls in the current preview`);
+    for (const wrap of wraps) {
+      assert.equal(wrap.querySelectorAll(".inspector").length, 0, "a preview builds no inspector");
+      for (const el of wrap.querySelectorAll("button")) assert.equal(el.disabled, true, `${initialSlide}: ${el.className}`);
+      for (const el of wrap.querySelectorAll("a, [tabindex]")) assert.equal(el.getAttribute("tabindex"), "-1");
+      for (const el of wrap.querySelectorAll("[data-hl], [data-policy], [data-edge]")) assert.equal(el.events.size, 0, `${el.tagName} in a preview has no listeners`);
+      for (const el of wrap.querySelectorAll("[data-hl]")) assert.equal(el.getAttribute("role"), "img", "preview groups stay pictures");
+    }
+  }
+});
+
+// Contrast is computed from the tokens in styles.css, for both themes, on every surface a text token sits on (the flat ones and the
+// accent, orange, purple and green tints over them). Text holds 5:1, the tone colours 4.5:1 and a control's outline 3:1.
+const toRgb = (value) => {
+  const v = value.trim(); const m = v.match(/^rgba?\(([^)]+)\)$/);
+  if (m) { const p = m[1].split(",").map(Number); return { rgb: p.slice(0, 3), a: p[3] ?? 1 }; }
+  const h = v.replace("#", ""); const full = h.length === 3 ? [...h].map((c) => c + c).join("") : h;
+  return { rgb: [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16)), a: 1 };
+};
+const luminance = ([r, g, b]) => { const f = (c) => { const s = c / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+const contrastOf = (a, b) => { const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+const blend = (fg, bg) => fg.rgb.map((c, i) => c * fg.a + bg[i] * (1 - fg.a));
+
+for (const theme of ["dark", "light"]) {
+  test(`contrast (${theme}): text tokens hold 5:1 on every surface, tones 4.5:1, controls 3:1`, () => {
+    const tokens = { ...css(":root"), ...(theme === "light" ? css(':root[data-theme="light"]') : {}) };
+    const t = (name) => toRgb(tokens[`--${name}`]);
+    const flat = Object.fromEntries(["bg", "bg-deep", "surface", "surface-hi", "surface-2", "code-bg"].map((n) => [n, t(n).rgb]));
+    const tinted = {};
+    for (const tint of ["accent", "orange", "purple", "green"]) for (const under of ["bg", "surface"]) tinted[`${tint}-soft over ${under}`] = blend(t(`${tint}-soft`), flat[under]);
+    const surfaces = { ...flat, ...tinted };
+    for (const [name, bg] of Object.entries(surfaces)) {
+      const texts = name.startsWith("accent-soft") || name.startsWith("bg") || name in flat ? ["text", "text-2", "muted", "accent"] : ["text", "text-2"];
+      for (const text of texts) {
+        if (text === "muted" && /^(orange|purple|green)-soft/.test(name)) continue;
+        assert.ok(contrastOf(t(text).rgb, bg) >= 5, `${theme}: --${text} on ${name} is ${contrastOf(t(text).rgb, bg).toFixed(2)}:1`);
+      }
+    }
+    for (const tone of ["green", "orange", "purple", "red"]) for (const under of ["bg", "surface", "code-bg"]) {
+      assert.ok(contrastOf(t(tone).rgb, flat[under]) >= 4.5, `${theme}: --${tone} on ${under} is ${contrastOf(t(tone).rgb, flat[under]).toFixed(2)}:1`);
+    }
+    for (const tone of ["accent", "purple"]) assert.ok(contrastOf(t("accent-ink").rgb, t(tone).rgb) >= 4.5, `${theme}: --accent-ink on --${tone} is ${contrastOf(t("accent-ink").rgb, t(tone).rgb).toFixed(2)}:1`);
+    for (const under of ["bg", "surface"]) assert.ok(contrastOf(t("line-strong").rgb, flat[under]) >= 3, `${theme}: --line-strong on ${under} is ${contrastOf(t("line-strong").rgb, flat[under]).toFixed(2)}:1`);
+  });
+}
+
+test("responsive: the new components reflow to one column on a phone and keep 44px targets", () => {
+  const phone = screen({ width: 390, height: 844 });
+  assert.equal(css("#stage .uk-flow", phone)["grid-template-columns"], "minmax(0, 1fr)");
+  assert.equal(css("#stage .uk-flow", phone)["min-height"], "0", "the fixed-height flow of the canvas is released on a phone");
+  assert.equal(css("#stage .callout.inspector", phone)["grid-template-columns"], "minmax(0, 1fr)");
+  assert.equal(css("#stage .insp-fields", phone)["grid-template-columns"], "minmax(0, 1fr)");
+  for (const selector of ["#stage .uk-opt", "#stage .edge-chip", "#stage .insp-go"]) assert.equal(css(selector, phone)["min-height"], "var(--tap)", selector);
+  assert.equal(css("#stage .uk-flow", screen({ width: 1440, height: 900 }))["grid-template-columns"], undefined, "the canvas keeps its four-stage row");
+  assert.match(css(".uk-flow")["grid-template-columns"], /^minmax\(0, 1fr\) 40px /, "four stages joined by three links");
+  const reduced = screen({ motion: "reduce" });
+  for (const selector of [".uk-opt", ".edge-chip", ".btn"]) assert.equal(css(selector, reduced).transition, "none", selector);
+  assert.equal(css(".uk-item", reduced).animation, "none"); assert.notEqual(css(".uk-item").animation, "none", "positive control: the entrance runs when motion is allowed");
+});
+
+test("immersion deck and PDF handout are built, single-presenter, and ready for the portfolio importer", () => {
+  const htmlPath = path.join(ROOT, "immersion", "dist", "index.html");
+  const scriptPath = path.join(ROOT, "immersion", "docs", "SPEAKER-SCRIPT.md");
+  const pdfPath = path.join(ROOT, "immersion", "docs", "Scaling-the-Agentic-SDLC.pdf");
+  assert.equal(fs.existsSync(htmlPath), true, "immersion/dist/index.html exists");
+  assert.equal(fs.existsSync(scriptPath), true, "immersion/docs/SPEAKER-SCRIPT.md exists");
+  assert.equal(fs.existsSync(pdfPath), true, "immersion/docs/Scaling-the-Agentic-SDLC.pdf exists");
+
+  const html = fs.readFileSync(htmlPath, "utf8");
+  assert.ok(html.includes('<div class="brand topbar-left">'), "immersion deck carries the topbar-left hook for the portfolio importer");
+  assert.equal((html.match(/<section class="slide\b/g) || []).length, 25, "immersion deck renders all 25 slides in #stage");
+  assert.ok(html.includes("Scaling the Agentic SDLC · AI-DLC Immersion"), "immersion deck title is sanitized");
+  assert.ok(html.includes("John Hain"), "immersion deck names single presenter John Hain");
+
+  const pdfHeader = fs.readFileSync(pdfPath).subarray(0, 5).toString("ascii");
+  assert.equal(pdfHeader, "%PDF-", "immersion handout is a valid PDF document");
+});
+

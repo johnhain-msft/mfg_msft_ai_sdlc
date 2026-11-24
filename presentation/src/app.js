@@ -29,6 +29,8 @@
   const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
   const pad = (n) => String(n).padStart(2, '0');
   const escapeHtml = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Copy that lives in a slide's embedded JSON may carry `code` spans. It is escaped first, so nothing in the data can become markup.
+  const inlineCode = (s) => escapeHtml(s).replace(/`([^`]+)`/g, '<code>$1</code>');
   // The stylesheet chooses between the scaled 1920×1080 canvas and the scrolling "flow" layout of phones, tablets and small
   // windows (see --layout in styles.css). Reading it here keeps the breakpoint in one place.
   const isFlow = () => getComputedStyle(document.documentElement).getPropertyValue('--layout').trim() === 'flow';
@@ -36,7 +38,7 @@
   const notesMeta = (s) => (s.words ? `${s.words} words · ~${Math.max(1, Math.round(s.words / 150))} min spoken · budget ${s.minutes || '—'} min` : '');
   // Elements a tap, click or swipe must leave to themselves: they do their own thing with the gesture. (A slide that scrolls takes
   // tabindex="0" so the keyboard can reach it, hence the :not(.slide).)
-  const OWN_GESTURE = 'button, a, input, select, textarea, summary, label, [role="button"], [role="tab"], [tabindex="0"]:not(.slide), .quiz, [data-decision], [data-pilot], [data-pilot-step], [data-hl], dialog';
+  const OWN_GESTURE = 'button, a, input, select, textarea, summary, label, [role="button"], [role="tab"], [tabindex="0"]:not(.slide), .quiz, [data-decision], [data-upkeep], [data-pilot], [data-pilot-step], [data-hl], dialog';
   // Controls that own Space and Enter. The deck's shortcuts step aside while one has focus, so a focused button is pressed
   // instead of being skipped past (Space on Agenda opens the agenda; it does not change slide).
   const NATIVE_KEYS = 'button, a[href], summary, input, select, textarea, [role="button"], [role="tab"]';
@@ -193,16 +195,58 @@
         n.addEventListener('mouseenter', on); n.addEventListener('focus', on);
         n.addEventListener('mouseleave', clear); n.addEventListener('blur', clear);
       });
+      // Workstream inspector. A diagram that carries <script data-inspect> (JSON: key -> { n, title, role, in, out, go }) makes its
+      // groups buttons. Pinning one swaps the callout under the figure for that group's role, inputs and outputs and a link to its
+      // slide; pinning it again, or pressing Escape on it, restores the callout. The panel is built here, so a static reader and a
+      // speaker preview see the slide exactly as authored.
+      let spec = null;
+      const dataEl = $('script[data-inspect]', fig);
+      if (dataEl) { try { spec = JSON.parse(dataEl.textContent); } catch { spec = null; } }
+      const body = spec && fig.closest('.slide-body');
+      if (!body) return;
+      const callout = $('.callout', body);
+      const panel = document.createElement('aside');
+      panel.className = 'callout inspector';
+      panel.hidden = true;
+      panel.setAttribute('aria-live', 'polite');
+      body.appendChild(panel);
+      let pinned = null;
+      const pin = (key) => {
+        pinned = pinned === key ? null : key;
+        const d = pinned ? spec[pinned] : null;
+        nodes.forEach((n) => { const sel = Boolean(pinned) && n.dataset.hl === pinned; n.classList.toggle('is-selected', sel); if (spec[n.dataset.hl]) n.setAttribute('aria-pressed', String(sel)); });
+        panel.hidden = !d;
+        fig.classList.toggle('is-inspecting', Boolean(d));
+        if (callout) callout.hidden = Boolean(d);
+        if (!d) { panel.innerHTML = ''; announce('Inspector closed.'); return; }
+        const field = (label, text) => `<div class="insp-row"><dt>${label}</dt><dd>${inlineCode(text)}</dd></div>`;
+        panel.innerHTML = `<div class="insp-head"><span class="insp-n">${escapeHtml(d.n)}</span><h2 class="insp-title">${escapeHtml(d.title)}</h2></div><dl class="insp-fields">${field('Role', d.role)}${field('In', d.in)}${field('Out', d.out)}</dl><a class="btn insp-go" href="#/${escapeHtml(d.go)}">Open deep dive ›</a>`;
+        announce(`${d.n}, ${d.title}. Role: ${d.role.replace(/`/g, '')} In: ${d.in.replace(/`/g, '')} Out: ${d.out.replace(/`/g, '')}`);
+      };
+      nodes.forEach((n) => {
+        if (!spec[n.dataset.hl]) return;
+        n.setAttribute('role', 'button');
+        n.setAttribute('aria-pressed', 'false');
+        n.addEventListener('click', () => pin(n.dataset.hl));
+        n.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pin(n.dataset.hl); }
+          else if (e.key === 'Escape' && pinned) pin(pinned);
+        });
+      });
     });
     // decision tree: a Yes/No walk that ends on one of the outcome cards. The tree is described by an
-    // embedded JSON object: { start: {q, yes, no, step}, <key>: {q, yes, no, step} | {result, say, step} }
+    // embedded JSON object: { start: {q, yes, no, step}, <key>: {q, yes, no, step} | {result, say, note?, edge?, step} }
+    // The edge chips inside the outcome cards are shortcuts to a result: "edge-<name>" nodes name the edge they stand for, so the
+    // chip lights up with its card, and the note under the answer says why the fleet's edge is in that mode.
     $$('[data-decision]', root).forEach((tree) => {
       let cfg;
       try { cfg = JSON.parse($('script[type="application/json"]', tree).textContent); } catch { return; }
       const qEl = $('[data-dq]', tree);
+      const noteEl = $('[data-dnote]', tree);
       const actions = $('[data-dactions]', tree);
       const dots = $$('.dstep-dot', tree);
       const outcomes = $$('[data-outcome]', tree);
+      const edges = $$('[data-edge]', tree);
       const button = (label, onClick) => {
         const b = document.createElement('button');
         b.type = 'button';
@@ -211,24 +255,67 @@
         if (!interactive) b.disabled = true; else b.addEventListener('click', onClick);
         return b;
       };
-      const render = (key, { focus = false } = {}) => {
+      const render = (key, { focus = false, say = focus } = {}) => {
         const node = cfg[key];
         if (!node) return;
         const done = Boolean(node.result);
         qEl.textContent = done ? node.say : node.q;
         qEl.classList.toggle('decision-result', done);
+        if (noteEl) {
+          noteEl.hidden = !node.note;
+          if (node.note) noteEl.innerHTML = inlineCode(node.note); else noteEl.textContent = '';
+        }
         dots.forEach((d, i) => d.classList.toggle('is-on', i < (node.step || 0)));
         outcomes.forEach((o) => {
           o.classList.toggle('is-picked', done && o.dataset.outcome === node.result);
           o.classList.toggle('is-dim', done && o.dataset.outcome !== node.result);
         });
+        edges.forEach((c) => { const on = Boolean(node.edge) && c.dataset.edge === node.edge; c.classList.toggle('is-picked', on); c.setAttribute('aria-pressed', String(on)); });
         actions.replaceChildren(...(done
           ? [button('Start over', () => render('start', { focus: true }))]
           : [button('Yes', () => render(node.yes, { focus: true })), button('No', () => render(node.no, { focus: true }))]));
         if (focus && interactive) actions.querySelector('button')?.focus();
-        if (focus) announce(done ? node.say : node.q);
+        if (say) announce(done ? `${node.say}${node.note ? ` ${node.note.replace(/`/g, '')}` : ''}` : node.q);
       };
+      edges.forEach((c) => {
+        if (!interactive) { c.disabled = true; return; }
+        c.addEventListener('click', () => render(`edge-${c.dataset.edge}`, { say: true }));
+      });
       render('start');
+    });
+    // changePolicy explorer (slide 6): the policy buttons re-file three findings between the drift report's two headings and the
+    // pull request that the implement workflow opens. The page ships the default state as markup, for a static reader; the same
+    // render() redraws it from the embedded JSON { items, kinds, flagHeading, omitted, unset, usedBy, policies: { <name>: { recommended,
+    // human, pr, flag, projects, note, say } } }, so the markup and the script cannot disagree about the first state.
+    $$('[data-upkeep]', root).forEach((box) => {
+      let cfg;
+      try { cfg = JSON.parse($('script[type="application/json"]', box).textContent); } catch { return; }
+      const opts = $$('[data-policy]', box);
+      const used = $('[data-uk-used]', box);
+      const note = $('[data-uk-note]', box);
+      const list = (k) => $(`[data-uk-items="${k}"]`, box);
+      const humanSec = $('[data-uk-sec="human"]', box);
+      const flagSec = $('[data-uk-sec="flag"]', box);
+      const chips = (keys) => keys.map((k) => `<div class="uk-item ${cfg.kinds[k]}" role="listitem">${escapeHtml(cfg.items[k])}</div>`).join('');
+      const render = (name, { say = false } = {}) => {
+        const p = cfg.policies[name];
+        if (!p) return;
+        opts.forEach((b) => { const on = b.dataset.policy === name; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); });
+        list('recommended').innerHTML = chips(p.recommended);
+        list('human').innerHTML = p.human.length ? chips(p.human) : `<div class="uk-none">${escapeHtml(cfg.omitted)}</div>`;
+        humanSec.classList.toggle('is-omitted', !p.human.length);
+        list('pr').innerHTML = chips(p.pr);
+        flagSec.hidden = !p.flag.length;
+        flagSec.innerHTML = p.flag.length ? `<div class="uk-sec-h" role="heading" aria-level="3">${escapeHtml(cfg.flagHeading)}</div><div class="uk-items" role="list" aria-label="Flagged judgement calls" data-uk-items="flag">${chips(p.flag)}</div>` : '';
+        note.textContent = p.note;
+        used.textContent = p.projects.length ? `${cfg.usedBy} ${p.projects.join(', ')}` : cfg.unset;
+        if (say) announce(p.say);
+      };
+      opts.forEach((b) => {
+        if (!interactive) { b.disabled = true; return; }
+        b.addEventListener('click', () => render(b.dataset.policy, { say: true }));
+      });
+      render(cfg.default || (opts[0] && opts[0].dataset.policy));
     });
     // pilot stepper on Slide 9: syncs the 6 ledger rows with the 6 vector telemetry panels
     $$('[data-pilot]', root).forEach((viewer) => {
@@ -491,7 +578,7 @@
       // ...except that a slide number typed on the keyboard is finished by Enter, even when a button kept focus from an earlier click
       if (e.key === 'Enter' && typed) { e.preventDefault(); const n = Number(typed); typed = ''; if (SLIDES[n - 1]) show(SLIDES[n - 1].id, 0); return; }
       if (ownsActivationKey(e)) return;
-      if (e.target && e.target.closest && e.target.closest('.quiz, [data-decision], [data-pilot], [data-pilot-step]') && ['Enter', ' '].includes(e.key)) return;
+      if (e.target && e.target.closest && e.target.closest('.quiz, [data-decision], [data-upkeep], [data-pilot], [data-pilot-step]') && ['Enter', ' '].includes(e.key)) return;
       switch (e.key) {
         case 'ArrowRight': e.preventDefault(); if (!panFigure(e.target, 1)) next(); break;
         case 'ArrowLeft': e.preventDefault(); if (!panFigure(e.target, -1)) prev(); break;

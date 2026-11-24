@@ -8,9 +8,9 @@ import test from "node:test";
 import { engineFile } from "../helpers/instance.mjs";
 import { abs, DRIFT_KEYS, driftWorkflow, presetManifest, readText } from "./helpers/fixtures.mjs";
 
-// the keys of AC1, and the two optional ones: agentSandbox (projects that ask for the sandbox) and stagedScripts (projects whose validator is staged read-only)
+// the keys of AC1, and the optional ones: agentSandbox (projects that ask for the sandbox), changePolicy (v0.2.0 policy tier) and stagedScripts (projects whose validator is staged read-only)
 const AUDIT_KEYS = ["buildCommands", "draft", "enabled", "instructions", "instructionsFile", "knowledgeSources", "reviewers", "schedule", "upkeepStrategy", "verifyCommands"];
-const OPTIONAL_KEYS = ["agentSandbox", "stagedScripts"];
+const OPTIONAL_KEYS = ["agentSandbox", "changePolicy", "stagedScripts"];
 
 /** The sentences of a Markdown text: bullets and lines are split, then each line at a full stop that ends a sentence. */
 function sentences(text) {

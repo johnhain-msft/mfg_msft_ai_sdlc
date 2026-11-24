@@ -1,58 +1,68 @@
-<svg viewBox="0 0 1570 556" role="group" aria-label="Fleet topology. S1 renders the workflows for S2, S3 and S4. Four upstream repositories feed S2 upstream drift, then S3 hybrid router, then S4 cascade, then one downstream repository, portfolio. S5 bootstraps the fleet and cascades this repository, the fifth upstream, into the portfolio.">
+<svg viewBox="0 0 1640 504" role="group" aria-label="Fleet topology. S1 renders the workflows for S2, S3 and S4. Four upstream repositories feed S2 upstream drift, then S3 hybrid router, then S4 cascade, then one downstream repository, portfolio. S5 bootstraps the fleet and cascades this repository, the fifth upstream, into the portfolio. Each workstream is a button: select one to inspect its inputs and outputs.">
 <title>Five workstreams, one control plane</title>
 
-<g data-hl="s1" role="img" aria-label="S1 manifest and reconciler: sdlc.yaml and reconcile.mjs render every workflow and lockfile">
-<rect class="d-box-accent d-panel" x="340" y="12" width="880" height="96" rx="18"/>
-<text class="d-text" x="780" y="54" font-size="28" text-anchor="middle"><tspan class="d-label" font-size="26">S1:</tspan>  Manifest &amp; Reconciler</text>
-<text class="d-sub d-mono" x="780" y="90" font-size="22" text-anchor="middle">sdlc.yaml → reconcile.mjs → workflows + lockfiles</text>
-<path class="d-line-accent" d="M475 108V158"/><path class="d-arrow-accent" d="M475 170l-10-16h20z"/>
-<path class="d-line-accent" d="M780 108V158"/><path class="d-arrow-accent" d="M780 170l-10-16h20z"/>
-<path class="d-line-accent" d="M1085 108V158"/><path class="d-arrow-accent" d="M1085 170l-10-16h20z"/>
+<g data-hl="s1" role="img" aria-label="S1 manifest and reconciler: sdlc-reconcile, from the ai-sdlc-factory engine, renders every workflow and lockfile from sdlc.yaml">
+<rect class="d-box-accent d-panel" x="300" y="6" width="1040" height="96" rx="24"/>
+<rect class="d-badge" x="332" y="20" width="62" height="38" rx="19"/><text class="d-badge-text" x="363" y="47" font-size="22" text-anchor="middle">S1</text>
+<text class="d-text" x="414" y="49" font-size="30">Manifest &amp; Reconciler</text>
+<text class="d-sub" x="1308" y="49" font-size="22" text-anchor="end">→ workflows + lockfiles</text>
+<text class="d-sub d-mono" x="332" y="86" font-size="22">sdlc.yaml → sdlc-reconcile (ai-sdlc-factory v0.2.0)</text>
+<path class="d-line-accent" d="M472 102V136"/><path class="d-arrow-accent" d="M472 150l-10-16h20z"/>
+<path class="d-line-accent" d="M784 102V136"/><path class="d-arrow-accent" d="M784 150l-10-16h20z"/>
+<path class="d-line-accent" d="M1096 102V136"/><path class="d-arrow-accent" d="M1096 150l-10-16h20z"/>
 </g>
 
-<g data-hl="s2" role="img" aria-label="Four upstream repositories (gh-admin-msft, copilot-lab, pipeline-showcase, github-intermediate) feed S2 upstream drift, which audits watched docs and opens drift pull requests">
-<rect class="d-box-dashed" x="20" y="118" width="290" height="322" rx="18"/>
-<text class="d-sub" x="44" y="152" font-size="22">4 upstream repos:</text>
-<rect class="d-box" x="42" y="172" width="246" height="44" rx="12"/><text class="d-small" x="62" y="202" font-size="22">gh-admin-msft</text>
-<rect class="d-box" x="42" y="224" width="246" height="44" rx="12"/><text class="d-small" x="62" y="254" font-size="22">copilot-lab</text>
-<rect class="d-box" x="42" y="276" width="246" height="44" rx="12"/><text class="d-small" x="62" y="306" font-size="22">pipeline-showcase</text>
-<rect class="d-box" x="42" y="328" width="246" height="44" rx="12"/><text class="d-small" x="62" y="358" font-size="22">github-intermediate</text>
-<path class="d-line" d="M310 280H338"/><path class="d-arrow" d="M350 280l-14-9v18z"/>
-<rect class="d-box d-panel" x="350" y="172" width="250" height="216" rx="18"/>
-<text class="d-label" x="374" y="214" font-size="22">S2:</text>
-<text class="d-text" x="374" y="254" font-size="26">Upstream Drift</text>
-<text class="d-sub" x="374" y="304" font-size="22">audit watched docs</text>
-<text class="d-sub" x="374" y="336" font-size="22">open drift PRs</text>
+<g data-hl="s2" role="img" aria-label="S2 upstream drift: four upstream repositories (gh-admin-msft, copilot-lab, pipeline-showcase, github-intermediate) feed S2, which audits watched docs and cited pages, files a drift report and opens one reviewable pull request">
+<rect class="d-box-dashed" x="12" y="124" width="288" height="282" rx="20"/>
+<text class="d-sub" x="36" y="160" font-size="22">4 upstream repos:</text>
+<rect class="d-box" x="34" y="176" width="244" height="44" rx="12"/><text class="d-small" x="54" y="206" font-size="22">gh-admin-msft</text>
+<rect class="d-box" x="34" y="230" width="244" height="44" rx="12"/><text class="d-small" x="54" y="260" font-size="22">copilot-lab</text>
+<rect class="d-box" x="34" y="284" width="244" height="44" rx="12"/><text class="d-small" x="54" y="314" font-size="22">pipeline-showcase</text>
+<rect class="d-box" x="34" y="338" width="244" height="44" rx="12"/><text class="d-small" x="54" y="368" font-size="22">github-intermediate</text>
+<path class="d-line" d="M300 270H318"/><path class="d-arrow" d="M332 270l-14-9v18z"/>
+<rect class="d-box d-panel" x="332" y="150" width="280" height="240" rx="22"/>
+<rect class="d-badge" x="356" y="172" width="62" height="38" rx="19"/><text class="d-badge-text" x="387" y="199" font-size="22" text-anchor="middle">S2</text>
+<text class="d-text" x="356" y="256" font-size="30">Upstream Drift</text>
+<text class="d-sub" x="356" y="304" font-size="22">audit watched docs</text>
+<text class="d-sub" x="356" y="338" font-size="22">report → one PR</text>
 </g>
 
 <g data-hl="s3" role="img" aria-label="S3 hybrid router: sdlc-bridge-dispatch plus a six hour ETag poll">
-<path class="d-line" d="M600 280H628"/><path class="d-arrow" d="M640 280l-14-9v18z"/>
-<rect class="d-box d-panel" x="640" y="172" width="280" height="216" rx="18"/>
-<text class="d-label" x="664" y="214" font-size="22">S3:</text>
-<text class="d-text" x="664" y="254" font-size="26">Hybrid Router</text>
-<text class="d-sub" x="664" y="304" font-size="22">bridge dispatch</text>
-<text class="d-sub" x="664" y="336" font-size="22">+ 6 h ETag poll</text>
+<path class="d-line" d="M612 270H630"/><path class="d-arrow" d="M644 270l-14-9v18z"/>
+<rect class="d-box d-panel" x="644" y="150" width="280" height="240" rx="22"/>
+<rect class="d-badge" x="668" y="172" width="62" height="38" rx="19"/><text class="d-badge-text" x="699" y="199" font-size="22" text-anchor="middle">S3</text>
+<text class="d-text" x="668" y="256" font-size="30">Hybrid Router</text>
+<text class="d-sub" x="668" y="304" font-size="22">bridge dispatch</text>
+<text class="d-sub" x="668" y="338" font-size="22">+ 6 h ETag poll</text>
 </g>
 
 <g data-hl="s4" role="img" aria-label="S4 cascade, mechanical or AI adaptation, opens human-merged pull requests on one downstream repository, johnhain-msft/portfolio">
-<path class="d-line" d="M920 280H948"/><path class="d-arrow" d="M960 280l-14-9v18z"/>
-<rect class="d-box d-panel" x="960" y="172" width="250" height="216" rx="18"/>
-<text class="d-label" x="984" y="214" font-size="22">S4:</text>
-<text class="d-text" x="984" y="254" font-size="26">Cascade</text>
-<text class="d-sub" x="984" y="304" font-size="22">mechanical or</text>
-<text class="d-sub" x="984" y="336" font-size="22">AI adaptation</text>
-<path class="d-line-accent" d="M1210 280H1238"/><path class="d-arrow-accent" d="M1250 280l-14-9v18z"/>
-<rect class="d-box-dashed" x="1250" y="172" width="300" height="216" rx="18"/>
-<text class="d-sub" x="1274" y="206" font-size="22">1 downstream repos:</text>
-<rect class="d-box-accent d-panel" x="1272" y="270" width="256" height="44" rx="12"/><text class="d-small" x="1292" y="300" font-size="22">portfolio</text>
-<text class="d-sub" x="1274" y="356" font-size="22">human-merged PRs</text>
-<path class="d-line-dashed" d="M1500 464V332"/><path class="d-arrow-purple" d="M1500 316l-10 16h20z"/>
-<text class="d-sub" x="1484" y="434" font-size="22" text-anchor="end">ai-sdlc edge</text>
+<path class="d-line" d="M924 270H942"/><path class="d-arrow" d="M956 270l-14-9v18z"/>
+<rect class="d-box d-panel" x="956" y="150" width="280" height="240" rx="22"/>
+<rect class="d-badge" x="980" y="172" width="62" height="38" rx="19"/><text class="d-badge-text" x="1011" y="199" font-size="22" text-anchor="middle">S4</text>
+<text class="d-text" x="980" y="256" font-size="30">Cascade</text>
+<text class="d-sub" x="980" y="304" font-size="22">mechanical or</text>
+<text class="d-sub" x="980" y="338" font-size="22">AI adaptation</text>
+<path class="d-line-accent" d="M1236 270H1254"/><path class="d-arrow-accent" d="M1268 270l-14-9v18z"/>
+<rect class="d-box-dashed" x="1268" y="150" width="360" height="240" rx="20"/>
+<text class="d-sub" x="1292" y="188" font-size="22">1 downstream repo:</text>
+<rect class="d-box-accent d-panel" x="1292" y="212" width="312" height="46" rx="12"/><text class="d-small" x="1312" y="243" font-size="22">portfolio</text>
+<text class="d-sub" x="1292" y="304" font-size="22">human-merged PRs</text>
 </g>
 
 <g data-hl="s5" role="img" aria-label="S5 bootstrap and self-cascade: sdlc-bootstrap and sdlc-onboard set up the fleet, and mfg_msft_ai_sdlc, the fifth upstream, cascades itself into the portfolio through the ai-sdlc edge">
-<rect class="d-box-purple d-panel" x="20" y="464" width="1530" height="80" rx="18"/>
-<text class="d-text" x="52" y="514" font-size="26"><tspan class="d-label-purple" font-size="24">S5:</tspan>  Bootstrap &amp; Self-Cascade</text>
-<text class="d-sub" x="580" y="513" font-size="22">sdlc-bootstrap, sdlc-onboard · 5th upstream: mfg_msft_ai_sdlc → portfolio</text>
+<path class="d-line-dashed" d="M1560 424V278"/><path class="d-arrow-purple" d="M1560 262l-10 16h20z"/>
+<text class="d-sub" x="1540" y="356" font-size="22" text-anchor="end">ai-sdlc edge</text>
+<rect class="d-box-purple d-panel" x="12" y="424" width="1616" height="72" rx="22"/>
+<rect class="d-badge d-badge-purple" x="36" y="441" width="62" height="38" rx="19"/><text class="d-badge-text d-badge-text-purple" x="67" y="468" font-size="22" text-anchor="middle">S5</text>
+<text class="d-text" x="118" y="470" font-size="30">Bootstrap &amp; Self-Cascade</text>
+<text class="d-sub" x="1604" y="469" font-size="22" text-anchor="end">sdlc-bootstrap, sdlc-onboard · 5th upstream: mfg_msft_ai_sdlc → portfolio</text>
 </g>
 </svg>
+<script type="application/json" data-inspect>{
+  "s1": { "n": "S1", "title": "Manifest & Reconciler", "role": "`sdlc-reconcile` renders every workflow, then compiles it in strict mode.", "in": "`sdlc.yaml`, `instructions/`", "out": "Workflow sources and `.lock.yml` files", "go": "s1-reconciler" },
+  "s2": { "n": "S2", "title": "Upstream Drift", "role": "The drift workflow files a report; the implement workflow acts on it.", "in": "`watchUrls`, `citedPages`, `packageManifests`", "out": "A drift report issue, then one reviewable PR", "go": "s2-drift-harness" },
+  "s3": { "n": "S3", "title": "Hybrid Router", "role": "A merge pushes a signal; a six-hour ETag poll catches the rest.", "in": "`upstream_pr_merged` dispatch, poll at :17", "out": "One cascade dispatch per drifted edge", "go": "s3-event-router" },
+  "s4": { "n": "S4", "title": "Cascade", "role": "A mechanical import or a bounded agent, then immutable gates.", "in": "A routed dispatch for one edge", "out": "A human-merged PR on `portfolio`", "go": "s4-cascade-modes" },
+  "s5": { "n": "S5", "title": "Bootstrap & Self-Cascade", "role": "Two engine commands set up the fleet; `ai-sdlc` cascades this repo.", "in": "`sdlc-bootstrap`, `sdlc-onboard`", "out": "App, variables, manifest entries, a self-cascade PR", "go": "self-cascade-onboard" }
+}</script>

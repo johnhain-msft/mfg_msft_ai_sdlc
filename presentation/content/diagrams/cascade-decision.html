@@ -2,23 +2,31 @@
   <div class="decision-panel" aria-live="polite">
     <div class="decision-steps" aria-hidden="true"><span class="dstep-dot is-on"></span><span class="dstep-dot"></span></div>
     <h2 class="decision-q" data-dq>Does a deterministic import script rebuild this edge's bundle?</h2>
+    <p class="decision-note" data-dnote hidden></p>
     <div class="decision-actions" data-dactions><button type="button" class="btn">Yes</button><button type="button" class="btn">No</button></div>
   </div>
   <div class="decision-outcomes">
     <div class="outcome outcome-mechanical" data-outcome="mechanical">
       <h2>Mechanical</h2>
       <p>Runs the import script, then the 7-leg portfolio gate.</p>
+      <ul class="edge-list" aria-label="Mechanical edges"><li><button type="button" class="edge-chip" data-edge="ghec-admin" aria-pressed="false">ghec-admin</button></li><li><button type="button" class="edge-chip" data-edge="github-intermediate" aria-pressed="false">github-intermediate</button></li><li><button type="button" class="edge-chip" data-edge="ai-sdlc" aria-pressed="false">ai-sdlc</button></li></ul>
     </div>
     <div class="outcome outcome-ai" data-outcome="ai">
       <h2>AI-Adaptation</h2>
       <p>Agent edits only allowedFiles, then immutable gates verify.</p>
+      <ul class="edge-list" aria-label="AI-adaptation edges"><li><button type="button" class="edge-chip" data-edge="copilot-lab" aria-pressed="false">copilot-lab</button></li><li><button type="button" class="edge-chip" data-edge="pipeline-showcase" aria-pressed="false">pipeline-showcase</button></li></ul>
     </div>
   </div>
   <script type="application/json">{
     "start": { "q": "Does a deterministic import script rebuild this edge's bundle?", "yes": "mechanical", "no": "q2", "step": 1 },
     "q2": { "q": "Does the upstream change need cross-file prose or component edits?", "yes": "ai", "no": "none", "step": 2 },
-    "mechanical": { "result": "mechanical", "say": "Mechanical: one import script rebuilds the bundle.", "step": 1 },
-    "ai": { "result": "ai", "say": "AI-Adaptation: an agent must edit across files.", "step": 2 },
-    "none": { "result": "none", "say": "No edge needed: nothing to cascade.", "step": 2 }
+    "mechanical": { "result": "mechanical", "say": "Mechanical: one import script rebuilds the bundle.", "note": "The agent exercises no judgement: three fixed steps, an empty network allowlist, then the 7-leg gate.", "step": 1 },
+    "ai": { "result": "ai", "say": "AI-Adaptation: an agent must edit across files.", "note": "It may run `cd`, plus only the tools named in `agentSandbox.bashCommands`; `curl`, `gh` and `wget` stay refused.", "step": 2 },
+    "none": { "result": "none", "say": "No edge needed: nothing to cascade.", "step": 2 },
+    "edge-ghec-admin": { "result": "mechanical", "edge": "ghec-admin", "say": "ghec-admin: Mechanical.", "note": "`npm run import:ghec-admin` rebuilds the bundle; then the 7-leg gate verifies it.", "step": 2 },
+    "edge-github-intermediate": { "result": "mechanical", "edge": "github-intermediate", "say": "github-intermediate: Mechanical, since its importer landed.", "note": "It began as AI-adaptation; `npm run import:github-intermediate` replaced the agent's edits.", "step": 2 },
+    "edge-ai-sdlc": { "result": "mechanical", "edge": "ai-sdlc", "say": "ai-sdlc: Mechanical, a self-cascade.", "note": "`npm run import:ai-sdlc` pins this briefing into the portfolio.", "step": 2 },
+    "edge-copilot-lab": { "result": "ai", "edge": "copilot-lab", "say": "copilot-lab: AI-Adaptation.", "note": "Workshop pages and Studio labs change together, so no single importer fits.", "step": 2 },
+    "edge-pipeline-showcase": { "result": "ai", "edge": "pipeline-showcase", "say": "pipeline-showcase: AI-Adaptation.", "note": "Captured runs and their test expectations move together, inside the edge's allowed files.", "step": 2 }
   }</script>
 </div>

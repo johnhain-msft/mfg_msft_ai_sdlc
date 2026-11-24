@@ -259,6 +259,12 @@ function renderTable(lines) {
 }
 
 const diagramFonts = new Map(); // diagram name -> linted once per fragment
+const diagramCache = new Map(); // diagram name -> the fragment, read and expanded once
+
+function loadDiagram(name) {
+  if (!diagramCache.has(name)) diagramCache.set(name, readDiagram(name));
+  return diagramCache.get(name);
+}
 
 // Optional, named adaptations for a file embedded with {{data-uri:path|name}}. The source file is never modified.
 const EMBED_TRANSFORMS = {
@@ -280,7 +286,7 @@ const EMBED_TRANSFORMS = {
   },
 };
 
-function loadDiagram(name) {
+function readDiagram(name) {
   for (const ext of ['.html', '.svg']) {
     const p = join(DIAGRAM_DIR, name + ext);
     if (!existsSync(p)) continue;
@@ -304,6 +310,8 @@ function loadDiagram(name) {
     if (!diagramFonts.has(name)) {
       diagramFonts.set(name, true);
       lintDiagramFonts(name, html);
+      // deck-density.py reads the first </section> as the end of the slide, so everything after a nested one would go uncounted
+      if (/<\/?section\b/i.test(html)) problems.push(`Diagram "${name}": a diagram fragment must not contain <section> (the density gate would stop counting at it); use <div>`);
     }
     return html.trim();
   }
@@ -322,6 +330,60 @@ function lintDiagramFonts(name, html) {
         continue;
       }
       if (Number(fs[1]) < MIN_DIAGRAM_FONT) warnings.push(`Diagram "${name}": <${m[1]}> font-size ${fs[1]} is below ${MIN_DIAGRAM_FONT}`);
+    }
+  }
+}
+
+/**
+ * The interactive fragments carry their data as embedded JSON, which only runs in front of the room, so a typo there is invisible to
+ * every other check. Each widget's data is cross-checked with the markup around it and with the deck's own slide ids.
+ */
+function lintWidgets(slides, slideIds) {
+  const seen = new Set();
+  for (const s of slides) {
+    for (const name of s.diagrams) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      const html = loadDiagram(name);
+      const json = (re) => {
+        const m = html.match(re);
+        if (!m) return null;
+        try { return JSON.parse(m[1]); } catch (e) { problems.push(`Diagram "${name}": embedded JSON is not valid: ${e.message}`); return null; }
+      };
+      // workstream inspector: every entry opens a real slide and belongs to a group of the drawing
+      const inspect = json(/<script\b[^>]*\bdata-inspect\b[^>]*>([\s\S]*?)<\/script>/);
+      for (const [key, d] of Object.entries(inspect || {})) {
+        if (!slideIds.has(d.go)) problems.push(`Diagram "${name}": inspector entry "${key}" opens unknown slide "${d.go}"`);
+        if (!html.includes(`data-hl="${key}"`)) problems.push(`Diagram "${name}": inspector entry "${key}" has no data-hl="${key}" group`);
+        for (const field of ['n', 'title', 'role', 'in', 'out']) if (!d[field]) problems.push(`Diagram "${name}": inspector entry "${key}" has no "${field}"`);
+      }
+      // decision tree: every edge chip has an "edge-<name>" result that lights the card the chip sits in
+      if (/\bdata-decision\b/.test(html)) {
+        const tree = json(/<script type="application\/json">([\s\S]*?)<\/script>/);
+        if (tree) {
+          for (const card of html.split(/data-outcome="/).slice(1)) {
+            const outcome = card.slice(0, card.indexOf('"'));
+            for (const [, edge] of card.matchAll(/data-edge="([^"]+)"/g)) {
+              const node = tree[`edge-${edge}`];
+              if (!node) problems.push(`Diagram "${name}": edge chip "${edge}" has no "edge-${edge}" node`);
+              else if (node.result !== outcome || node.edge !== edge) problems.push(`Diagram "${name}": "edge-${edge}" must be a "${outcome}" result that names the edge`);
+            }
+          }
+          for (const [key, node] of Object.entries(tree)) {
+            for (const next of [node.yes, node.no]) if (next && !tree[next]) problems.push(`Diagram "${name}": decision node "${key}" points at the missing "${next}"`);
+          }
+        }
+      }
+      // changePolicy explorer: every policy button has an entry, and every finding that an entry files is defined
+      if (/\bdata-upkeep\b/.test(html)) {
+        const cfg = json(/<script type="application\/json">([\s\S]*?)<\/script>/);
+        if (cfg) {
+          for (const [, policy] of html.matchAll(/data-policy="([^"]+)"/g)) if (!cfg.policies[policy]) problems.push(`Diagram "${name}": policy button "${policy}" has no entry`);
+          for (const [policy, p] of Object.entries(cfg.policies)) {
+            for (const list of [p.recommended, p.human, p.pr, p.flag]) for (const k of list) if (!cfg.items[k] || !cfg.kinds[k]) problems.push(`Diagram "${name}": policy "${policy}" files the undefined finding "${k}"`);
+          }
+        }
+      }
     }
   }
 }
@@ -893,6 +955,7 @@ function main() {
   const agenda = loadAgenda();
 
   const slideIds = new Set(slides.map((s) => s.id));
+  lintWidgets(slides, slideIds);
   for (const s of slides) {
     lintSlide(s);
     lintLinks(s);

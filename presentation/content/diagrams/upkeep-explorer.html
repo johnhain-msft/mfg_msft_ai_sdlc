@@ -1,0 +1,71 @@
+<div class="upkeep" data-upkeep>
+  <div class="uk-flow">
+    <div class="uk-node uk-drift">
+      <div class="uk-no" aria-hidden="true">1</div>
+      <h2><code>drift-&lt;projectKey&gt;</code></h2>
+      <div class="uk-tags" role="list" aria-label="Watched knowledge"><div role="listitem">watchUrls</div><div role="listitem">citedPages</div><div role="listitem">packageManifests</div></div>
+    </div>
+    <span class="uk-link" aria-hidden="true"></span>
+    <div class="uk-node uk-report">
+      <h2>[sdlc-drift] Drift report</h2>
+      <div class="uk-sec" data-uk-sec="recommended">
+        <div class="uk-sec-h" role="heading" aria-level="3">## Recommended</div>
+        <div class="uk-items" role="list" aria-label="Items under Recommended" data-uk-items="recommended"><div class="uk-item uk-fix" role="listitem">Correction</div></div>
+      </div>
+      <div class="uk-sec uk-human" data-uk-sec="human">
+        <div class="uk-sec-h" role="heading" aria-level="3">## For a human</div>
+        <div class="uk-items" role="list" aria-label="Items under For a human" data-uk-items="human"><div class="uk-item uk-add" role="listitem">Addition</div><div class="uk-item uk-judge" role="listitem">Judgement call</div></div>
+      </div>
+    </div>
+    <span class="uk-link" aria-hidden="true"></span>
+    <div class="uk-node uk-impl">
+      <div class="uk-no" aria-hidden="true">2</div>
+      <h2><code>implement-&lt;projectKey&gt;</code></h2>
+      <p class="uk-note" data-uk-note>Opens every source, then applies corrections.</p>
+    </div>
+    <span class="uk-link" aria-hidden="true"></span>
+    <div class="uk-node uk-pr">
+      <h2>One reviewable PR</h2>
+      <div class="uk-items" role="list" aria-label="Changes in the pull request" data-uk-items="pr"><div class="uk-item uk-fix" role="listitem">Correction</div></div>
+      <div class="uk-flag" data-uk-sec="flag" hidden></div>
+    </div>
+  </div>
+  <div class="uk-control">
+    <div class="uk-label" id="uk-policy-label">changePolicy</div>
+    <div class="uk-seg" role="group" aria-labelledby="uk-policy-label">
+      <button type="button" class="uk-opt is-on" data-policy="corrections-only" aria-pressed="true">corrections-only</button>
+      <button type="button" class="uk-opt" data-policy="corrections-and-additions" aria-pressed="false">corrections-and-additions</button>
+      <button type="button" class="uk-opt" data-policy="judgement-and-flag" aria-pressed="false">judgement-and-flag</button>
+    </div>
+  </div>
+  <p class="uk-meta"><span data-uk-used>Default when unset</span><span><code>model: opus</code> renders <code>engine: { id: copilot, model: opus }</code></span></p>
+  <script type="application/json">{
+    "default": "corrections-only",
+    "items": { "fix": "Correction", "add": "Addition", "judge": "Judgement call" },
+    "kinds": { "fix": "uk-fix", "add": "uk-add", "judge": "uk-judge" },
+    "flagHeading": "## Judgement calls — review these",
+    "omitted": "Omitted when empty",
+    "unset": "Default when unset",
+    "usedBy": "Used by",
+    "policies": {
+      "corrections-only": {
+        "recommended": ["fix"], "human": ["add", "judge"], "pr": ["fix"], "flag": [],
+        "projects": [],
+        "note": "Opens every source, then applies corrections.",
+        "say": "corrections-only. Recommended holds the correction. For a human holds the addition and the judgement call. The implement workflow opens one pull request with the correction."
+      },
+      "corrections-and-additions": {
+        "recommended": ["fix", "add"], "human": ["judge"], "pr": ["fix", "add"], "flag": [],
+        "projects": ["gh-admin-msft", "copilot-lab", "github-intermediate", "pipeline-showcase"],
+        "note": "Opens every source, then applies corrections and additions.",
+        "say": "corrections-and-additions. Recommended holds the correction and the addition. For a human holds the judgement call. The implement workflow opens one pull request with both changes."
+      },
+      "judgement-and-flag": {
+        "recommended": ["fix", "add", "judge"], "human": [], "pr": ["fix", "add"], "flag": ["judge"],
+        "projects": ["ai-sdlc"],
+        "note": "Opens every source, then applies all three and flags the judgement call.",
+        "say": "judgement-and-flag. Recommended holds all three. For a human is omitted because nothing is left. The implement workflow opens one pull request, and the judgement call sits under Judgement calls, review these."
+      }
+    }
+  }</script>
+</div>

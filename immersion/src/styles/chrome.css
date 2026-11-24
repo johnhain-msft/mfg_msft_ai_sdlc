@@ -1,0 +1,232 @@
+/* ================================================================================================
+   Chrome: everything that frames the stage. It lives OUTSIDE every <section class="slide">, so
+   brand words, the counter and the navigation are never counted in a slide's word budget.
+   ================================================================================================ */
+
+#presentation {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  grid-template-rows: var(--chrome-top, 48px) minmax(0, 1fr) var(--chrome-bottom, 58px);
+  background: var(--canvas);
+}
+
+.chrome {
+  display: flex;
+  align-items: center;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+#topbar {
+  justify-content: space-between;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-name {
+  font-family: var(--font-display);
+  font-weight: 650;
+  font-size: 16px;
+}
+.brand-sep {
+  color: var(--muted);
+}
+.brand-product {
+  color: var(--muted);
+  font-weight: 600;
+}
+.prepared {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+#deck {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  outline: none;
+  background: var(--canvas);
+}
+
+/* The stage is centred with absolute + translate, never as a shrinkable flex item: a flex-centred
+   1920px canvas squeezes on a window narrower than 1920 and clips silently. */
+#stage-area {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+.stage-fit,
+#stage {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 1920px;
+  height: 1080px;
+  transform: translate(-50%, -50%) scale(var(--scale, 1));
+  transform-origin: center center;
+}
+#stage {
+  background-color: var(--canvas);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------------------------ footer bar */
+
+#bottombar {
+  flex-direction: column;
+  align-items: stretch;
+  border-top: 1px solid var(--line);
+}
+#progress {
+  height: 4px;
+  background: var(--line);
+}
+#progress-bar {
+  height: 100%;
+  width: 0;
+  background: var(--azure);
+  transition: width 0.3s ease;
+}
+.bar-row {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 16px;
+  min-height: 0;
+}
+.nav-buttons {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.counter {
+  min-width: 72px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  color: var(--muted);
+}
+.module-chip {
+  padding: 3px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 34vw;
+}
+.toolbar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+.toolbar .btn {
+  padding: 5px 10px;
+  min-height: 32px;
+  font-size: 13px;
+}
+
+/* Narrow windows: the footer is one fixed-height row, so shed the least useful words first. */
+@media (max-width: 1320px) {
+  .module-chip {
+    display: none;
+  }
+}
+@media (max-width: 1120px) {
+  .prepared {
+    display: none;
+  }
+  .toolbar .btn .lbl {
+    display: none;
+  }
+  .toolbar .btn {
+    padding: 5px 8px;
+  }
+}
+@media (max-width: 640px) {
+  .brand-product,
+  .brand-sep {
+    display: none;
+  }
+}
+
+/* ------------------------------------------------------------------------------ read-along */
+
+.readalong {
+  flex: 0 0 clamp(320px, 28vw, 460px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+}
+.ra-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.ra-warn {
+  margin: 0;
+  padding: 8px 14px;
+  background: var(--amber-soft);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--line);
+}
+.ra-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 14px;
+  font-size: 15px;
+}
+
+/* ------------------------------------------------------------------------------ blackout, presenting */
+
+#blackout {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  background: #000;
+}
+
+/* Presenting fullscreen: the stage owns the screen; the interactive chrome steps aside but the
+   Microsoft brand header and a thin progress line stay, so the room always sees whose deck it is. */
+body.presenting #presentation {
+  --chrome-top: 40px;
+  --chrome-bottom: 4px;
+}
+body.presenting .bar-row {
+  display: none;
+}
+body.presenting #bottombar {
+  border: 0;
+}
+body.presenting #stage {
+  box-shadow: none;
+}
+body.presenting .readalong {
+  display: none !important;
+}

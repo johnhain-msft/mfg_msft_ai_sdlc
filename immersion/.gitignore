@@ -1,0 +1,11 @@
+# Ignore TEMP-prefixed files and directories
+TEMP*
+**/TEMP*
+
+# Build & test artifacts
+node_modules/
+dist/review/
+review/
+test-results/
+playwright-report/
+.orchestrator/

@@ -1,0 +1,551 @@
+/* ================================================================================================
+   Diagrams: utility classes for inline SVG (diagrams and container art) and the look of each
+   custom diagram. Colour always comes from the theme tokens, so light and dark both work, and
+   every fill behind a label is a solid colour.
+
+   Naming:  f-*  fill   s-*  stroke   sw*  stroke width   nf  no fill   rd  round caps and joins
+            dash / dash-sm  dash patterns   d-*  one diagram's own parts   tone-*  per-group tone
+   ================================================================================================ */
+
+/* ------------------------------------------------------------------------------ utilities */
+
+.nf,
+.f-none {
+  fill: none;
+}
+.f-azure {
+  fill: var(--azure);
+}
+.f-violet {
+  fill: var(--violet);
+}
+.f-green {
+  fill: var(--green);
+}
+.f-amber {
+  fill: var(--amber);
+}
+.f-red {
+  fill: var(--red);
+}
+.f-ink {
+  fill: var(--ink);
+}
+.f-muted {
+  fill: var(--muted);
+}
+.f-line {
+  fill: var(--line);
+}
+.f-line-strong {
+  fill: var(--line-strong);
+}
+.f-surface {
+  fill: var(--surface);
+}
+.f-surface2 {
+  fill: var(--surface-2);
+}
+.f-azure-soft {
+  fill: var(--azure-soft);
+}
+.f-violet-soft {
+  fill: var(--violet-soft);
+}
+.f-green-soft {
+  fill: var(--green-soft);
+}
+.f-amber-soft {
+  fill: var(--amber-soft);
+}
+.f-red-soft {
+  fill: var(--red-soft);
+}
+.f-seg-work {
+  fill: var(--seg-work);
+}
+.f-tone {
+  fill: var(--tone);
+}
+.f-tone-soft {
+  fill: var(--tone-soft);
+}
+
+.s-azure {
+  stroke: var(--azure);
+}
+.s-violet {
+  stroke: var(--violet);
+}
+.s-green {
+  stroke: var(--green);
+}
+.s-amber {
+  stroke: var(--amber);
+}
+.s-red {
+  stroke: var(--red);
+}
+.s-ink {
+  stroke: var(--ink);
+}
+.s-muted {
+  stroke: var(--muted);
+}
+.s-line {
+  stroke: var(--line);
+}
+.s-line-strong {
+  stroke: var(--line-strong);
+}
+.s-surface {
+  stroke: var(--surface);
+}
+.s-tone {
+  stroke: var(--tone);
+}
+
+.sw2 {
+  stroke-width: 2;
+}
+.sw3 {
+  stroke-width: 3;
+}
+.sw4 {
+  stroke-width: 4;
+}
+.sw5 {
+  stroke-width: 5;
+}
+.sw6 {
+  stroke-width: 6;
+}
+.sw7 {
+  stroke-width: 7;
+}
+.sw8 {
+  stroke-width: 8;
+}
+.rd {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.dash {
+  stroke-dasharray: 14 10;
+}
+.dash-sm {
+  stroke-dasharray: 6 9;
+}
+/* a label that sits on a line: a surface-coloured halo cuts the line behind the letters */
+.halo {
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 16px;
+  stroke-linejoin: round;
+}
+/* stroke icons placed with icon(): size comes from the transform, colour from s-* */
+.d-ico {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ------------------------------------------------------------------------------ slide 3: attention curve */
+
+.d-zone {
+  fill: var(--amber-soft);
+  stroke: var(--amber);
+  stroke-width: 3;
+  stroke-dasharray: 12 9;
+}
+.d-base {
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 9;
+  stroke-linecap: round;
+  transition: opacity 0.4s ease;
+}
+.slide:not([data-step='0']) .d-base {
+  opacity: 0.4;
+}
+/* the three PROSE levers: a flatter curve each, revealed one Space press at a time */
+.diagram .d-stage,
+.diagram .d-stage.is-dim {
+  opacity: 1;
+  cursor: pointer;
+}
+.d-stage .d-cv {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 10;
+  stroke-linecap: round;
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+.d-stage .d-mk {
+  opacity: 0.32;
+  transition: opacity 0.35s ease;
+}
+.d-stage .d-mk circle {
+  fill: var(--surface);
+  stroke: var(--green);
+  stroke-width: 5;
+}
+.d-stage .d-mk-ico {
+  stroke: var(--green);
+  stroke-width: 1.9;
+}
+.d-stage.is-stage .d-cv,
+.d-stage.is-stage .d-mk {
+  opacity: 1;
+}
+.d-stage.is-stage .d-mk circle {
+  fill: var(--green-soft);
+  stroke-width: 7;
+}
+.d-stage.is-past .d-cv {
+  opacity: 0.5;
+  stroke-dasharray: 3 18;
+}
+.d-stage.is-past .d-mk {
+  opacity: 0.7;
+}
+
+/* ------------------------------------------------------------------------------ slide 5: supply chain */
+
+.d-layer {
+  cursor: pointer;
+}
+.d-bar {
+  fill: var(--surface);
+  stroke: var(--tone);
+  stroke-width: 3.5;
+  transition: fill 0.2s ease, stroke-width 0.2s ease;
+}
+.d-leader {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-dasharray: 2 13;
+}
+.d-pill {
+  fill: var(--tone-soft);
+  stroke: var(--tone);
+  stroke-width: 3;
+}
+.d-layer.is-hl .d-bar {
+  fill: var(--tone-soft);
+  stroke-width: 7;
+}
+.d-layer.is-hl .halo {
+  stroke: var(--tone-soft);
+}
+.d-layer.is-hl .d-pill {
+  fill: var(--surface);
+  stroke-width: 5;
+}
+
+/* ------------------------------------------------------------------------------ slide 6: roles rail */
+
+.d-role-ring {
+  fill: var(--surface);
+  stroke: var(--tone);
+  stroke-width: 5;
+  transition: fill 0.25s ease, stroke-width 0.25s ease;
+}
+.d-role .d-ico {
+  stroke: var(--tone);
+  stroke-width: 1.8;
+}
+.d-role.is-later .d-role-ring {
+  stroke-dasharray: 11 8;
+}
+.d-stem {
+  fill: none;
+  stroke: var(--tone);
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+.d-role {
+  transition: opacity 0.25s ease;
+}
+.slide[data-stage='what'] .d-role[data-role='what'] .d-role-ring,
+.slide[data-stage='how'] .d-role[data-role='how'] .d-role-ring,
+.slide[data-stage='operations'] .d-role[data-role='operations'] .d-role-ring {
+  fill: var(--tone-soft);
+  stroke-width: 10;
+}
+.slide[data-stage='what'] .d-role:not([data-role='what']),
+.slide[data-stage='how'] .d-role:not([data-role='how']),
+.slide[data-stage='operations'] .d-role:not([data-role='operations']) {
+  opacity: 0.45;
+}
+
+/* ------------------------------------------------------------------------------ slide 8: stat bars */
+
+.d-claim {
+  fill: var(--seg-work);
+}
+.d-ghost {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 4;
+  stroke-dasharray: 14 10;
+}
+.d-real {
+  fill: var(--azure);
+}
+
+/* ------------------------------------------------------------------------------ slide 11: balance */
+
+.d-str {
+  fill: none;
+  stroke: var(--line-strong);
+  stroke-width: 4;
+  stroke-linecap: round;
+}
+.d-pan {
+  fill: var(--surface-2);
+  stroke: var(--ink);
+  stroke-width: 5;
+  stroke-linejoin: round;
+}
+
+/* ------------------------------------------------------------------------------ slide 12: bill + J-curve */
+
+.d-rest {
+  fill: var(--surface-2);
+  stroke: var(--line-strong);
+  stroke-width: 4;
+  stroke-dasharray: 3 12;
+  stroke-linecap: round;
+}
+.d-chip {
+  fill: var(--surface);
+  stroke: var(--line-strong);
+  stroke-width: 3;
+}
+.d-ph {
+  fill: var(--surface);
+  stroke: var(--line);
+  stroke-width: 2;
+}
+.d-ph-valley {
+  fill: var(--amber-soft);
+  stroke: var(--amber);
+  stroke-width: 3;
+}
+.d-jcurve {
+  fill: none;
+  stroke: var(--violet);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+
+/* ------------------------------------------------------------------------------ slide 13: twin bars */
+
+.d-loop-seg {
+  fill: var(--red);
+}
+.d-short {
+  fill: var(--green);
+}
+
+/* ------------------------------------------------------------------------------ slide 15: time shift */
+
+.d-pre {
+  fill: var(--seg-work);
+}
+.d-post {
+  fill: var(--violet-soft);
+  stroke: var(--violet);
+  stroke-width: 4;
+  stroke-dasharray: 12 8;
+}
+
+/* ------------------------------------------------------------------------------ slide 16: pipeline */
+
+.d-node-r {
+  fill: var(--surface);
+  stroke: var(--tone);
+  stroke-width: 4;
+  transition: fill 0.25s ease, stroke-width 0.25s ease;
+}
+.d-bn .d-node-r {
+  fill: var(--amber-soft);
+}
+.d-fast .d-node-r {
+  fill: var(--green-soft);
+  stroke-width: 6;
+  filter: drop-shadow(0 0 16px color-mix(in srgb, var(--green) 55%, transparent));
+}
+.d-conn {
+  fill: none;
+  stroke: var(--amber);
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-dasharray: 10 9;
+}
+.d-conn-head {
+  fill: var(--amber);
+}
+@keyframes d-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.55);
+    opacity: 0.5;
+  }
+}
+.d-pulse {
+  fill: var(--amber);
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: d-pulse 1.9s ease-in-out infinite;
+}
+/* the moles pop up in turn */
+.d-bn:nth-of-type(2) .d-pulse {
+  animation-delay: 0.6s;
+}
+.d-bn:nth-of-type(3) .d-pulse {
+  animation-delay: 1.2s;
+}
+.d-bn.is-stage .d-node-r {
+  fill: var(--surface);
+  stroke-width: 9;
+}
+.d-bn.is-stage .d-conn {
+  stroke-dasharray: none;
+}
+.d-bn.is-stage .d-pulse {
+  animation: none;
+}
+
+/* ------------------------------------------------------------------------------ slide 22: quiz progress */
+
+.d-qp-ring {
+  fill: var(--surface);
+  stroke: var(--tone);
+  stroke-width: 5;
+  transition: fill 0.25s ease, stroke-width 0.25s ease;
+}
+.d-qp-dot {
+  fill: var(--tone);
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.slide[data-active='0'] .d-qp[data-qp='0'] .d-qp-ring,
+.slide[data-active='1'] .d-qp[data-qp='1'] .d-qp-ring,
+.slide[data-active='2'] .d-qp[data-qp='2'] .d-qp-ring {
+  fill: var(--tone-soft);
+  stroke-width: 10;
+}
+.slide[data-active='0'] .d-qp[data-qp='0'] .d-qp-dot,
+.slide[data-active='1'] .d-qp[data-qp='1'] .d-qp-dot,
+.slide[data-active='2'] .d-qp[data-qp='2'] .d-qp-dot {
+  opacity: 1;
+}
+
+/* ------------------------------------------------------------------------------ slide 18: cost meter */
+
+.d-arc {
+  fill: none;
+  stroke-width: 36;
+}
+.d-arc-green {
+  stroke: var(--green);
+}
+.d-arc-amber {
+  stroke: var(--amber);
+}
+.d-arc-red {
+  stroke: var(--red);
+}
+.d-needle {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 10;
+  stroke-linecap: round;
+}
+.d-track {
+  fill: var(--surface-2);
+  stroke: var(--line-strong);
+  stroke-width: 3;
+}
+
+/* ------------------------------------------------------------------------------ slide 19: the seam */
+
+.d-zone-l {
+  fill: var(--violet-soft);
+  stroke: var(--violet);
+  stroke-width: 3;
+}
+.d-zone-r {
+  fill: var(--azure-soft);
+  stroke: var(--azure);
+  stroke-width: 3;
+}
+.d-seam {
+  fill: var(--green);
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--green) 60%, transparent));
+}
+.d-st {
+  fill: var(--surface);
+  stroke: var(--green);
+  stroke-width: 4;
+  transition: fill 0.2s ease, stroke-width 0.2s ease;
+}
+.d-station {
+  cursor: pointer;
+}
+/* a dimmed station stays opaque (the seam and lanes run behind it): it greys out instead of fading */
+.slide.has-hl .d-station:not(.is-hl) {
+  opacity: 1;
+}
+.slide.has-hl .d-station:not(.is-hl) .d-st {
+  fill: var(--surface-2);
+  stroke: var(--line-strong);
+}
+.slide.has-hl .d-station:not(.is-hl) text {
+  fill: var(--muted);
+}
+.slide.has-hl .d-station:not(.is-hl) .d-ico {
+  stroke: var(--muted);
+}
+.d-station.is-hl .d-st {
+  fill: var(--green-soft);
+  stroke-width: 8;
+}
+@keyframes d-flow {
+  to {
+    stroke-dashoffset: -36;
+  }
+}
+.d-lane {
+  fill: none;
+  stroke: var(--green);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 2 16;
+  animation: d-flow 1.6s linear infinite;
+}
+.d-lane-head {
+  fill: var(--green);
+}
+.d-reject {
+  fill: none;
+  stroke: var(--red);
+  stroke-width: 6;
+  stroke-linecap: round;
+  stroke-dasharray: 14 10;
+}
+.d-reject-head,
+.d-reject-dot {
+  fill: var(--red);
+}
