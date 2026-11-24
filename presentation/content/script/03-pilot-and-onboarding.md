@@ -4,7 +4,7 @@
 
 SHOW: The ledger of six identifiers on the left and the interactive six-step telemetry viewer on the right, starting on Step 1.
 
-The viewer on the right steps through six production milestones from the administration pilot. These repositories are public, so you can open each run and pull request yourself by the identifiers on the left.
+The viewer on the right steps through six production milestones from the administration pilot. The orchestrator, the engine and the administration upstream are public, so you can open their runs and pull requests yourself by the identifiers on the left, and the portfolio site publishes the resulting downstream bundle.
 
 Step one, already on screen, is the dry run ending in nine-oh-eight-seven. The dry-run flag is true, so it snapshots all seven sources, runs the agent and the seven post-steps, and skips safe outputs with zero writes to the remote. Do this first when you wire up a new repository.
 

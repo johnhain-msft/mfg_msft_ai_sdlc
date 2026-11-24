@@ -768,7 +768,7 @@ test("the briefing is public: no GitHub App id, no private-repository or collabo
   const chips = content("slides", "01-overview-and-security.md").match(/:::chips\n([\s\S]*?)\n:::/)[1].split("\n");
   assert.deepEqual(chips, ["- ai-sdlc-factory v0.2.0 Engine", "- Zero External Servers", "- Human-Merged PRs"]);
   const spoken = content("script", "03-pilot-and-onboarding.md");
-  for (const phrase of ["These repositories are public", "the manifest says private is false", "plain npm ci that ignores install scripts", "No factory token is minted",
+  for (const phrase of ["The orchestrator, the engine and the administration upstream are public", "the manifest says private is false", "plain npm ci that ignores install scripts", "No factory token is minted",
     "you set private to true instead", "mints a read token from the App", "three git config URL rewrites"]) assert.ok(spoken.includes(phrase), `the S5 script says: ${phrase}`);
   assert.match(content("slides", "03-pilot-and-onboarding.md"), /factory:\n {2}package: ai-sdlc-factory\n {2}private: false/, "slide 10 shows the factory block");
 });
@@ -827,11 +827,14 @@ test("the changePolicy explorer files findings by the three policies, names real
   }
   for (const project of manifest.projects) {
     const declared = project.driftAudit.changePolicy;
-    if (declared === undefined) continue;
-    assert.ok(cfg.policies[declared], `${project.projectKey} declares the unknown policy ${declared}`);
-    if (declared !== "corrections-only") assert.ok(cfg.policies[declared].projects.includes(project.projectKey), `the explorer names ${project.projectKey} under ${declared}`);
+    if (project.driftAudit.enabled) {
+      assert.ok(declared !== undefined, `enabled project ${project.projectKey} declares an explicit changePolicy`);
+      assert.ok(cfg.policies[declared].projects.includes(project.projectKey), `the explorer names enabled project ${project.projectKey} under ${declared}`);
+    } else {
+      assert.equal(declared, undefined, `disabled project ${project.projectKey} does not claim an active changePolicy`);
+    }
   }
-  assert.deepEqual(cfg.policies["corrections-only"].projects, [], "the default policy is not claimed by any project");
+  assert.deepEqual(cfg.policies["judgement-and-flag"].projects, [], "no project in this fleet claims judgement-and-flag today");
 });
 
 test("workstream inspector: pinning S2 swaps the callout for its role, inputs and outputs and a link to its slide; a second press or Escape restores it", () => {
@@ -872,21 +875,21 @@ test("changePolicy explorer: each policy files the three findings under Recommen
   const pressed = () => box.querySelectorAll("[data-policy]").filter((b) => b.getAttribute("aria-pressed") === "true").map((b) => b.dataset.policy);
   assert.deepEqual(pressed(), ["corrections-only"]);
   assert.deepEqual(items("recommended"), ["Correction"]); assert.deepEqual(items("human"), ["Addition", "Judgement call"]); assert.deepEqual(items("pr"), ["Correction"]);
-  assert.equal(flag.hidden, true); assert.equal(box.querySelector("[data-uk-used]").textContent, "Default when unset");
+  assert.equal(flag.hidden, true); assert.equal( box.querySelector("[data-uk-used]").textContent, "Default · used by self-improving-agents");
   assert.equal(box.querySelector("[data-uk-note]").textContent, "Opens every source, then applies corrections.");
-  assert.ok(visibleWords(slide) <= 58, `the default state shows ${visibleWords(slide)} words`);
+  assert.ok(visibleWords(slide) <= 60, `the default state shows ${visibleWords(slide)} words`);
   box.querySelector('[data-policy="corrections-and-additions"]').click();
   assert.deepEqual(pressed(), ["corrections-and-additions"]);
   assert.deepEqual(items("recommended"), ["Correction", "Addition"]); assert.deepEqual(items("human"), ["Judgement call"]); assert.deepEqual(items("pr"), ["Correction", "Addition"]);
   assert.equal(flag.hidden, true); assert.equal(human.classList.contains("is-omitted"), false);
-  assert.equal(box.querySelector("[data-uk-used]").textContent, "Used by gh-admin-msft, copilot-lab, github-intermediate, pipeline-showcase");
+  assert.equal(box.querySelector("[data-uk-used]").textContent, "Used by gh-admin-msft, copilot-lab");
   assert.ok(visibleWords(slide) <= 70, `${visibleWords(slide)} words`);
   box.querySelector('[data-policy="judgement-and-flag"]').click();
   assert.deepEqual(pressed(), ["judgement-and-flag"]);
   assert.deepEqual(items("recommended"), ["Correction", "Addition", "Judgement call"]); assert.deepEqual(items("pr"), ["Correction", "Addition"]);
   assert.equal(human.classList.contains("is-omitted"), true); assert.ok(human.textContent.includes("Omitted when empty"), "an empty For a human is shown as omitted");
   assert.equal(flag.hidden, false); assert.ok(flag.textContent.includes("## Judgement calls — review these")); assert.deepEqual(items("flag"), ["Judgement call"]);
-  assert.equal(box.querySelector("[data-uk-used]").textContent, "Used by ai-sdlc");
+  assert.equal(box.querySelector("[data-uk-used]").textContent, "Opt-in in v0.2.0");
   assert.ok(visibleWords(slide) <= 70, `${visibleWords(slide)} words`);
   const key = h.key("Enter", box.querySelector('[data-policy="corrections-only"]'));
   assert.equal(key.defaultPrevented, false, "a focused policy button keeps its native Enter"); assert.equal(h.active(), h.data.slides[5].id, "Enter and Space never change slide from inside the explorer");

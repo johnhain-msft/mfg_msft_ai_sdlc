@@ -215,6 +215,7 @@ projects:
       enabled: true
       schedule: "11 6 1 * *"
       upkeepStrategy: code-quality-and-improvement-scan
+      changePolicy: corrections-only
       instructions: Evaluate the lab's agents, skills and prompts for drift and propose only mechanical fixes with a self-improvement report.
       instructionsFile: instructions/self-improving-agents.md
       knowledgeSources:
@@ -260,7 +261,6 @@ projects:
       enabled: false
       schedule: "0 6 * * 1"
       upkeepStrategy: content-and-docs-sync
-      changePolicy: corrections-and-additions
       instructions: ""
       instructionsFile: null
       knowledgeSources:
@@ -281,7 +281,6 @@ projects:
       enabled: false
       schedule: "0 6 * * 1"
       upkeepStrategy: content-and-docs-sync
-      changePolicy: corrections-and-additions
       instructions: ""
       instructionsFile: null
       knowledgeSources:
@@ -324,7 +323,6 @@ projects:
       enabled: false
       schedule: "0 6 * * 1"
       upkeepStrategy: content-and-docs-sync
-      changePolicy: judgement-and-flag
       instructions: ""
       instructionsFile: null
       knowledgeSources:

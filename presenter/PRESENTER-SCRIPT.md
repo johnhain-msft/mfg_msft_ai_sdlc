@@ -175,7 +175,7 @@ Then the agent runs inside the firewall sandbox with read-only permissions. For 
 
 > 🎬 **DO** Point at the report card.
 
-What comes out is a report, an issue titled Drift report in the target repository. Two headings matter. Recommended is what the next stage will apply. For a human is what the project's policy leaves to a reviewer.
+What comes out of stage one is a pull request when it makes direct edits, and a report, an issue titled Drift report in the target repository, when it finds something to track. Two headings in that report matter. Recommended is what the next stage will apply. For a human is what the project's policy leaves to a reviewer.
 
 > 🎬 **DO** Point at the second box.
 
@@ -183,7 +183,7 @@ Filing the report starts stage two, the implement workflow for the same project.
 
 > 👉 **CLICK** Press corrections-and-additions, then judgement-and-flag, and watch the cards.
 
-The policy is set per project. Corrections only is the default: the agents fix only what a corroborated source contradicts, and every addition and judgment call waits for a person. Corrections and additions also lets them add what the sources announce and the repository doesn't cover yet, such as a new setting that deserves a lab step. Four projects use that one. Judgement and flag goes furthest. The agent makes judgment calls too, and the pull request carries a heading, Judgement calls, review these, listing each call with the files, the source and the alternatives it weighed. The orchestrator's own entry takes that one.
+The policy is set per project. Corrections only is the default, and self-improving-agents uses it: the agents fix only what a corroborated source contradicts, and every addition and judgment call waits for a person. Corrections and additions also lets them add what the sources announce and the repository doesn't cover yet, such as a new setting or MCP server. The administration and Copilot lab projects use that one. Judgement and flag goes furthest, for repositories that opt in: the agent makes judgment calls too, and the pull request carries a heading, Judgement calls, review these, listing each call with the files, the source and the alternatives it weighed.
 
 The last line is the model. A project, and each cascade edge, can name its own, and the renderer writes it into the workflow's engine object. Leave it out and that engine chooses.
 
@@ -261,7 +261,7 @@ The third result: two noes, and you probably don't need an edge at all, because 
 
 > 👁 **SHOW** The ledger of six identifiers on the left and the interactive six-step telemetry viewer on the right, starting on Step 1.
 
-The viewer on the right steps through six production milestones from the administration pilot. These repositories are public, so you can open each run and pull request yourself by the identifiers on the left.
+The viewer on the right steps through six production milestones from the administration pilot. The orchestrator, the engine and the administration upstream are public, so you can open their runs and pull requests yourself by the identifiers on the left, and the portfolio site publishes the resulting downstream bundle.
 
 Step one, already on screen, is the dry run ending in nine-oh-eight-seven. The dry-run flag is true, so it snapshots all seven sources, runs the agent and the seven post-steps, and skips safe outputs with zero writes to the remote. Do this first when you wire up a new repository.
 

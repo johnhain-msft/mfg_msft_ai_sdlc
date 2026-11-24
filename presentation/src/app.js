@@ -308,7 +308,7 @@
         flagSec.hidden = !p.flag.length;
         flagSec.innerHTML = p.flag.length ? `<div class="uk-sec-h" role="heading" aria-level="3">${escapeHtml(cfg.flagHeading)}</div><div class="uk-items" role="list" aria-label="Flagged judgement calls" data-uk-items="flag">${chips(p.flag)}</div>` : '';
         note.textContent = p.note;
-        used.textContent = p.projects.length ? `${cfg.usedBy} ${p.projects.join(', ')}` : cfg.unset;
+        used.textContent = p.usedLabel || (p.projects.length ? `${cfg.usedBy} ${p.projects.join(', ')}` : cfg.unset);
         if (say) announce(p.say);
       };
       opts.forEach((b) => {

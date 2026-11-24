@@ -67,7 +67,7 @@ export const NOTES = {
       "This is how many programs start: two or three of the strongest architects and developers build V1. That works, and it is why so many organizations have a working V1 at all. The Handbook names the risk on the far side of that success, the **hero pilot**: a few top people, a friendly problem, brilliant results, and nothing they learned transfers. In practice it lives in their heads instead of in shared assets.",
       "**What the Handbook describes instead is two small groups:** an enabling team with a finite lifespan that guides other groups and writes practices down, and a small central group that encodes the cost-effective workflows everyone else reuses.",
       "**Microsoft's Cloud Adoption Framework says much the same.** Fold AI expertise into an existing center of excellence where you can. Start centralized early, so you build reusable assets and avoid fragmented adoption. Then move to an advisory guardrail role so the group never becomes the approval choke point.",
-      "**How long?** At least six to twelve months is the realistic enterprise window. That fits the enabling-team idea: dedicated focus while practices take root, then a planned shift to advisory guardrails.",
+      "**How long?** Handbook Chapter 8 gives six to twelve months for a mid-sized engineering organization, shorter for smaller groups and longer for large enterprises. That fits the enabling-team idea: dedicated focus while practices take root, then a planned shift to advisory guardrails.",
       "**Watch for coach burnout.** Handbook Chapter 8 warns of it when pilot members spend more than roughly a quarter to a third of their time coaching. Its remedy is dedicated enablement or a slower rollout.",
     ],
     reflect: 'Without naming anyone: who owns your standards, evals and cost loops today, and how much of their week does it take?',
@@ -329,7 +329,7 @@ export const NOTES = {
           tag: 'Days 1–30',
           title: 'Charter',
           bullets: [
-            'Charter a time-boxed enabling CoE. At least six to twelve months is the realistic enterprise window, so write the shift to advisory guardrails into the charter on day one.',
+            'Charter a time-boxed enabling CoE. Handbook Chapter 8 gives six to twelve months for a mid-sized engineering organization, so write the shift to advisory guardrails into the charter on day one.',
             'Put numbers on three process costs, using the X, Y and V questions from slide 11, so that in 90 days you can show something other than activity.',
             'Lock the gates: the agent never holds the merge or deploy credential.',
           ],

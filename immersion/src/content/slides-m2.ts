@@ -50,7 +50,7 @@ export const m2: Slide[] = [
       },
       {
         t: 'say',
-        text: "How long? At least six to twelve months is the realistic enterprise window. That fits the enabling-team idea: dedicated focus while practices take root, with a planned shift to advisory guardrails.",
+        text: "How long? Handbook Chapter 8 gives six to twelve months for a mid-sized engineering organization, shorter for smaller groups and longer for large enterprises. That fits the enabling-team idea: dedicated focus while practices take root, with a planned shift to advisory guardrails.",
       },
       { t: 'cue', kind: 'ask', text: 'Without naming anyone: who owns your standards, evals, and cost loops today, and how much of their week does it take?' },
       {

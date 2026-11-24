@@ -90,7 +90,7 @@ export const m7: Slide[] = [
     script: [
       {
         t: 'say',
-        text: "Take this plan as a suggested starting point, not a Handbook prescription, and adapt it. The first thirty days are about ownership and a charter. At least six to twelve months is the realistic enterprise window for the CoE, so write the shift to advisory guardrails into the charter on day one. Microsoft's Cloud Adoption Framework says to integrate with an existing center of excellence where you can, and to plan that move from hands-on building to advisory guardrails.",
+        text: "Take this plan as a suggested starting point, not a Handbook prescription, and adapt it. The first thirty days are about ownership and a charter. Handbook Chapter 8 gives six to twelve months for a mid-sized engineering organization's CoE transition, so write the shift to advisory guardrails into the charter on day one. Microsoft's Cloud Adoption Framework says to integrate with an existing center of excellence where you can, and to plan that move from hands-on building to advisory guardrails.",
       },
       {
         t: 'say',
@@ -228,7 +228,7 @@ export const m7: Slide[] = [
     layout: 'discussion-rail',
     purpose: 'Open the floor for candid questions from every role in the room.',
     kicker: 'Open floor',
-    title: 'Ask us anything',
+    title: 'Open Q&A & discussion',
     blocks: [
       { kind: 'card', head: 'Leadership & product', body: 'How do we fund the CoE and prove value?', key: 'leadership', tone: 'azure', icon: 'flag', art: bubbleArt },
       { kind: 'card', head: 'Architecture & CoE', body: 'Which primitives, evals, and gates come first?', key: 'architecture', tone: 'violet', icon: 'layers', art: bubbleArt },

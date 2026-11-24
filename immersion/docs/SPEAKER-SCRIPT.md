@@ -110,7 +110,7 @@ The Handbook names the risk on the far side of that success: the hero pilot. A f
 
 What the Handbook describes instead is two small groups. An enabling team with a finite lifespan that guides other groups and writes practices down. And a small central group that encodes the cost-effective workflows everyone else reuses. Microsoft's Cloud Adoption Framework says much the same from the other direction. Fold AI expertise into an existing center of excellence where you can. Start centralized early, so you build reusable assets and avoid fragmented adoption. Then move to an advisory guardrail role, so the group never turns into the approval choke point.
 
-How long? At least six to twelve months is the realistic enterprise window. That fits the enabling-team idea: dedicated focus while practices take root, with a planned shift to advisory guardrails.
+How long? Handbook Chapter 8 gives six to twelve months for a mid-sized engineering organization, shorter for smaller groups and longer for large enterprises. That fits the enabling-team idea: dedicated focus while practices take root, with a planned shift to advisory guardrails.
 
 > **[CUE]** ASK: Without naming anyone: who owns your standards, evals, and cost loops today, and how much of their week does it take?
 
@@ -589,7 +589,7 @@ Not fixing the primitives is number ten. When an agent makes the same mistake tw
 > **The room sees:** A 30-60-90 plan (Next 90 days)
 > - 3 steps: Days 1–30 · Charter, Days 31–60 · Metrics, Days 61–90 · Scale
 
-Take this plan as a suggested starting point, not a Handbook prescription, and adapt it. The first thirty days are about ownership and a charter. At least six to twelve months is the realistic enterprise window for the CoE, so write the shift to advisory guardrails into the charter on day one. Microsoft's Cloud Adoption Framework says to integrate with an existing center of excellence where you can, and to plan that move from hands-on building to advisory guardrails.
+Take this plan as a suggested starting point, not a Handbook prescription, and adapt it. The first thirty days are about ownership and a charter. Handbook Chapter 8 gives six to twelve months for a mid-sized engineering organization's CoE transition, so write the shift to advisory guardrails into the charter on day one. Microsoft's Cloud Adoption Framework says to integrate with an existing center of excellence where you can, and to plan that move from hands-on building to advisory guardrails.
 
 Put numbers on three process costs, using the X, Y, and V questions from earlier, so that in ninety days you can show something other than activity. And lock the gates: the agent never holds the merge or deploy credential.
 
@@ -665,11 +665,11 @@ A design checkpoint. More tests and stricter lint verify form, not intent. If th
 
 > **[CUE]** NEXT: Good. On to your questions.
 
-### [SLIDE 25] · m7-open-floor · Ask us anything
+### [SLIDE 25] · m7-open-floor · Open Q&A & discussion
 
 > **Presenter:** John Hain · **Module:** M7
 > **Purpose:** Open the floor for candid questions from every role in the room.
-> **The room sees:** Ask us anything (Open floor)
+> **The room sees:** Open Q&A & discussion (Open floor)
 > - 3 cards: Leadership & product, Architecture & CoE, Engineering, QA & security
 > - 1 band: Keep reading
 
