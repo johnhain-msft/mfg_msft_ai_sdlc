@@ -261,6 +261,7 @@ projects:
       enabled: false
       schedule: "0 6 * * 1"
       upkeepStrategy: content-and-docs-sync
+      changePolicy: corrections-and-additions
       instructions: ""
       instructionsFile: null
       knowledgeSources:
@@ -281,6 +282,7 @@ projects:
       enabled: false
       schedule: "0 6 * * 1"
       upkeepStrategy: content-and-docs-sync
+      changePolicy: corrections-and-additions
       instructions: ""
       instructionsFile: null
       knowledgeSources:
@@ -323,6 +325,7 @@ projects:
       enabled: false
       schedule: "0 6 * * 1"
       upkeepStrategy: content-and-docs-sync
+      changePolicy: judgement-and-flag
       instructions: ""
       instructionsFile: null
       knowledgeSources:

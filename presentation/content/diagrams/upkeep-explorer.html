@@ -38,32 +38,34 @@
       <button type="button" class="uk-opt" data-policy="judgement-and-flag" aria-pressed="false">judgement-and-flag</button>
     </div>
   </div>
-  <p class="uk-meta"><span data-uk-used>Default · used by self-improving-agents</span><span><code>model: opus</code> renders <code>engine: { id: copilot, model: opus }</code></span></p>
+  <p class="uk-meta"><span data-uk-used>Default · active: self-improving-agents</span><span><code>model: opus</code> renders <code>engine: { id: copilot, model: opus }</code></span></p>
   <script type="application/json">{
     "default": "corrections-only",
     "items": { "fix": "Correction", "add": "Addition", "judge": "Judgement call" },
     "kinds": { "fix": "uk-fix", "add": "uk-add", "judge": "uk-judge" },
     "flagHeading": "## Judgement calls — review these",
     "omitted": "Omitted when empty",
-    "unset": "Opt-in in v0.2.0",
+    "unset": "Default when unset",
     "usedBy": "Used by",
     "policies": {
       "corrections-only": {
         "recommended": ["fix"], "human": ["add", "judge"], "pr": ["fix"], "flag": [],
         "projects": ["self-improving-agents"],
-        "usedLabel": "Default · used by self-improving-agents",
+        "usedLabel": "Default · active: self-improving-agents",
         "note": "Opens every source, then applies corrections.",
         "say": "corrections-only. Recommended holds the correction. For a human holds the addition and the judgement call. The implement workflow opens one pull request with the correction."
       },
       "corrections-and-additions": {
         "recommended": ["fix", "add"], "human": ["judge"], "pr": ["fix", "add"], "flag": [],
-        "projects": ["gh-admin-msft", "copilot-lab"],
+        "projects": ["gh-admin-msft", "copilot-lab", "github-intermediate", "pipeline-showcase"],
+        "usedLabel": "Active: gh-admin-msft, copilot-lab · declared (drift-off): github-intermediate, pipeline-showcase",
         "note": "Opens every source, then applies corrections and additions.",
         "say": "corrections-and-additions. Recommended holds the correction and the addition. For a human holds the judgement call. The implement workflow opens one pull request with both changes."
       },
       "judgement-and-flag": {
         "recommended": ["fix", "add", "judge"], "human": [], "pr": ["fix", "add"], "flag": ["judge"],
-        "projects": [],
+        "projects": ["ai-sdlc"],
+        "usedLabel": "Declared (drift-off): ai-sdlc",
         "note": "Opens every source, then applies all three and flags the judgement call.",
         "say": "judgement-and-flag. Recommended holds all three. For a human is omitted because nothing is left. The implement workflow opens one pull request, and the judgement call sits under Judgement calls, review these."
       }
