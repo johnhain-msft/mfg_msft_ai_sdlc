@@ -314,6 +314,7 @@ safe-outputs:
 tools:
   bash:
     - cat
+    - cd
     - date
     - find
     - git
@@ -528,3 +529,4 @@ Only after that commit, call `create_pull_request` with exactly the branch `sdlc
 - When no adaptation is required, leave the worktree clean and make no commit, so the run ends without a pull request.
 - When the dispatch input `dry_run` is `true`, do not run `git commit` and do not call `create_pull_request`.
 - Do not edit anything under `upstream/`. The pull request is created only through the safe output; do not publish branches yourself.
+- The shell of this workflow refuses a redirection or a heredoc; write files with the edit tool.

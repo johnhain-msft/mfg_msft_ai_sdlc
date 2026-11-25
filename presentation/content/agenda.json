@@ -1,6 +1,6 @@
 {
   "title": "AI SDLC Orchestrator",
-  "subtitle": "Declarative Fleet Upkeep & Downstream Cascade on GitHub Actions and gh-aw v1.0.1",
+  "subtitle": "Declarative Fleet Upkeep & Downstream Cascade on GitHub Actions and gh-aw v1.0.1, run by the public ai-sdlc-factory v0.2.0 engine",
   "baseTz": "America/New_York",
   "baseTzLabel": "Eastern (US)",
   "days": [
@@ -11,7 +11,7 @@
       "date": "2026-11-08",
       "blocks": [
         { "type": "session", "start": "10:00", "minutes": 10, "title": "Fleet problem, architecture and security boundary", "detail": "Why fleets drift, the five workstreams, the six-permission App and the sandbox", "slides": ["cover", "fleet-problem", "architecture", "security-boundary"] },
-        { "type": "session", "start": "10:10", "minutes": 11, "title": "Workstreams S1 to S4", "detail": "Reconciler, upstream drift harness, event router and the two cascade modes", "slides": ["s1-reconciler", "s2-drift-harness", "s3-event-router", "s4-cascade-modes"] },
+        { "type": "session", "start": "10:10", "minutes": 11, "title": "Workstreams S1 to S4", "detail": "Instance and engine, report-driven drift upkeep with its change policy, the event router and the two cascade modes", "slides": ["s1-reconciler", "s2-drift-harness", "s3-event-router", "s4-cascade-modes"] },
         { "type": "session", "start": "10:21", "minutes": 6, "title": "Live pilot and self-cascade", "detail": "gh-admin-msft to portfolio in production, then bootstrap, onboarding and the ai-sdlc edge", "slides": ["live-pilot", "self-cascade-onboard"] },
         { "type": "discussion", "start": "10:27", "minutes": 3, "title": "Knowledge check and takeaways", "slides": ["knowledge-check", "takeaways"] }
       ]

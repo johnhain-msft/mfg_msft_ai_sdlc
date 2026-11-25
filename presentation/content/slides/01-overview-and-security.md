@@ -12,10 +12,10 @@ day: 1
 
 :::glyph fleet
 
-Declarative fleet upkeep and downstream cascade on GitHub Actions and `gh-aw v1.0.1`.
+One live instance, one public engine: declarative fleet upkeep and downstream cascade on GitHub Actions and `gh-aw v1.0.1`.
 
 :::chips
-- GitHub App #5671833
+- ai-sdlc-factory v0.2.0 Engine
 - Zero External Servers
 - Human-Merged PRs
 :::
@@ -53,7 +53,7 @@ Merged upstream fixes leave portfolio bundles pinned to stale commits.
 
 # Five Workstreams, One Control Plane
 
-:::diagram fleet-topology
+:::diagram fleet-topology Select S1 to S5 to inspect its inputs and outputs.
 
 :::callout tip Zero-Infrastructure State
 Actions variables (`SDLC_SYNC_STATE_*`) hold ETag and SHA watermarks, with no external database.

@@ -1,0 +1,1236 @@
+/* ================================================================================================
+   Slides: the 1920x1080 stage, typography, containers, tables, diagrams and the 23 layout
+   archetypes. Slide height is fixed, so every layout fills the stage: header on top, a body that
+   grows to the remaining height, an optional quiet note at the bottom.
+
+   Rules this file keeps (they are what deck-density.py and slide-review measure):
+     - only real containers wear .card .step .panel .box .tile .band (exact class tokens);
+     - backgrounds behind text are solid colours;
+     - nothing here hides text: emphasis is colour, ring and position, never display:none;
+     - a container never grows (min-height, padding, bigger type) to keep the room it used to fill:
+       short copy gets a composition built for it (art, rails, steps), not a bigger empty box.
+   ================================================================================================ */
+
+.slide {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  padding: 64px 104px 56px;
+  overflow: hidden;
+  background-color: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-text);
+  font-size: 30px;
+  line-height: 1.32;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.22s ease;
+}
+.slide.active {
+  opacity: 1;
+  visibility: visible;
+}
+.slide::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 8px;
+  background: linear-gradient(90deg, var(--azure) 0 46%, var(--violet) 46% 78%, var(--green) 78% 100%);
+}
+
+/* ------------------------------------------------------------------------------ header */
+
+.slide-head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--azure);
+  line-height: 1;
+}
+.kicker::before {
+  content: '';
+  width: 44px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--azure);
+}
+.slide h1 {
+  max-width: 1560px;
+  font-family: var(--font-display);
+  font-size: 68px;
+  font-weight: 650;
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.lead {
+  max-width: 1380px;
+  font-size: 36px;
+  line-height: 1.25;
+  color: var(--muted);
+}
+
+/* ------------------------------------------------------------------------------ body + note */
+
+.slide-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  gap: 26px;
+  grid-auto-rows: minmax(0, 1fr);
+  align-items: stretch;
+}
+.note {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 24px;
+  line-height: 1.2;
+  color: var(--muted);
+}
+.note::before {
+  content: '';
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--tone-note, var(--azure));
+}
+
+.stat {
+  align-self: center;
+  font-family: var(--font-display);
+  font-size: 68px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+/* ------------------------------------------------------------------------------ containers */
+
+.card,
+.step,
+.panel,
+.box,
+.tile,
+.band {
+  --tone: var(--azure);
+  --tone-soft: var(--azure-soft);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 28px 34px 28px 44px;
+  border: 2px solid var(--line);
+  border-radius: 24px;
+  background-color: var(--surface);
+  box-shadow: inset 10px 0 0 var(--tone), var(--shadow);
+  color: var(--ink);
+}
+.tone-azure {
+  --tone: var(--azure);
+  --tone-soft: var(--azure-soft);
+}
+.tone-violet {
+  --tone: var(--violet);
+  --tone-soft: var(--violet-soft);
+}
+.tone-green {
+  --tone: var(--green);
+  --tone-soft: var(--green-soft);
+}
+.tone-amber {
+  --tone: var(--amber);
+  --tone-soft: var(--amber-soft);
+}
+.tone-red {
+  --tone: var(--red);
+  --tone-soft: var(--red-soft);
+}
+.tone-neutral {
+  --tone: var(--muted);
+  --tone-soft: var(--surface-2);
+}
+.slide h3 {
+  font-family: var(--font-display);
+  font-size: var(--h3, 34px);
+  font-weight: 650;
+  line-height: 1.12;
+}
+.card p,
+.step p,
+.panel p,
+.box p,
+.tile p,
+.band p {
+  font-size: var(--body, 29px);
+  line-height: 1.32;
+}
+/* a band is a wide strip: keep its sentence to a readable measure */
+.band p {
+  max-width: 1180px;
+}
+
+.band {
+  display: grid;
+  grid-template-columns: minmax(250px, 27%) minmax(0, 1fr);
+  align-items: center;
+  align-content: center;
+  column-gap: 36px;
+  padding-top: 22px;
+  padding-bottom: 22px;
+  background-color: var(--tone-soft);
+}
+/* short copy wraps in even lines, never one orphan word or a hyphen break at the line end */
+.card p,
+.step p,
+.panel p,
+.tile p,
+.box p,
+.band p,
+.lead {
+  text-wrap: balance;
+}
+
+.has-icon {
+  gap: 10px;
+}
+.ico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 60px;
+  height: 60px;
+  border-radius: 18px;
+  background-color: var(--tone-soft);
+  color: var(--tone);
+}
+.band .ico {
+  display: none;
+}
+.ico svg {
+  width: 34px;
+  height: 34px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* decorative art at the foot of a container: text-free, pinned to the bottom edge */
+.art {
+  display: block;
+  flex: none;
+  width: 100%;
+  height: auto;
+  margin-top: auto;
+  overflow: visible;
+}
+
+/* icon-only reading rail inside a band */
+.links {
+  display: flex;
+  gap: 18px;
+}
+.lico {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border: 2px solid var(--line-strong);
+  border-radius: 24px;
+  background-color: var(--surface);
+  color: var(--tone);
+  transition: background-color 0.2s ease;
+}
+.lico:hover {
+  background-color: var(--surface-2);
+}
+.lico svg {
+  width: 44px;
+  height: 44px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.band.has-links {
+  grid-template-columns: minmax(250px, 27%) minmax(0, 1fr) auto;
+}
+
+/* ------------------------------------------------------------------------------ table */
+
+.grid {
+  width: 100%;
+  align-self: stretch;
+  border-collapse: separate;
+  border-spacing: 0;
+  overflow: hidden;
+  border: 2px solid var(--line);
+  border-radius: 22px;
+  background-color: var(--surface);
+  font-size: 30px;
+  box-shadow: var(--shadow);
+}
+.grid th,
+.grid td {
+  padding: 16px 28px;
+  text-align: left;
+  vertical-align: middle;
+  border-bottom: 2px solid var(--line);
+  background-color: var(--surface);
+  color: var(--ink);
+}
+.grid thead th {
+  background-color: var(--surface-2);
+  font-weight: 650;
+  font-size: 26px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.grid tbody th {
+  font-weight: 600;
+}
+[data-layout='scorecard-matrix'] .grid thead th:not(:first-child) {
+  text-align: center;
+}
+.grid tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.grid tbody tr:nth-child(even) > * {
+  background-color: var(--surface-2);
+}
+.grid .mark,
+.grid td.place {
+  text-align: center;
+  font-size: 38px;
+  line-height: 1;
+}
+
+/* ------------------------------------------------------------------------------ chips, labels */
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 16px;
+}
+.chip {
+  position: relative;
+  padding: 14px 26px 14px 56px;
+  border: 2px solid var(--line-strong);
+  border-radius: 999px;
+  background-color: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.1;
+  cursor: pointer;
+}
+.chip::before {
+  content: attr(data-hint);
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+  background-color: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 34px;
+  text-align: center;
+}
+.chip:not([data-hint]) {
+  padding-left: 26px;
+}
+.chip:not([data-hint])::before {
+  display: none;
+}
+.chip.is-active,
+.chip[aria-pressed='true'] {
+  border-color: var(--azure);
+  background-color: var(--azure-soft);
+  box-shadow: 0 0 0 4px var(--azure);
+}
+.labels {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.label {
+  padding: 6px 14px;
+  border-radius: 10px;
+  background-color: var(--surface-2);
+  color: var(--muted);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------------------ diagrams */
+
+.diagram {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+}
+.diagram svg {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  overflow: visible;
+}
+/* Only the family and the default ink live here, at zero specificity: every label carries its own
+   explicit font-size and weight (rules.ts requires it), and the f-* colour classes must win. */
+:where(.diagram) text,
+:where(.diagram) tspan {
+  font-family: var(--font-text);
+}
+:where(.diagram) text {
+  fill: var(--ink);
+}
+.d-label {
+  font-family: var(--font-text);
+  font-size: 22px;
+  font-weight: 600;
+  fill: var(--ink);
+}
+.d-node circle {
+  fill: var(--surface);
+  stroke: var(--azure);
+  stroke-width: 5;
+}
+.d-node-agent circle {
+  stroke: var(--violet);
+}
+.d-node-platform circle {
+  stroke: var(--green);
+}
+.d-icon {
+  stroke: var(--ink);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.d-edges {
+  stroke: var(--muted);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.d-loop path {
+  stroke: var(--line-strong);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 2 16;
+}
+/* hover or focus a data-hl group: it stays lit, the rest of the slide steps back */
+.slide.has-hl [data-hl]:not(.is-hl) {
+  opacity: 0.45;
+}
+.slide [data-hl] {
+  transition: opacity 0.2s ease;
+}
+
+/* ================================================================================================
+   Layout archetypes (one per slide). No archetype repeats on neighbouring
+   slides, containers stretch or centre to fill the body, and the body ends at the bottom margin.
+   Type steps up where a column carries short copy, so the copy, not an empty box, fills the space.
+   ================================================================================================ */
+
+[data-layout='split-compare-gauge'] {
+  --h3: 46px;
+  --body: 36px;
+}
+[data-layout='curve-diagram-staged'],
+[data-layout='stat-bars-traps'] {
+  --h3: 40px;
+  --body: 33px;
+}
+[data-layout='stage-ladder'],
+[data-layout='stepper-3gen'],
+[data-layout='timeline-rail'],
+[data-layout='evolution-rows'] {
+  --h3: 42px;
+  --body: 33px;
+}
+/* the open-floor questions are the content: they read from the back of the room */
+[data-layout='discussion-rail'] {
+  --h3: 44px;
+  --body: 38px;
+}
+[data-layout='pipeline-map'] {
+  --h3: 46px;
+  --body: 36px;
+}
+[data-layout='quiz-widget'] {
+  --h3: 46px;
+  --body: 38px;
+}
+[data-layout='quad-decision-tree'] {
+  --h3: 42px;
+  --body: 33px;
+}
+[data-layout='tabbed-roles'] {
+  --h3: 40px;
+  --body: 35px;
+}
+[data-layout='balance-compare'],
+[data-layout='twin-bars'] {
+  --h3: 44px;
+  --body: 36px;
+}
+[data-layout='defense-stack'] {
+  --h3: 38px;
+  --body: 31px;
+}
+
+/* 1 cover-hero-grid: tiles 2x2 on the left, hero glyph on the right */
+[data-layout='cover-hero-grid'] h1 {
+  font-size: 104px;
+  max-width: 1500px;
+}
+[data-layout='cover-hero-grid'] .lead {
+  font-size: 42px;
+}
+[data-layout='cover-hero-grid'] .slide-body {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+}
+[data-layout='cover-hero-grid'] .diagram {
+  grid-column: 3 / 5;
+  grid-row: 1 / 3;
+}
+/* headings share one baseline across a row: tiles fill from the top, never centre on their copy */
+[data-layout='cover-hero-grid'] .tile {
+  justify-content: flex-start;
+  padding-top: 32px;
+}
+[data-layout='cover-hero-grid'] .tile:nth-of-type(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+[data-layout='cover-hero-grid'] .tile:nth-of-type(2) {
+  grid-column: 2;
+  grid-row: 1;
+}
+[data-layout='cover-hero-grid'] .tile:nth-of-type(3) {
+  grid-column: 1;
+  grid-row: 2;
+}
+[data-layout='cover-hero-grid'] .tile:nth-of-type(4) {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+/* 2 split-compare-gauge: two cards, each ending in its own context-window gauge; a band beneath */
+[data-layout='split-compare-gauge'] .slide-body {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+[data-layout='split-compare-gauge'] .card {
+  justify-content: flex-start;
+  gap: 16px;
+}
+[data-layout='split-compare-gauge'] .band {
+  grid-column: 1 / -1;
+}
+
+/* 3 curve-diagram-staged: curve left; the card and the PROSE band stacked on the right */
+[data-layout='curve-diagram-staged'] .slide-body {
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+}
+[data-layout='curve-diagram-staged'] .diagram {
+  grid-column: 1;
+  grid-row: 1 / 3;
+}
+[data-layout='curve-diagram-staged'] .card {
+  grid-column: 2;
+  grid-row: 1;
+}
+[data-layout='curve-diagram-staged'] .band {
+  grid-column: 2;
+  grid-row: 2;
+  grid-template-columns: 1fr;
+  row-gap: 12px;
+}
+
+/* 4 stage-ladder: three equal steps climb a staircase; each rests on a riser of its own tone */
+[data-layout='stage-ladder'] .slide-body {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  column-gap: 46px;
+  align-items: end;
+}
+[data-layout='stage-ladder'] .step {
+  --rise: 212px;
+  align-self: end;
+  justify-content: flex-start;
+  margin-bottom: calc(var(--k, 0) * var(--rise));
+}
+[data-layout='stage-ladder'] .step:nth-of-type(1) {
+  --k: 0;
+}
+[data-layout='stage-ladder'] .step:nth-of-type(2) {
+  --k: 1;
+}
+[data-layout='stage-ladder'] .step:nth-of-type(3) {
+  --k: 2;
+}
+/* the riser: the staircase silhouette under each step */
+[data-layout='stage-ladder'] .step::after {
+  content: '';
+  position: absolute;
+  left: -2px;
+  right: -2px;
+  top: 100%;
+  height: calc(var(--k, 0) * var(--rise));
+  background-color: var(--tone-soft);
+  border: 2px solid var(--line);
+  border-top: 0;
+  border-radius: 0 0 6px 6px;
+  box-shadow: inset 10px 0 0 var(--tone);
+}
+[data-layout='stage-ladder'] .step:nth-of-type(1)::after {
+  display: none;
+}
+/* the next rung is up and to the right */
+[data-layout='stage-ladder'] .step:not(:last-of-type)::before {
+  content: '';
+  position: absolute;
+  right: -46px;
+  top: 34px;
+  width: 0;
+  height: 0;
+  border-top: 20px solid transparent;
+  border-bottom: 20px solid transparent;
+  border-left: 28px solid var(--line-strong);
+}
+/* a finite lifespan: the enabling team is drawn as a dashed, provisional step */
+[data-layout='stage-ladder'] .step:nth-of-type(2) {
+  border-style: dashed;
+  border-color: var(--tone);
+}
+[data-layout='stage-ladder'] .stage-target.is-stage {
+  transform: none;
+}
+
+/* 5 layer-stack-diagram: five-layer stack with a band beneath */
+[data-layout='layer-stack-diagram'] .slide-body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+/* 6 tabbed-roles: a rail of three concerns lands on three role panels */
+[data-layout='tabbed-roles'] .slide-body {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 36px;
+  row-gap: 0;
+}
+[data-layout='tabbed-roles'] .diagram {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+[data-layout='tabbed-roles'] .diagram svg {
+  height: auto;
+}
+[data-layout='tabbed-roles'] .panel {
+  grid-row: 2;
+  justify-content: flex-start;
+  gap: 16px;
+  padding-top: 40px;
+  padding-bottom: 44px;
+}
+[data-layout='tabbed-roles'] .panel:nth-of-type(3) {
+  border-style: dashed;
+  border-color: var(--tone);
+}
+
+/* 7 scorecard-matrix: the table owns the body, a band closes it */
+[data-layout='scorecard-matrix'] .slide-body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+[data-layout='scorecard-matrix'] .grid {
+  height: 100%;
+}
+
+/* 8 stat-bars-traps: bars across the top, three trap cards beneath */
+[data-layout='stat-bars-traps'] .slide-body {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 0.8fr) minmax(0, 1fr);
+}
+[data-layout='stat-bars-traps'] .diagram,
+[data-layout='stat-bars-traps'] .labels {
+  grid-column: 1 / -1;
+}
+[data-layout='stat-bars-traps'] .card {
+  justify-content: flex-start;
+  gap: 12px;
+  padding-top: 40px;
+}
+
+/* 9 stepper-3gen: three generations in a row with arrows between, a pictogram at the foot of each */
+[data-layout='stepper-3gen'] .slide-body {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto;
+  align-content: center;
+  column-gap: 56px;
+}
+[data-layout='stepper-3gen'] .step {
+  justify-content: flex-start;
+  gap: 14px;
+  padding-bottom: 36px;
+}
+[data-layout='stepper-3gen'] .step .art {
+  padding-top: 10px;
+}
+[data-layout='stepper-3gen'] .step:not(:last-of-type)::after {
+  content: '';
+  position: absolute;
+  right: -46px;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-top: 22px solid transparent;
+  border-bottom: 22px solid transparent;
+  border-left: 30px solid var(--line-strong);
+  transform: translateY(-50%);
+  transition: border-left-color 0.25s ease;
+}
+[data-layout='stepper-3gen'] .step.is-past::after,
+[data-layout='stepper-3gen'] .step.is-stage:not(:last-of-type)::after {
+  border-left-color: var(--violet);
+}
+
+/* 10 quad-decision-tree: failure chips + breadcrumb on the left, 2x2 gate matrix on the right */
+[data-layout='quad-decision-tree'] .slide-body {
+  grid-template-columns: minmax(0, 0.95fr) repeat(2, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  column-gap: 30px;
+}
+[data-layout='quad-decision-tree'] .chips {
+  grid-column: 1;
+  grid-row: 1;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  justify-content: center;
+}
+[data-layout='quad-decision-tree'] .gate-path {
+  grid-column: 1;
+  grid-row: 2;
+}
+[data-layout='quad-decision-tree'] [data-gate='programmatic-internal'] {
+  grid-column: 2;
+  grid-row: 1;
+}
+[data-layout='quad-decision-tree'] [data-gate='judgement-internal'] {
+  grid-column: 3;
+  grid-row: 1;
+}
+[data-layout='quad-decision-tree'] [data-gate='programmatic-external'] {
+  grid-column: 2;
+  grid-row: 2;
+}
+[data-layout='quad-decision-tree'] [data-gate='judgement-external'] {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+/* 11 balance-compare: two cards flank a balance scale; a band beneath */
+[data-layout='balance-compare'] .slide-body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+[data-layout='balance-compare'] .card {
+  align-self: center;
+  justify-content: flex-start;
+  gap: 14px;
+  padding-top: 36px;
+  padding-bottom: 40px;
+}
+[data-layout='balance-compare'] .card:nth-of-type(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+[data-layout='balance-compare'] .card:nth-of-type(2) {
+  grid-column: 3;
+  grid-row: 1;
+}
+[data-layout='balance-compare'] .diagram {
+  grid-column: 2;
+  grid-row: 1;
+}
+[data-layout='balance-compare'] .band {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+/* 11b roi-scorecard: six-row executive scorecard table on the left, trace-to-ROI diagram on the right, band beneath */
+[data-layout='roi-scorecard'] .slide-body {
+  grid-template-columns: minmax(0, 1fr) 480px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  column-gap: 34px;
+}
+[data-layout='roi-scorecard'] .grid {
+  grid-column: 1;
+  grid-row: 1;
+  height: 100%;
+  font-size: 29px;
+}
+[data-layout='roi-scorecard'] .grid th,
+[data-layout='roi-scorecard'] .grid td {
+  padding: 12px 26px;
+}
+[data-layout='roi-scorecard'] .grid tbody th {
+  width: 31%;
+  font-weight: 700;
+}
+[data-layout='roi-scorecard'] .diagram {
+  grid-column: 2;
+  grid-row: 1;
+}
+[data-layout='roi-scorecard'] .band {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+
+/* 12 cost-bar-jcurve: cost bar and J-curve share the body; a band and a note close it */
+[data-layout='cost-bar-jcurve'] .slide-body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+/* 13 twin-bars: the two named cards stack beside their to-scale bars; a band beneath */
+[data-layout='twin-bars'] .slide-body {
+  grid-template-columns: minmax(0, 640px) minmax(0, 1fr);
+  grid-template-rows: repeat(2, minmax(0, 1fr)) auto;
+  column-gap: 32px;
+}
+[data-layout='twin-bars'] .diagram {
+  grid-column: 2;
+  grid-row: 1 / 3;
+}
+[data-layout='twin-bars'] .card:nth-of-type(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+[data-layout='twin-bars'] .card:nth-of-type(2) {
+  grid-column: 1;
+  grid-row: 2;
+}
+[data-layout='twin-bars'] .band {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+/* 14 token-model-sim: lever tiles stacked on the left, bar and readout on the right */
+[data-layout='token-model-sim'] .slide-body {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  column-gap: 48px;
+}
+[data-layout='token-model-sim'] .tile:nth-of-type(1) {
+  grid-column: 1;
+  grid-row: 1;
+}
+[data-layout='token-model-sim'] .tile:nth-of-type(2) {
+  grid-column: 1;
+  grid-row: 2;
+}
+[data-layout='token-model-sim'] .tile:nth-of-type(3) {
+  grid-column: 1;
+  grid-row: 3;
+}
+[data-layout='token-model-sim'] .tile:nth-of-type(4) {
+  grid-column: 1;
+  grid-row: 4;
+}
+[data-layout='token-model-sim'] .costbar {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  align-self: end;
+}
+[data-layout='token-model-sim'] .stat {
+  grid-column: 2;
+  grid-row: 3 / 5;
+  align-self: start;
+  justify-self: start;
+  margin-top: 14px;
+  font-size: 80px;
+}
+
+/* 15 paired-bar-chart: paired bars with a review-caveat band */
+[data-layout='paired-bar-chart'] .slide-body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+}
+
+/* 16 pipeline-map: four-node flow whose connectors drop into three constraint panels */
+[data-layout='pipeline-map'] .slide-body {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto minmax(0, 1fr);
+  column-gap: 30px;
+  row-gap: 0;
+}
+[data-layout='pipeline-map'] .diagram {
+  grid-column: 1 / -1;
+}
+[data-layout='pipeline-map'] .diagram svg {
+  height: auto;
+}
+[data-layout='pipeline-map'] .panel {
+  justify-content: center;
+  gap: 16px;
+  padding-top: 28px;
+}
+
+/* 17 evolution-rows: three roles in rows, stepping down in height, each with a before-to-after glyph */
+[data-layout='evolution-rows'] .slide-body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 1.25fr 1.1fr 0.95fr;
+}
+[data-layout='evolution-rows'] .card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 440px;
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 64px;
+  row-gap: 12px;
+}
+[data-layout='evolution-rows'] .card h3 {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+}
+[data-layout='evolution-rows'] .card p {
+  grid-column: 1;
+  grid-row: 2;
+  align-self: start;
+  max-width: 1080px;
+}
+[data-layout='evolution-rows'] .card .art {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  margin: 0;
+}
+
+/* 18 defense-stack: three layered bands and a cost-rule band, a cost meter beside the stack */
+[data-layout='defense-stack'] .slide-body {
+  grid-template-columns: minmax(0, 1fr) 520px;
+  grid-template-rows: repeat(3, minmax(0, 1fr)) auto;
+  column-gap: 30px;
+}
+[data-layout='defense-stack'] .card {
+  grid-column: 1;
+  display: grid;
+  grid-template-columns: 84px 300px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 30px;
+}
+[data-layout='defense-stack'] .card .ico {
+  width: 84px;
+  height: 84px;
+  border-radius: 24px;
+}
+[data-layout='defense-stack'] .card .ico svg {
+  width: 46px;
+  height: 46px;
+}
+[data-layout='defense-stack'] .diagram {
+  grid-column: 2;
+  grid-row: 1 / 4;
+}
+[data-layout='defense-stack'] .band {
+  grid-column: 1 / -1;
+  grid-row: 4;
+}
+
+/* 19 seam-diagram: the seam diagram, then two bands side by side */
+[data-layout='seam-diagram'] .slide-body {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr) auto;
+  column-gap: 30px;
+}
+[data-layout='seam-diagram'] .diagram {
+  grid-column: 1 / -1;
+}
+[data-layout='seam-diagram'] .band {
+  grid-template-columns: 1fr;
+  row-gap: 10px;
+}
+[data-layout='seam-diagram'] .band p {
+  font-size: 33px;
+}
+
+/* 20 gotcha-table: a semantic table owns the body */
+[data-layout='gotcha-table'] .slide-body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+[data-layout='gotcha-table'] .grid {
+  height: 100%;
+  font-size: 38px;
+}
+[data-layout='gotcha-table'] .grid th,
+[data-layout='gotcha-table'] .grid td {
+  padding: 12px 44px;
+}
+[data-layout='gotcha-table'] .grid thead th {
+  font-size: 28px;
+}
+[data-layout='gotcha-table'] .grid tbody th {
+  width: 40%;
+  font-weight: 700;
+}
+[data-layout='gotcha-table'] .grid tbody th::before {
+  content: '';
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 26px;
+  border-radius: 50%;
+  background-color: var(--amber);
+  vertical-align: middle;
+  position: relative;
+  top: -2px;
+}
+
+/* 21 timeline-rail: step cards hang above and below a rail, one per milestone node */
+[data-layout='timeline-rail'] .slide-body {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+  column-gap: 40px;
+  position: relative;
+}
+[data-layout='timeline-rail'] .slide-body::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 26px;
+  top: calc(50% - 4px);
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--azure), var(--violet), var(--green));
+}
+/* the rail runs past day 90 */
+[data-layout='timeline-rail'] .slide-body::after {
+  content: '';
+  position: absolute;
+  right: -2px;
+  top: calc(50% - 20px);
+  border-top: 20px solid transparent;
+  border-bottom: 20px solid transparent;
+  border-left: 30px solid var(--green);
+}
+[data-layout='timeline-rail'] .step {
+  --gap: 54px;
+  justify-content: flex-start;
+  height: calc(50% - var(--gap));
+}
+[data-layout='timeline-rail'] .step:nth-of-type(odd) {
+  align-self: start;
+}
+[data-layout='timeline-rail'] .step:nth-of-type(even) {
+  align-self: end;
+}
+/* milestone node on the rail, and the stem that joins it to the card */
+[data-layout='timeline-rail'] .step::before {
+  content: '';
+  position: absolute;
+  left: 38px;
+  width: 38px;
+  height: 38px;
+  border: 7px solid var(--tone);
+  border-radius: 50%;
+  background-color: var(--surface);
+  z-index: 1;
+}
+[data-layout='timeline-rail'] .step::after {
+  content: '';
+  position: absolute;
+  left: 54px;
+  width: 6px;
+  background-color: var(--tone);
+}
+[data-layout='timeline-rail'] .step:nth-of-type(odd)::before {
+  top: calc(100% + var(--gap) - 19px);
+}
+[data-layout='timeline-rail'] .step:nth-of-type(odd)::after {
+  top: 100%;
+  height: calc(var(--gap) - 19px);
+}
+[data-layout='timeline-rail'] .step:nth-of-type(even)::before {
+  bottom: calc(100% + var(--gap) - 19px);
+}
+[data-layout='timeline-rail'] .step:nth-of-type(even)::after {
+  bottom: 100%;
+  height: calc(var(--gap) - 19px);
+}
+
+/* 21b maturity-dimensions: six numbered badge rows on the left (matching the Six Dimensions of Maturity visual), six-axis radar on the right */
+[data-layout='maturity-dimensions'] .slide-body {
+  grid-template-columns: minmax(0, 1.42fr) 480px;
+  grid-template-rows: minmax(0, 1fr);
+  column-gap: 34px;
+}
+[data-layout='maturity-dimensions'] .grid {
+  grid-column: 1;
+  grid-row: 1;
+  height: 100%;
+  font-size: 28px;
+  counter-reset: dim;
+}
+[data-layout='maturity-dimensions'] .diagram {
+  grid-column: 2;
+  grid-row: 1;
+}
+[data-layout='maturity-dimensions'] .grid th,
+[data-layout='maturity-dimensions'] .grid td {
+  padding: 12px 24px;
+}
+[data-layout='maturity-dimensions'] .grid tbody th {
+  width: 44%;
+  font-weight: 700;
+}
+[data-layout='maturity-dimensions'] .grid tbody tr {
+  counter-increment: dim;
+}
+[data-layout='maturity-dimensions'] .grid tbody th::before {
+  content: counter(dim);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 46px;
+  margin-right: 18px;
+  border: 3px solid var(--dim-fg, var(--azure));
+  border-radius: 12px;
+  background-color: var(--dim-soft, var(--azure-soft));
+  color: var(--ink);
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 750;
+  vertical-align: middle;
+}
+[data-layout='maturity-dimensions'] .grid tbody tr:nth-child(1) th {
+  --dim-fg: var(--green);
+  --dim-soft: var(--green-soft);
+}
+[data-layout='maturity-dimensions'] .grid tbody tr:nth-child(2) th {
+  --dim-fg: var(--violet);
+  --dim-soft: var(--violet-soft);
+}
+[data-layout='maturity-dimensions'] .grid tbody tr:nth-child(3) th {
+  --dim-fg: var(--amber);
+  --dim-soft: var(--amber-soft);
+}
+[data-layout='maturity-dimensions'] .grid tbody tr:nth-child(4) th {
+  --dim-fg: var(--azure);
+  --dim-soft: var(--azure-soft);
+}
+[data-layout='maturity-dimensions'] .grid tbody tr:nth-child(5) th {
+  --dim-fg: var(--green);
+  --dim-soft: var(--green-soft);
+}
+[data-layout='maturity-dimensions'] .grid tbody tr:nth-child(6) th {
+  --dim-fg: var(--violet);
+  --dim-soft: var(--violet-soft);
+}
+
+/* 22 quiz-widget: three scenario cards, options along the foot of each, a progress rail beneath */
+[data-layout='quiz-widget'] .slide-body {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto auto;
+  align-content: center;
+  column-gap: 32px;
+  row-gap: 36px;
+}
+[data-layout='quiz-widget'] .diagram {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+[data-layout='quiz-widget'] .diagram svg {
+  height: auto;
+}
+[data-layout='quiz-widget'] .card {
+  gap: 16px;
+}
+/* a room-sized control surface: big option buttons, easy to read from the back */
+[data-layout='quiz-widget'] .q .pick {
+  width: 96px;
+  height: 96px;
+  font-size: 48px;
+}
+[data-layout='quiz-widget'] .q .reveal {
+  width: 80px;
+  height: 80px;
+  font-size: 40px;
+}
+[data-layout='quiz-widget'] .q .opts {
+  padding-top: 30px;
+}
+[data-layout='quiz-widget'] .q .opt.is-correct .pick::after,
+[data-layout='quiz-widget'] .q .opt.is-wrong .pick::after {
+  font-size: 34px;
+  margin-left: 4px;
+}
+
+/* 23 discussion-rail: three staggered role cards above a link rail */
+[data-layout='discussion-rail'] .slide-body {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr) auto;
+  column-gap: 32px;
+}
+[data-layout='discussion-rail'] .card {
+  justify-content: flex-start;
+  gap: 14px;
+}
+[data-layout='discussion-rail'] .card .art {
+  width: 76%;
+  align-self: flex-start;
+}
+[data-layout='discussion-rail'] .card:nth-of-type(2) {
+  margin-top: 36px;
+}
+[data-layout='discussion-rail'] .card:nth-of-type(3) {
+  margin-top: 72px;
+}
+[data-layout='discussion-rail'] .band {
+  grid-column: 1 / -1;
+}
+[data-layout='discussion-rail'] .band p {
+  font-size: 33px;
+}

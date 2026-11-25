@@ -13,10 +13,21 @@ day: 1
 S1 | SPEC-01 · Reconciler | specs/01-manifest-and-reconciler.md
 :::
 
-:::kv
-Schema Gate | Validates `sdlc.yaml` against its JSON Schema, then cross-field semantic rules.
-Compiler Pipeline | Renders `.md` workflows, then runs `gh aw compile --strict --purge`.
-Token & Merge Guardrails | Scopes each App token to its edge's repositories and rejects `auto-merge`.
+:::cols 1fr 1fr
+:::col Instance · This Repo
+- `sdlc.yaml`
+- `instructions/`
+- `scripts/`
+- `.github/workflows/`
+:::col Engine · Public Package
+- `ai-sdlc-factory v0.2.0`
+- `sdlc-reconcile`
+- `sdlc-bootstrap`
+- `sdlc-onboard`
+:::
+
+:::callout note Reconciler Guardrails
+Schema gate, strict `gh aw compile`, per-edge App tokens, and `auto-merge` always rejected.
 :::
 
 ---
@@ -25,16 +36,11 @@ Token & Merge Guardrails | Scopes each App token to its edge's repositories and 
 @layout: diagram
 @minutes: 3
 
-# S2 · Upstream Drift & Remote-Only Harness
+# S2 · Report-Driven Upkeep & Change Policy
 
-:::diagram drift-pipeline
+:::diagram upkeep-explorer
 
-:::kv
-Why a separate folder? | Local sessions load `.github/agents/`, never `.github/sdlc/`; only remote runs read it.
-Three Specialist Roles | `source-verifier` corroborates changes, `curriculum-updater` edits labs and decks, `regression-tester` runs validators.
-:::
-
-:::spec specs/02-upstream-drift-automation.md
+:::spec specs/06-actionable-upkeep.md
 
 ---
 

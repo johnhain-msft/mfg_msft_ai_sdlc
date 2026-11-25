@@ -1,0 +1,8 @@
+/* Single stylesheet entry. esbuild resolves the imports and inlines the result into dist/index.html. */
+@import './tokens.css';
+@import './base.css';
+@import './chrome.css';
+@import './slides.css';
+@import './widgets.css';
+@import './diagrams.css';
+@import './views.css';

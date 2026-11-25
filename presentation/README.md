@@ -1,8 +1,8 @@
 # AI SDLC Orchestrator: architecture briefing deck
 
-`dist/index.html` is the briefing: one self-contained HTML file (about 230 KB, with the production walkthrough drawn inline), no server, no dependencies. It is generated from the Markdown under `content/` by `build.mjs`, which also writes the read-aloud script to `../presenter/PRESENTER-SCRIPT.md`. Edit the sources, rebuild, commit both outputs.
+`dist/index.html` is the briefing: one self-contained HTML file (about 267 KB, with the production walkthrough drawn inline), no server, no dependencies. It is generated from the Markdown under `content/` by `build.mjs`, which also writes the read-aloud script to `../presenter/PRESENTER-SCRIPT.md`. Edit the sources, rebuild, commit both outputs.
 
-12 slides, 30 minutes. The deck follows the specs in `../specs/` and the plan in `../plan.md`; every spec path on a slide is a real file in this repository.
+12 slides, 30 minutes. The deck follows the specs in `../specs/` and the plan in `../plan.md`; every spec path on a slide is a real file in this repository. It describes this repository as the **instance** of the public `ai-sdlc-factory` **engine** (v0.2.0): the fleet's data lives here, the code that renders and runs it is a pinned dependency. Both repositories are public, so the deck, its notes and its sources say so.
 
 ```bash
 node presentation/build.mjs                    # build dist/index.html and presenter/PRESENTER-SCRIPT.md
@@ -25,7 +25,16 @@ Open `dist/index.html`. The deck remembers the theme, the agenda time zone and t
 | `F` | present fullscreen · `B` or `.` blank the screen · `T` light/dark · `P` print to PDF |
 | `A` · `G` · `?` | agenda · overview grid · shortcut help (each closes with its own key) |
 
-`#/7`, `#/s3-event-router` and `#/speaker` are deep links. The decision tree on slide 8 and the knowledge check on slide 11 are clickable. `Space` and `Enter` press whichever button, link or tab has focus instead of changing slide (in the deck and in the speaker window); with the slides themselves focused, `Space` advances. The *Skip to slides* link moves focus to the slides without changing the slide or the address (in `#/speaker` it reads *Skip to speaker notes* and lands on the notes).
+`#/7`, `#/s3-event-router` and `#/speaker` are deep links. Four things on the slides are interactive, and each has a keyboard route:
+
+| Slide | Control | Does |
+|---|---|---|
+| 3 | the S1 to S5 groups of the topology | pin a workstream: the callout under the diagram becomes that workstream's role, inputs and outputs, with a link to its slide. Press the same group again, or `Esc` on it, to restore the callout |
+| 6 | the three `changePolicy` buttons | re-file three findings (a correction, an addition, a judgement call) between the drift report's `## Recommended` and `## For a human` and the pull request that `implement-<projectKey>` opens; under `judgement-and-flag` the pull request gains `## Judgement calls — review these` and `## For a human` is omitted |
+| 8 | the decision tree and the five edge chips | answer Yes or No, or press an edge to walk straight to its mode and read why |
+| 9, 11 | the pilot stepper and the knowledge check | step through the six production milestones; answer the quiz |
+
+`Space` and `Enter` press whichever button, link or tab has focus instead of changing slide (in the deck and in the speaker window); with the slides themselves focused, `Space` advances. The *Skip to slides* link moves focus to the slides without changing the slide or the address (in `#/speaker` it reads *Skip to speaker notes* and lands on the notes).
 
 ### Phones and tablets
 
@@ -71,7 +80,17 @@ Containers open with `:::name` and close with `:::`. `:::diagram`, `:::spec` and
 
 ### Diagrams: `content/diagrams/`
 
-Inline SVG or HTML fragments styled with the `d-*` classes in `src/styles.css`, so they follow the theme. Every SVG `<text>` is at least 22px (the build checks it) so labels stay near 18px on screen. Elements with `data-hl="group"` highlight together on hover or focus: give the group's main box the `d-panel` class and it takes a heavier outline while the other groups stay at full strength (text is never faded below 5:1). A heading inside a diagram follows the slide's `h1` as an `h2`, as `cascade-decision.html` does, so the outline never skips a level. `cascade-decision.html` holds the `[data-decision]` tree as an embedded JSON object.
+Inline SVG or HTML fragments styled with the `d-*` classes in `src/styles.css`, so they follow the theme. Every SVG `<text>` is at least 22px (the build checks it) so labels stay near 18px on screen. Elements with `data-hl="group"` highlight together on hover or focus: give the group's main box the `d-panel` class and it takes a heavier outline while the other groups stay at full strength (text is never faded below 5:1). A heading inside a diagram follows the slide's `h1` as an `h2`, as `cascade-decision.html` does, so the outline never skips a level. A caption after the name (`:::diagram fleet-topology Select S1 to S5…`) becomes the figure's `figcaption`. Never put a `<section>` in a fragment: `deck-density.py` reads the first `</section>` as the end of the slide and stops counting (the build refuses it); use `<div>`.
+
+Three fragments are interactive, and each carries its data as one embedded `<script type="application/json">`, which the word budget does not count (what a room sees at any moment is what must stay under it):
+
+| Fragment | Markup it needs | Embedded JSON |
+|---|---|---|
+| `fleet-topology.html` | `data-hl="s1"`… groups in the SVG | `<script type="application/json" data-inspect>`: `{ s1: { n, title, role, in, out, go } }`. `go` is a slide id. `app.js` makes each group a button and builds the inspector under the figure, so a preview and a static reader see the slide as authored |
+| `upkeep-explorer.html` | the four stages, `data-policy` buttons, `data-uk-items` lists | `{ items, kinds, flagHeading, omitted, unset, usedBy, policies: { <name>: { recommended, human, pr, flag, projects, note, say } } }`. The markup is the first state; `app.js` redraws it from the JSON, and a test fails if the two differ |
+| `cascade-decision.html` | `data-outcome` cards holding `data-edge` chips | `{ start, q2, mechanical, ai, none, "edge-<name>": { result, edge, say, note, step } }` |
+
+`build.mjs` cross-checks that JSON (a `go` that is not a slide id, an edge chip without an `edge-<name>` result in the card of its mode, a policy button without an entry) and `tests/s5/validate-deck.test.mjs` checks the edges and the policies against `sdlc.yaml`, so a fleet change that the deck does not state fails the suite. Chips and labels inside widgets are `div`s with ARIA list roles, not `span`s: `slide-review` reads inline `span`s of different colours as highlighter marks.
 
 `live-pipeline-demo.html` is the six-step production walkthrough of slide 9, drawn as inline SVG: the `data-pilot` stepper in `src/app.js` shows one `data-pilot-panel` at a time and keeps it in step with the ledger rows. It does not embed `docs/media/gh-admin-sdlc-pipeline-demo.svg`. A fragment that does want a repository file inlined can use `{{data-uri:path|transform}}`; the `legible-captions` transform then enlarges that SVG's 16–17px captions to 22px on a build-time copy, and the file in `docs/media/` is never modified.
 
@@ -104,19 +123,21 @@ One day, four blocks totalling 30 minutes. The start times are a placeholder (10
 
 ## Checks
 
-The builder lints as it builds: at most 58 visible words per slide (hard ceiling 90), 7 to 16 body words in any container that has a heading, existing spec links, agenda sums, script pace (150 words a minute) and verbatim overlap between script and slide, and diagram label size. `--strict` turns warnings into failures.
+The builder lints as it builds: at most 58 visible words per slide (hard ceiling 90), 7 to 16 body words in any container that has a heading, existing spec links, agenda sums, script pace (150 words a minute) and verbatim overlap between script and slide, diagram label size, and the data of the interactive fragments (see *Diagrams*). `--strict` turns warnings into failures.
 
-Run both visual gates after any layout change, from the repository root:
+`tests/s5/validate-deck.test.mjs` runs the shipped `app.js` against a small DOM and checks, besides the build: the facts the deck states about the fleet (counts, edges, change policies, engine version) against `sdlc.yaml` and `package.json`; that no slide or note names a GitHub App id, a private repository or the retired `reconcile.mjs`; the three widgets, their keyboard routes and their inert speaker previews; and contrast, computed from the colour tokens of both themes on every surface a text colour sits on (text 5:1, tone colours 4.5:1, control outlines 3:1). Edit a token and the suite tells you what it broke.
+
+Run both visual gates after any layout change, from the repository root (`--out` keeps the screenshots out of the repository):
 
 ```powershell
 $env:PYTHONIOENCODING = 'utf-8'
 python "$env:USERPROFILE\.copilot\skills\deck-standards\scripts\deck-density.py" presentation/dist/index.html --script presenter/PRESENTER-SCRIPT.md
-python "$env:USERPROFILE\.copilot\skills\slide-review\scripts\review.py" --headless presentation/dist/index.html
+python "$env:USERPROFILE\.copilot\skills\slide-review\scripts\review.py" --headless --out "$env:TEMP\deck-review" presentation/dist/index.html
 ```
 
-`slide-review` writes screenshots and `report.json` to `presentation/dist/review/`. These are review artifacts, not deliverables: view them, then delete the folder.
+Without `--out`, `slide-review` writes screenshots and `report.json` to `presentation/dist/review/`. These are review artifacts, not deliverables: view them, then delete the folder.
 
-After a change to `src/styles.css`, `src/app.js` or `src/shell.html`, also open the deck at 320×568, 390×844, 844×390 and 768×1024 (and at 1440×900, which must look exactly as before): no horizontal scrollbar, no clipped or overlapping text, every control at least 44px on the compact layout.
+After a change to `src/styles.css`, `src/app.js` or `src/shell.html`, also open the deck at 320×568, 390×844, 844×390 and 768×1024, in both themes: no horizontal scrollbar, no clipped or overlapping text, every control at least 44px on the compact layout. On the 1920×1080 canvas, press each interactive control once and check that nothing moves the controls under the pointer (the explorer's flow row has a fixed height for that reason).
 
 ## Portfolio import
 

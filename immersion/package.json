@@ -1,0 +1,25 @@
+{
+  "name": "ai-sdlc-immersion-presentation",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scaling the Agentic SDLC — What is AI SDLC interactive presentation, synchronized speaker view, script book, and PDF handout",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:strict": "node scripts/build.mjs --strict",
+    "build:handout": "node scripts/build-handout.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0"
+  }
+}

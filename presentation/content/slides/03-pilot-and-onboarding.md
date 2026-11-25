@@ -31,12 +31,16 @@ Cascade PR | portfolio#1
 # S5 · Self-Cascade & Two-Command Onboarding
 
 :::cols 1fr 1fr
-:::col Bootstrap & Onboard CLI
-`sdlc-bootstrap` provisions the App and state variables; `sdlc-onboard` writes manifest entries.
-
+:::col Public Engine, Two Commands
 ```bash
 npx sdlc-bootstrap
 npx sdlc-onboard --repo <owner/repo>
+```
+
+```yaml
+factory:
+  package: ai-sdlc-factory
+  private: false   # plain npm ci
 ```
 
 :::spec specs/05-packaging-bootstrap-and-governance.md
@@ -78,7 +82,7 @@ Answer: B — Gates run outside the agent turn; `safe_outputs` depends on them.
 
 :::cards 3
 :::card [icon=doc] Declare Fleet Intent
-Keep watch URLs, verify gates, and cascade edges in `sdlc.yaml` ([SPEC-01](specs/01-manifest-and-reconciler.md)).
+Keep policy, watch URLs and edges in `sdlc.yaml`; the versioned engine renders them ([SPEC-01](specs/01-manifest-and-reconciler.md)).
 :::card [icon=box] Isolate Agent Execution
 Bound AI turns with `.github/sdlc/`, `awf` sandboxing, and deterministic `post-steps` ([SPEC-02](specs/02-upstream-drift-automation.md), [SPEC-04](specs/04-ai-downstream-adaptation.md)).
 :::card [icon=flow] Automate the Cascade
